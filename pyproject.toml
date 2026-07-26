@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "r3e-rtl-repair"
+version = "0.1.0"
+description = "Red-Team-Guided RTL Repair Evolution research artifact"
+requires-python = ">=3.11"
+dependencies = [
+  "numpy>=1.24",
+  "openai>=1.30",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["r3e*"]
+namespaces = true
+
+[tool.pytest.ini_options]
+pythonpath = [
+  "r3e",
+  "r3e/semantic_repair_bench",
+  "r3e/microsurgeon_flow",
+  "r3e/microsurgeon_frontend/semantic",
+  "r3e/tools",
+]
+testpaths = ["tests", "r3e/microsurgeon_flow", "r3e/microsurgeon_frontend"]
+markers = [
+  "network: requires an external model API",
+  "yosys: requires Yosys",
+]

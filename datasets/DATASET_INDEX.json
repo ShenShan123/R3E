@@ -1,0 +1,27 @@
+{
+  "benchmarks": {
+    "cirfix39": {
+      "manifest_sha256": "b6cf4cbc93e600e5bf5ae4b52364a9b71f7450d9e6d9e24ab724423844ad05a4",
+      "rows": 39,
+      "unique_input_files": 74
+    },
+    "literature32": {
+      "manifest_sha256": "d4189d82efc418f2a8d17b69611ec1300db2e9ebfa7ad6d98e21439cd38c9661",
+      "rows": 32,
+      "unique_input_files": 86
+    },
+    "rtlfixer50": {
+      "manifest_sha256": "d7eec0bce9ed61b42b9ba4861e83bcca049176e0fa11af5a0095c28b47ab8de7",
+      "rows": 50,
+      "unique_input_files": 150
+    },
+    "strider14": {
+      "manifest_sha256": "60315b1c2f2a5f719b3bcd84bd32f4ae8b39c396cae1722c1e5b97da91d44f21",
+      "rows": 14,
+      "unique_input_files": 29
+    }
+  },
+  "contains_experiment_results": false,
+  "contains_model_outputs": false,
+  "schema": "r3e-public-dataset-index-v1"
+}
