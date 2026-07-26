@@ -31,7 +31,7 @@ PATTERNS = {
 }
 FORBIDDEN_NAMES = {
     ".env", ".deepseek_env", ".llm_env", "__pycache__", ".pytest_cache",
-    "artifacts", "docs", "results", ".formal_r3e", ".iso_semrepair",
+    "artifacts", "results", ".formal_r3e", ".iso_semrepair",
     ".micro_surgeon_memory",
 }
 FORBIDDEN_SUFFIXES = {".pyc", ".log", ".odb", ".db", ".spef", ".vcd", ".sh"}

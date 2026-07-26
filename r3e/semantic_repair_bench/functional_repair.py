@@ -11,9 +11,12 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
+import math
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).parent))
 from microsurgeon_flow.backend_eco_oneshot import call_llm  # noqa: E402
 
@@ -27,6 +30,8 @@ from skill_preflight import (  # noqa: E402
 from microsurgeon_frontend.semantic.llm_micro_repair import (  # noqa: E402
     apply_block_patch as _blue_apply_block_patch,
 )
+from r3e.policy.runtime import PolicyRuntime, PolicyRuntimeViolation
+from r3e.policy.schema import PolicyState
 
 _PROMPT = """你是 RTL 功能 bug 修复专家。下面的 Verilog 模块**能编译通过**，但 testbench 仿真
 输出与正确行为不符（功能 bug，非语法错）。请给出**最小**修复。
@@ -65,10 +70,18 @@ def _hybrid_evidence(pre) -> str:
     return pre.structured or raw
 
 
-def propose(buggy_rtl, evidence: str, memory_context: str = "") -> dict:
+def propose(
+    buggy_rtl,
+    evidence: str,
+    memory_context: str = "",
+    prompt_lens: str = "",
+) -> dict:
     rtl = Path(buggy_rtl).read_text(errors="ignore")
     prompt = _PROMPT.format(rtl=_numbered(rtl), evidence=evidence,
-                            memory=memory_context)
+                            memory=(
+                                (f"\n## Frozen prompt lens\n{prompt_lens}\n" if prompt_lens else "")
+                                + memory_context
+                            ))
     result = call_llm(prompt)
     prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()
     response_hash = hashlib.sha256(
@@ -83,6 +96,10 @@ def propose(buggy_rtl, evidence: str, memory_context: str = "") -> dict:
         item = dict(item)
         item["_formal_prompt_hash"] = prompt_hash
         item["_formal_response_hash"] = response_hash
+        item["_formal_prompt_chars"] = len(prompt)
+        item["_formal_response_chars"] = len(
+            json.dumps(result, ensure_ascii=False, default=str)
+        )
         return item
 
     if isinstance(result, dict):
@@ -122,7 +139,10 @@ def apply_block(buggy_rtl, start: int, end: int, new_code: str, out_path) -> Pat
 def repair_one(case: dict, work_dir, recall_fn=None, evidence_k: int = 1,
                n_candidates: int = 1, structured_evidence: bool = False,
                preflight_registry=None,
-               enable_template_preflight: bool = False) -> dict:
+               enable_template_preflight: bool = False,
+               policy: PolicyState | dict | None = None,
+               policy_runtime: PolicyRuntime | None = None,
+               formal_mode: bool = False) -> dict:
     """单 case 功能修复端到端. 返回结果 dict(judge 驱动).
 
     recall_fn(case) -> memory_context 字符串(注入 prompt). None=no-memory(L1).
@@ -137,6 +157,70 @@ def repair_one(case: dict, work_dir, recall_fn=None, evidence_k: int = 1,
     """
     wd = Path(work_dir)
     rec = {"design": case["design_name"], "top": case["top_module"]}
+    started = time.monotonic()
+    runtime = policy_runtime
+    if runtime is not None:
+        policy = runtime.policy
+    if isinstance(policy, dict):
+        policy = PolicyState.from_dict(policy)
+    if formal_mode:
+        if policy is None:
+            raise PolicyRuntimeViolation("formal repair requires a validated PolicyState")
+        if recall_fn is not None or preflight_registry is not None:
+            raise PolicyRuntimeViolation(
+                "formal repair forbids recall_fn and manual skill preflight registry"
+            )
+        if enable_template_preflight:
+            raise PolicyRuntimeViolation(
+                "formal repair forbids legacy template preflight"
+            )
+        configuration = policy.configuration
+        unsupported = []
+        if configuration["candidate_selection"] != "first_verified":
+            unsupported.append("candidate_selection")
+        if configuration["model_route_id"] != "single_default":
+            unsupported.append("model_route_id")
+        if int(configuration["blue_population"]) != 1:
+            unsupported.append("blue_population")
+        if configuration["verifier_order"] != ["simulation"]:
+            unsupported.append("verifier_order")
+        if configuration["patch_scope"] != "local_block":
+            unsupported.append("patch_scope")
+        if unsupported:
+            raise PolicyRuntimeViolation(
+                f"formal repair runtime does not implement frozen fields: {unsupported}"
+            )
+        evidence_k = int(configuration["evidence_k"])
+        n_candidates = int(configuration["n_candidates"])
+        structured_evidence = configuration["evidence_mode"] == "hybrid"
+    prompt_lens = runtime.prompt_template if runtime is not None else ""
+    if formal_mode and not prompt_lens:
+        lens_path = (
+            Path(__file__).resolve().parents[2]
+            / "configs"
+            / "base_policy"
+            / "prompt_templates"
+            / f"{policy.configuration['prompt_lens_id']}.txt"
+        )
+        if not lens_path.is_file():
+            raise PolicyRuntimeViolation("frozen prompt lens is missing")
+        prompt_lens = lens_path.read_text(encoding="utf-8").strip()
+    if policy is not None:
+        rec.update({
+            "policy_id": policy.policy_id,
+            "policy_hash": policy.policy_hash,
+            "configuration_hash": policy.configuration_hash,
+            "policy_schema_version": policy.schema_version,
+            "budget": dict(policy.budgets),
+            "formal_mode": bool(formal_mode),
+        })
+    else:
+        rec.update({
+            "policy_id": "legacy",
+            "policy_hash": "",
+            "configuration_hash": "",
+            "formal_mode": False,
+        })
 
     preflight = build_preflight_decision(
         case,
@@ -159,6 +243,11 @@ def repair_one(case: dict, work_dir, recall_fn=None, evidence_k: int = 1,
     rec["buggy_ok"] = pre.ok
     rec["buggy_stage"] = pre.stage
     rec["buggy_evidence"] = pre.mismatch or pre.err
+    rec["oracle_provenance"] = {
+        key: (pre.detail or {}).get(key)
+        for key in ("command_hash", "toolchain_fingerprint_hash", "tools")
+        if (pre.detail or {}).get(key) is not None
+    }
     if pre.ok:
         rec["note"] = "buggy_already_passes(数据集异常)"
         return rec
@@ -202,9 +291,35 @@ def repair_one(case: dict, work_dir, recall_fn=None, evidence_k: int = 1,
 
     # best-of-N 多候选: 逐个 propose→apply→judge, 任一通过即修复(利用 LLM 非确定性多样性).
     cand_recs = []
+    max_llm_calls = (
+        int(policy.budgets["max_llm_calls_per_case"]) if policy is not None
+        else max(1, n_candidates)
+    )
+    max_wall_seconds = (
+        int(policy.budgets["max_wall_seconds_per_case"]) if policy is not None
+        else float("inf")
+    )
+    max_tokens = (
+        int(policy.budgets["max_tokens_per_case"]) if policy is not None
+        else 2 ** 63 - 1
+    )
+    estimated_tokens = 0
+    repair_loop = policy.configuration["repair_loop"] if policy is not None else "one-shot"
+    dynamic_evidence = ev_str
     for ci in range(max(1, n_candidates)):
+        if len(cand_recs) >= max_llm_calls:
+            rec["budget_exhausted"] = "max_llm_calls_per_case"
+            break
+        if time.monotonic() - started > max_wall_seconds:
+            rec["budget_exhausted"] = "max_wall_seconds_per_case"
+            break
         cr = {"cand": ci}
-        prop = propose(case["buggy_rtl"], ev_str, memory_context)
+        prop = propose(
+            case["buggy_rtl"],
+            dynamic_evidence,
+            memory_context,
+            prompt_lens=prompt_lens,
+        )
         if isinstance(prop, list):
             prop = next((x for x in prop if isinstance(x, dict)), None) or {
                 "llm_call_error": "llm returned list with no dict element"}
@@ -216,6 +331,15 @@ def repair_one(case: dict, work_dir, recall_fn=None, evidence_k: int = 1,
                            if isinstance(prop, dict) else "bad_format")
             cand_recs.append(cr)
             continue
+        estimated_tokens += math.ceil(
+            (int(prop.get("_formal_prompt_chars") or 0)
+             + int(prop.get("_formal_response_chars") or 0)) / 4
+        )
+        if estimated_tokens > max_tokens:
+            cr["error"] = "max_tokens_per_case exceeded"
+            cand_recs.append(cr)
+            rec["budget_exhausted"] = "max_tokens_per_case"
+            break
         cr["rationale"] = prop.get("rationale", "")
         cr["patch_range"] = [prop.get("start_line"), prop.get("end_line")]
         cr["prompt_hash"] = prop.get("_formal_prompt_hash")
@@ -235,12 +359,31 @@ def repair_one(case: dict, work_dir, recall_fn=None, evidence_k: int = 1,
         cr["compile_ok"] = post.stage == "compare"
         cr["simulation_ok"] = post.stage == "compare"
         cr["patched_evidence"] = post.mismatch or post.err
+        cr["oracle_command_hash"] = (post.detail or {}).get("command_hash")
+        cr["toolchain_fingerprint_hash"] = (
+            post.detail or {}
+        ).get("toolchain_fingerprint_hash")
         cand_recs.append(cr)
         if post.ok:  # 命中即停
             break
+        if repair_loop == "critique-revise":
+            dynamic_evidence = (
+                f"{ev_str}\n\n[Prior candidate failed verification]\n"
+                f"{post.mismatch or post.err}"
+            )
 
     rec["candidates"] = cand_recs
     rec["n_candidates_tried"] = len(cand_recs)
+    if not cand_recs:
+        rec["repaired"] = False
+        rec["repair_source"] = None
+        rec["error"] = str(rec.get("budget_exhausted") or "no_candidate_generated")
+        rec["budget_usage"] = {
+            "llm_calls": 0,
+            "estimated_tokens": estimated_tokens,
+            "wall_seconds": round(time.monotonic() - started, 6),
+        }
+        return rec
     win = next((c for c in cand_recs if c.get("patched_ok")), None)
     chosen = win or cand_recs[-1]
     rec["llm_rationale"] = chosen.get("rationale", "")
@@ -250,6 +393,11 @@ def repair_one(case: dict, work_dir, recall_fn=None, evidence_k: int = 1,
     rec["patched_evidence"] = chosen.get("patched_evidence", "")
     rec["repaired"] = win is not None
     rec["repair_source"] = "llm" if win is not None else None
+    rec["budget_usage"] = {
+        "llm_calls": len(cand_recs),
+        "estimated_tokens": estimated_tokens,
+        "wall_seconds": round(time.monotonic() - started, 6),
+    }
     return rec
 
 

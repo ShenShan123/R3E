@@ -4,7 +4,7 @@ Anonymous research-code release for R³E. This upload package contains the core
 implementation, frozen public benchmark inputs, offline audit/aggregation
 utilities, and protocol tests.
 
-It intentionally excludes experiment launchers and runners, generated results,
+It intentionally excludes private cluster launchers, generated results,
 model responses, repair candidates, runtime memory/registry contents,
 credentials, internal documents, machine-specific paths, and third-party tool
 installations.
@@ -12,16 +12,24 @@ installations.
 ## Layout
 
 - `r3e/semantic_repair_bench/`: functional RTL repair, correctness gates,
-  red-team mutation and critique, policy memory, strategy distillation,
-  promotion, rollback, and deterministic repair primitives.
+  legacy-compatible red/blue experiment components and deterministic repair
+  primitives.
+- `r3e/policy/`: whole-policy schema, frozen local search, paired promotion
+  gate, single-active formal registry, and rollback.
+- `r3e/red/`: active-policy capability packets, validity, hardness, novelty,
+  learnability, lineage, and residual archive.
+- `r3e/arena/`: hash-bound manifests, paired replay, resumable round state,
+  renewed-challenge binding, and the sanitized adapter-driven round runner.
+- `r3e/protocol/`: canonical hashing, atomic writes, hash-chain ledgers, and
+  toolchain fingerprints.
 - `r3e/microsurgeon_frontend/`: syntax and semantic repair components.
 - `r3e/microsurgeon_flow/`: backend repair, skill routing, and guarded
   preflight components.
 - `r3e/tools/`: synthesis, timing, and structural-analysis adapters.
 - `experiments/`: experiment-design components plus offline aggregate, audit,
-  and analysis utilities. No batch runner or launcher is included.
-- `configs/`: a sanitized frozen policy definition; numerical promotion
-  evidence and runtime registry history are excluded.
+  and analysis utilities. Private cluster launchers are not included.
+- `configs/base_policy/`: frozen B0 policy, prompt assets, and policy search
+  space. `configs/legacy/` contains non-authoritative manual adapters.
 - `datasets/`: frozen CirFix-39, Literature-32, Strider-14, and RTLFixer-50
   public inputs with repository-relative SHA-256 manifests.
 - `tests/`: offline unit, integrity, and interface tests.
@@ -42,6 +50,31 @@ export PYTHONPATH="$PWD:$PWD/r3e:$PWD/experiments/public_external_benchmarks"
 Provider credentials, if used by library clients, are read only from
 environment variables. No credential or provider response is stored in this
 release.
+
+## Whole-policy evolution runtime
+
+Initialize the sole formal registry from the frozen base policy:
+
+```bash
+python -m r3e.policy.registry_v2 init \
+  --base configs/base_policy/frozen_base_policy_v1.json \
+  --registry runtime/registry/policy_registry.json \
+  --ledger runtime/registry/decision_ledger.jsonl
+```
+
+Run one round after setting `adapter`, dataset manifests, and frozen hashes in
+an evolution config:
+
+```bash
+python -m r3e.arena.runner \
+  --config configs/evolution/round_v1.json \
+  --round-id R000
+```
+
+The adapter supplies model/tool-specific generation and case evaluation. The
+runner retains authority over active-policy loading, manifests, splits,
+screening boundaries, paired replay, decisions, atomic promotion, and renewed
+challenge binding. Runtime output is written below ignored `runtime/`.
 
 ## Offline validation
 
@@ -70,10 +103,11 @@ The released strategy-memory implementation is shadow-first and fail-closed:
    shadow storage;
 2. distilled strategies remain inactive until frozen target replay and
    disjoint non-target regression checks pass;
-3. promotion binds source trajectories, parent policy hash, validation
-   evidence, rollback state, and an atomic decision ledger;
-4. runtime loads active strategies only and records strategy IDs and policy
-   hashes at use time.
+3. promotion binds residual/adaptation/target/non-target manifests, parent and
+   child policy hashes, validation evidence, rollback state, and a hash-chain
+   decision ledger;
+4. formal runtime loads exactly one active whole policy and records its
+   effective policy/configuration hashes for every repair.
 
 The mechanism supports bounded, correctness-gated red-team-guided policy
 revision. It does not claim unrestricted or open-ended autonomous evolution.

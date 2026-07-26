@@ -90,7 +90,21 @@ def gen_tb(golden_rtl, csv_path, out_txt="output_unseen.txt", clk="clk") -> str:
     text = Path(golden_rtl).read_text(errors="ignore")
     mod, ports, _ = parse_module(text)
     rows = [l for l in Path(csv_path).read_text().splitlines() if l.strip()]
+    if not rows:
+        raise ValueError("CSV stimulus is empty")
     header = [h.strip() for h in rows[0].split(",")]
+    if not header or any(not name for name in header):
+        raise ValueError("CSV header contains an empty column")
+    if len(header) != len(set(header)):
+        raise ValueError("CSV header contains duplicate columns")
+    parsed_rows = []
+    for row_index, row in enumerate(rows[1:], 1):
+        values = [value.strip() for value in row.split(",")]
+        if len(values) != len(header):
+            raise ValueError(
+                f"CSV row {row_index} has {len(values)} columns; expected {len(header)}"
+            )
+        parsed_rows.append(values)
     pmap = {n: (d, w) for d, n, w in ports}
     inputs = [h for h in header if pmap.get(h, ("", 0))[0] == "input"]
     outputs = [h for h in header if pmap.get(h, ("", 0))[0] == "output"]
@@ -115,8 +129,8 @@ def gen_tb(golden_rtl, csv_path, out_txt="output_unseen.txt", clk="clk") -> str:
         t.append(f"    {clk}=0;")
     t.append(f'    f=$fopen("{out_txt}");')
     t.append(f'    $fdisplay(f,"time,{",".join(outputs)}");')
-    for row in rows[1:]:
-        vmap = dict(zip(header, [v.strip() for v in row.split(",")]))
+    for values in parsed_rows:
+        vmap = dict(zip(header, values))
         for inp in inputs:
             t.append(f"    {inp}={pmap[inp][1]}'d{vmap[inp]};")
         t.append(f"    @(posedge {clk}); #1;" if has_clk else "    #10;")

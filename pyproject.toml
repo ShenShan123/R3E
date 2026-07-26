@@ -22,6 +22,7 @@ namespaces = true
 
 [tool.pytest.ini_options]
 pythonpath = [
+  ".",
   "r3e",
   "r3e/semantic_repair_bench",
   "r3e/microsurgeon_flow",

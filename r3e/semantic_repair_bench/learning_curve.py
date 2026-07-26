@@ -63,9 +63,15 @@ def gen_poison(d, g, top, deps, wd):
         if "error" in m:
             continue
         j = formal_judge(g, deps, m["buggy_path"], top, wd / f"j{t}", timeout=FT)
-        if not j.equiv:  # NOT equiv = 真功能 bug
+        status = getattr(getattr(j, "status", None), "value", getattr(j, "status", None))
+        if status == "PROVEN_NON_EQUIV":
             return {"design": d, "golden": g, "top": top, "deps": deps,
-                    "buggy": m["buggy_path"], "mut": m["mutation_type"]}
+                    "buggy": m["buggy_path"], "mut": m["mutation_type"],
+                    "formal_status": status,
+                    "formal_command_hash": getattr(j, "command_hash", ""),
+                    "toolchain_fingerprint_hash": getattr(
+                        j, "toolchain_fingerprint_hash", ""
+                    )}
     return None
 
 

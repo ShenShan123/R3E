@@ -14,6 +14,9 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+import hashlib
+import json
+from functools import lru_cache
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -39,6 +42,59 @@ class SimOutcome:
     cand_lines: int = 0
     err: str = ""
     detail: dict = field(default_factory=dict)
+
+
+@lru_cache(maxsize=1)
+def _simulation_toolchain() -> dict:
+    tools = {}
+    for name, flag in (("iverilog", "-V"), ("vvp", "-V")):
+        executable = shutil.which(name)
+        version = ""
+        if executable:
+            try:
+                proc = subprocess.run(
+                    [executable, flag],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    check=False,
+                )
+                version = (proc.stdout or proc.stderr).splitlines()[0][:300]
+            except (OSError, subprocess.SubprocessError):
+                version = "unavailable"
+        tools[name] = {"path": executable, "version": version or None}
+    digest = hashlib.sha256(
+        json.dumps(tools, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    return {"tools": tools, "toolchain_fingerprint_hash": f"sha256:{digest}"}
+
+
+def _simulation_provenance(case: dict, candidate_rtl: str | Path, timeout: float) -> dict:
+    sources = [
+        Path(case["golden_rtl"]),
+        Path(candidate_rtl),
+        *(Path(path) for path in case.get("deps", [])),
+        *(Path(path) for path in case.get("tb_sources", [])),
+    ]
+    source_hashes = {
+        str(path.resolve()): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sources if path.is_file()
+    }
+    command = {
+        "compile": ["iverilog", "-g2012", "-o", "a.out", "<staged-sources>"],
+        "simulate": ["vvp", "a.out"],
+        "timeout_seconds": timeout,
+        "tb_output": str(case.get("tb_output") or ""),
+        "source_hashes": source_hashes,
+    }
+    command_hash = hashlib.sha256(
+        json.dumps(command, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    return {
+        **_simulation_toolchain(),
+        "command": command,
+        "command_hash": f"sha256:{command_hash}",
+    }
 
 
 _BUS_RE = re.compile(r"^(.*?)\[(\d+)\]$")
@@ -192,12 +248,26 @@ def _simulate(dut_files, tb_files, output_name, work_dir, timeout) -> tuple[str 
         shutil.rmtree(work_dir)
     work_dir.mkdir(parents=True, exist_ok=True)
 
+    output_path = Path(output_name)
+    if output_path.is_absolute() or ".." in output_path.parts:
+        return None, f"unsafe_output_path({output_name})"
+
     names = []
+    seen_sources = set()
+    staged_basenames = {}
     for f in list(dut_files) + list(tb_files):
         f = Path(f)
+        resolved = f.resolve()
+        if resolved in seen_sources:
+            continue
+        seen_sources.add(resolved)
+        prior = staged_basenames.get(f.name)
+        if prior is not None and prior != resolved:
+            return None, f"basename_collision({f.name}): {prior} != {resolved}"
+        staged_basenames[f.name] = resolved
         dst = work_dir / f.name
         shutil.copy2(f, dst)
-        names.append(f.name)
+        names.append(dst.name)
 
     try:
         cp = subprocess.run(["iverilog", "-g2012", "-o", "a.out"] + names,
@@ -209,12 +279,14 @@ def _simulate(dut_files, tb_files, output_name, work_dir, timeout) -> tuple[str 
         return None, f"compile_err: {(cp.stderr or cp.stdout).strip()[:300]}"
 
     try:
-        subprocess.run(["vvp", "a.out"], cwd=work_dir, capture_output=True,
-                       text=True, timeout=timeout, preexec_fn=_set_pdeathsig)
+        sim = subprocess.run(["vvp", "a.out"], cwd=work_dir, capture_output=True,
+                             text=True, timeout=timeout, preexec_fn=_set_pdeathsig)
     except subprocess.TimeoutExpired:
         return None, "sim_timeout"
+    if sim.returncode != 0:
+        return None, f"sim_err({sim.returncode}): {(sim.stderr or sim.stdout).strip()[:300]}"
 
-    outp = work_dir / output_name
+    outp = work_dir / output_path
     if not outp.exists():
         return None, f"no_output({output_name})"
     return outp.read_text(errors="ignore"), ""
@@ -230,19 +302,30 @@ def _compare(golden_txt: str, cand_txt: str, max_evidence: int = 1) -> tuple[boo
     c = [ln for ln in cand_txt.splitlines() if ln.strip()]
     if not g:
         return False, "golden_empty"
+    if not c:
+        return False, "candidate_empty"
     gh, ch = _parse_line(g[0]), _parse_line(c[0]) if c else []
     if gh != ch:
         return False, f"header_diff: {gh} != {ch}"
+    if not gh:
+        return False, "header_empty"
     has_time = gh[0].lower() == "time"
     hdr = gh[1:] if has_time else gh
 
     evid = []
     sigs = set()
-    for ii, (ge, ce) in enumerate(zip(g[1:], c[1:])):
-        ge, ce = _parse_line(ge), _parse_line(ce)
+    for ii, (golden_line, candidate_line) in enumerate(zip(g[1:], c[1:])):
+        ge, ce = _parse_line(golden_line), _parse_line(candidate_line)
+        if len(ge) != len(gh):
+            return False, f"golden_column_count@cycle{ii}: {len(ge)} != {len(gh)}"
+        if len(ce) != len(ch):
+            return False, f"candidate_column_count@cycle{ii}: {len(ce)} != {len(ch)}"
         if has_time:
+            if ge[0] != ce[0]:
+                return False, f"time_diff@cycle{ii}: {ce[0]} != {ge[0]}"
             ge, ce = ge[1:], ce[1:]
-        for ee, aa, nn in zip(ge, ce, hdr):
+        for column, nn in enumerate(hdr):
+            ee, aa = ge[column], ce[column]
             ee, aa = ee.lower(), aa.lower()
             if ee != "x" and ee != aa:
                 # 优先覆盖不同信号(off-by-one 常累及多位/多信号)
@@ -258,6 +341,8 @@ def _compare(golden_txt: str, cand_txt: str, max_evidence: int = 1) -> tuple[boo
         return False, "; ".join(evid)
     if len(c) - 1 < len(g) - 1:
         return False, f"output_truncated: {len(c) - 1} < {len(g) - 1} cycles"
+    if len(c) - 1 > len(g) - 1:
+        return False, f"output_extra_cycles: {len(c) - 1} > {len(g) - 1} cycles"
     return True, ""
 
 
@@ -276,18 +361,21 @@ def judge(case: dict, candidate_rtl, work_dir, timeout: float | None = None,
     to = timeout if timeout is not None else float(case.get("sim_timeout", 10.0))
     # tb 内 #delay 单位与 timeout 不同源, 给足余量防误杀.
     sim_to = max(20.0, to * 3)
+    provenance = _simulation_provenance(case, candidate_rtl, sim_to)
 
     g_txt, g_err = _simulate([Path(case["golden_rtl"])] + deps, tb, out_name,
                              work_dir / "golden", sim_to)
     if g_txt is None:
-        return SimOutcome(ok=False, stage="golden_sim", err=g_err)  # case 无效(golden 跑不了)
+        return SimOutcome(
+            ok=False, stage="golden_sim", err=g_err, detail=provenance
+        )  # case 无效(golden 跑不了)
 
     c_txt, c_err = _simulate([Path(candidate_rtl)] + deps, tb, out_name,
                              work_dir / "cand", sim_to)
     if c_txt is None:
         # 编译错/无输出 = 功能 FAIL; err 作证据(语法型 bug 也落这).
         return SimOutcome(ok=False, stage="cand_sim", err=c_err,
-                          golden_lines=len(g_txt.splitlines()))
+                          golden_lines=len(g_txt.splitlines()), detail=provenance)
 
     ok, msg = _compare(g_txt, c_txt, max_evidence=evidence_k)  # ← ok 判定唯一来源, 不动
     structured = "" if ok else extract_structured_evidence(g_txt, c_txt)
@@ -298,4 +386,4 @@ def judge(case: dict, candidate_rtl, work_dir, timeout: float | None = None,
     return SimOutcome(ok=ok, stage="compare", mismatch=msg, structured=structured,
                       golden_lines=len(g_txt.splitlines()),
                       cand_lines=len(c_txt.splitlines()),
-                      detail={"raw_recurrence": raw_recurrence})
+                      detail={**provenance, "raw_recurrence": raw_recurrence})

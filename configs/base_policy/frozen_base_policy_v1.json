@@ -1,0 +1,38 @@
+{
+  "base_policy_hash": "sha256:a70da66a075173539065c65755be0fa09bfe28939f51dbf988a39b653cfc6829",
+  "budgets": {
+    "max_llm_calls_per_case": 3,
+    "max_tokens_per_case": 48000,
+    "max_wall_seconds_per_case": 360
+  },
+  "configuration": {
+    "blue_population": 1,
+    "candidate_selection": "first_verified",
+    "evidence_k": 1,
+    "evidence_mode": "raw",
+    "model_route_id": "single_default",
+    "n_candidates": 1,
+    "patch_scope": "local_block",
+    "prompt_lens_id": "generic_v1",
+    "repair_loop": "one-shot",
+    "verifier_order": [
+      "simulation"
+    ]
+  },
+  "created_from_residual_manifest_hash": "",
+  "created_round": 0,
+  "frozen_assets": {
+    "prompt_templates/control_v1.txt": "sha256:8f3d264dd38e9cf483c64b6481fa3b1c39578e49ea0b263ebeb63af196277161",
+    "prompt_templates/dataflow_v1.txt": "sha256:643c9b945008a3c99b535214f0b364b5c51e2ccb126aea81596da1e51d7ff10a",
+    "prompt_templates/generic_v1.txt": "sha256:17da4c75c2e574f9d60dc519c1fe8db15569818595290f958cd073d23d9185a2",
+    "prompt_templates/temporal_v1.txt": "sha256:1f0d21a5540c2635f51d44682c65f40bcb236e972d53f5786c9bf0dcc01497d2"
+  },
+  "parent_policy_hash": "",
+  "parent_policy_id": "",
+  "policy_id": "B0",
+  "promotion_decision_hash": "",
+  "rollback_policy_id": "",
+  "schema_version": "r3e-policy-v2",
+  "status": "active",
+  "validation_manifest_hash": ""
+}

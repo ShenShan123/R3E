@@ -1,0 +1,2 @@
+Trace the first divergent output backward through source/target assignments, slices, shifts,
+and arithmetic. Return one minimal local JSON line-range patch justified by oracle evidence.

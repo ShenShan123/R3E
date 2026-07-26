@@ -1,0 +1,31 @@
+{
+  "dimensions": {
+    "evidence_k": [
+      1,
+      3,
+      6
+    ],
+    "evidence_mode": [
+      "raw",
+      "hybrid"
+    ],
+    "n_candidates": [
+      1,
+      3,
+      6
+    ],
+    "repair_loop": [
+      "one-shot",
+      "critique-revise"
+    ]
+  },
+  "frozen": true,
+  "max_children_per_round": 6,
+  "operator_mix": {
+    "exploration": 1,
+    "one_factor": 3,
+    "residual_conditioned": 2
+  },
+  "search_space_hash": "sha256:6342264b96ed993a6736c712b9627fa64b2bb51a35279dba2a911d60eec69140",
+  "schema_version": "r3e-policy-search-space-v1"
+}

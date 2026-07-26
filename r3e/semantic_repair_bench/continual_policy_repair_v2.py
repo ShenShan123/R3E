@@ -72,10 +72,19 @@ def blue_repair_formal_v2(
                 cr.update({
                     "formal_equiv": judge.equiv, "formal_proven": judge.proven,
                     "formal_total": judge.total, "yosys_exit": judge.yosys_exit,
+                    "formal_status": getattr(
+                        getattr(judge, "status", None),
+                        "value",
+                        getattr(judge, "status", None),
+                    ),
                     "formal_error": judge.err, "patched_rtl": str(patched),
                     "patch_hash": _sha(patched),
                     "proof_method": judge.proof_method,
                     "proof_artifact": judge.proof_artifact,
+                    "formal_command_hash": getattr(judge, "command_hash", ""),
+                    "toolchain_fingerprint_hash": getattr(
+                        judge, "toolchain_fingerprint_hash", ""
+                    ),
                 })
             except Exception as exc:  # noqa: BLE001
                 cr["apply_error"] = str(exc)

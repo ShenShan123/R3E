@@ -412,11 +412,19 @@ def gen_poison(
         # Treat a negative verdict as an admitted red counterexample only when
         # the formal report contains a rebuildable failed proof obligation.
         # Parser/tool failures may also report equiv=False and must fail closed.
+        formal_status = getattr(j, "status", None)
+        formal_status_value = getattr(formal_status, "value", formal_status)
+        # Backward-compatible fallback supports old cached/test outcomes while
+        # the formal runtime itself emits the explicit status enum.
         has_counterexample = (
-            not j.equiv
-            and j.proven is not None
-            and j.total is not None
-            and j.total > j.proven
+            formal_status_value == "PROVEN_NON_EQUIV"
+            if formal_status_value is not None
+            else (
+                not j.equiv
+                and j.proven is not None
+                and j.total is not None
+                and j.total > j.proven
+            )
         )
         if has_counterexample:
             return {
@@ -437,7 +445,12 @@ def gen_poison(
                     "proven": j.proven,
                     "total": j.total,
                     "yosys_exit": j.yosys_exit,
-                    "criterion": "proven is not None and total > proven",
+                    "formal_status": formal_status_value or "PROVEN_NON_EQUIV",
+                    "command_hash": getattr(j, "command_hash", ""),
+                    "toolchain_fingerprint_hash": getattr(
+                        j, "toolchain_fingerprint_hash", ""
+                    ),
+                    "criterion": "formal_status == PROVEN_NON_EQUIV",
                 },
             }
         print(
@@ -450,6 +463,7 @@ def gen_poison(
                 "proven": j.proven,
                 "total": j.total,
                 "yosys_exit": j.yosys_exit,
+                "formal_status": formal_status_value,
             }, ensure_ascii=False),
             flush=True,
         )
@@ -785,15 +799,25 @@ def blue_repair_formal(
             timeout=formal_timeout,
         )
         cr["formal_equiv"] = j.equiv
+        cr["formal_status"] = getattr(
+            getattr(j, "status", None), "value", getattr(j, "status", None)
+        )
         cr["formal_proven"] = j.proven
         cr["formal_total"] = j.total
         cr["formal_error"] = j.err
+        cr["formal_command_hash"] = getattr(j, "command_hash", "")
+        cr["toolchain_fingerprint_hash"] = getattr(
+            j, "toolchain_fingerprint_hash", ""
+        )
         cr["patched_sha256"] = _sha256_file(patched)
         cr["oracle_result_hash"] = formal_hash_payload({
             "equiv": j.equiv,
             "proven": j.proven,
             "total": j.total,
             "error": j.err,
+            "status": cr["formal_status"],
+            "command_hash": cr["formal_command_hash"],
+            "toolchain_fingerprint_hash": cr["toolchain_fingerprint_hash"],
         })
         candidates.append(cr)
         if j.equiv:

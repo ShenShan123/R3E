@@ -1,0 +1,2 @@
+Prioritize control predicates, terminal conditions, state transitions, and valid/enable
+alignment. Return one minimal local JSON line-range patch justified by oracle evidence.

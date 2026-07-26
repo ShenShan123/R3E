@@ -1,0 +1,2 @@
+Use first-divergence cycle and recurrence to inspect current/next state, pipeline latency,
+and valid/data alignment. Return one minimal local JSON line-range patch.

@@ -12,6 +12,9 @@ artifacts/
 .iso_semrepair/
 third_party/
 logs/
+runtime/
+results/
+private_launch/
 *.log
 *.odb
 *.db
