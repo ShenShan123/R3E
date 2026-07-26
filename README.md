@@ -51,7 +51,33 @@ Provider credentials, if used by library clients, are read only from
 environment variables. No credential or provider response is stored in this
 release.
 
-## Whole-policy evolution runtime
+## Legacy R³E
+
+The v1 compatibility surface contains strategy memory, manual/frozen skills,
+skill preflight, and the historical B0/B1/B2 experiment drivers. Their
+boundary is documented under `r3e/legacy/`, `experiments/legacy/`, and
+`configs/legacy/`. Skill routing/preflight implementations have moved to
+`r3e/legacy/`; monolithic experiment drivers retain their old paths with
+explicit legacy markers so historical imports keep working. They are
+available only with `formal_mode=False`.
+
+`configs/skills.json` is a legacy compatibility asset. Its entries are
+`manual` and `legacy_only`; they have no promoted or active-policy authority.
+
+## Whole-Policy Evolution
+
+The v2 architecture consists of exactly one active `PolicyState`, red
+challenges conditioned on that policy hash, a multi-elite residual archive,
+hash-bound child search, paired target/non-target replay, atomic promotion,
+exact rollback, and a renewed challenge bound to the newly active policy.
+
+Formal runtime reads only Policy Registry V2. A child must bind the exact
+active parent hash, stale children cannot be promoted, and rollback restores
+the exact pre-promotion registry snapshot.
+
+> 当前仓库提供系统基础设施和协议实现，不代表已经获得真实模型驱动的多轮演化实验结果。
+
+### Registry and migration
 
 Initialize the sole formal registry from the frozen base policy:
 
@@ -62,19 +88,53 @@ python -m r3e.policy.registry_v2 init \
   --ledger runtime/registry/decision_ledger.jsonl
 ```
 
-Run one round after setting `adapter`, dataset manifests, and frozen hashes in
-an evolution config:
+Legacy skills can be frozen into the base policy without importing any old
+promotion history:
 
 ```bash
-python -m r3e.arena.runner \
-  --config configs/evolution/round_v1.json \
-  --round-id R000
+python -m r3e.policy.migrate \
+  --from legacy \
+  --to registry-v2
 ```
 
-The adapter supplies model/tool-specific generation and case evaluation. The
-runner retains authority over active-policy loading, manifests, splits,
-screening boundaries, paired replay, decisions, atomic promotion, and renewed
-challenge binding. Runtime output is written below ignored `runtime/`.
+The migration writes only to ignored `runtime/` paths by default. Manual
+skills become a frozen B0 asset; entries without Registry V2 promotion
+evidence never enter active evolution history.
+
+### Model-free system validation
+
+During the system-upgrade phase, validate the state machine with deterministic
+fixtures instead of real models:
+
+```bash
+python -m r3e.arena.fake_system --rounds 2
+```
+
+`FakeRedAdapter`, `FakeBlueAdapter`, `DeterministicPromotionAdapter`, and
+`FailureInjectionAdapter` exercise policy-conditioned poison generation,
+different B0/B1 capability packets, promotion, resumed stages, renewed
+challenge, and rollback without model or EDA calls. The interface-only
+`configs/evolution/round_v1.json` intentionally contains no model, seed,
+threshold, non-target dataset, child count, or experiment budget binding.
+
+### Stable interfaces and events
+
+The engineering interfaces are:
+
+```python
+from r3e.policy.repair import repair_one
+
+repair_one(case, work_dir, policy_state)
+generate_poison(case, challenged_policy, capability_packet, archive, mutator=...)
+run_round(registry, red_adapter, blue_adapter, manifests)
+```
+
+Every round writes hash-chained JSONL events under `runtime/events/`:
+`policy.jsonl`, `red.jsonl`, `oracle.jsonl`, `arena.jsonl`, and
+`rollback.jsonl`. Events are observability records and never grant authority.
+The adapter supplies environment-specific generation and evaluation; the
+runner retains all registry, manifest, split, promotion, and rollback
+authority.
 
 ## Offline validation
 
@@ -95,9 +155,10 @@ roles, repository-relative paths, byte sizes, per-file SHA-256 values, and
 canonical case hashes. Dataset hashes and upstream licenses are documented in
 `datasets/README.md`.
 
-## Strategy-memory scope
+## Formal/legacy boundary
 
-The released strategy-memory implementation is shadow-first and fail-closed:
+The released compatibility strategy-memory implementation is shadow-first and
+fail-closed:
 
 1. only trajectories with rebuildable outcomes and complete provenance enter
    shadow storage;
@@ -109,8 +170,9 @@ The released strategy-memory implementation is shadow-first and fail-closed:
 4. formal runtime loads exactly one active whole policy and records its
    effective policy/configuration hashes for every repair.
 
-The mechanism supports bounded, correctness-gated red-team-guided policy
-revision. It does not claim unrestricted or open-ended autonomous evolution.
+The v1 mechanism is retained for historical reproduction only. New formal
+rounds use Whole-Policy Evolution and do not consume free memory text, manual
+skill routing, or legacy preflight output.
 
 ## Release boundary
 

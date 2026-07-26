@@ -35,3 +35,34 @@ def bind_lineage(
         "evolution_operator": operator,
     })
     return result
+
+
+def validate_lineage_graph(rows: list[dict[str, Any]]) -> None:
+    """Reject duplicate ids, missing parents, and poison-lineage cycles."""
+    by_id: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        poison_id = str(row.get("poison_id") or "")
+        if not poison_id:
+            raise ValueError("lineage row is missing poison_id")
+        if poison_id in by_id:
+            raise ValueError(f"duplicate poison_id in lineage: {poison_id}")
+        by_id[poison_id] = row
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def visit(poison_id: str) -> None:
+        if poison_id in visiting:
+            raise ValueError(f"poison lineage cycle detected at {poison_id}")
+        if poison_id in visited:
+            return
+        visiting.add(poison_id)
+        parent_id = str(by_id[poison_id].get("parent_poison_id") or "")
+        if parent_id:
+            if parent_id not in by_id:
+                raise ValueError(f"lineage parent is missing: {parent_id}")
+            visit(parent_id)
+        visiting.remove(poison_id)
+        visited.add(poison_id)
+
+    for poison_id in by_id:
+        visit(poison_id)

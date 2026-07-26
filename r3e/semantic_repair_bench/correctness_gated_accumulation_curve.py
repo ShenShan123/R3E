@@ -19,6 +19,9 @@ case replay text.  By default, newly distilled templates are shadow-only; use
 """
 from __future__ import annotations
 
+LEGACY_ONLY = True
+DEPRECATED_REPLACEMENT = "r3e.arena.runner"
+
 import argparse
 import csv
 import hashlib

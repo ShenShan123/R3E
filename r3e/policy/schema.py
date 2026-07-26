@@ -37,6 +37,7 @@ _POLICY_FIELDS = {
     "rollback_policy_id",
     "frozen_assets",
     "proposal_operator",
+    "rollback_registry_hash",
 }
 
 
@@ -68,6 +69,7 @@ class PolicyState:
     rollback_policy_id: str = ""
     frozen_assets: dict[str, str] | None = None
     proposal_operator: str = ""
+    rollback_registry_hash: str = ""
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> "PolicyState":
@@ -108,6 +110,7 @@ class PolicyState:
             ("base_policy_hash", base_hash),
             ("parent_policy_hash", parent_hash),
             ("created_from_residual_manifest_hash", residual_hash),
+            ("rollback_registry_hash", str(payload.get("rollback_registry_hash") or "")),
         ):
             if value and not _HASH_RE.fullmatch(value):
                 raise PolicyValidationError(f"{key} must be a sha256-prefixed digest")
@@ -149,6 +152,7 @@ class PolicyState:
             rollback_policy_id=str(payload.get("rollback_policy_id") or ""),
             frozen_assets=frozen_assets,
             proposal_operator=str(payload.get("proposal_operator") or ""),
+            rollback_registry_hash=str(payload.get("rollback_registry_hash") or ""),
         )
 
     @staticmethod
@@ -231,6 +235,7 @@ class PolicyState:
             "rollback_policy_id": self.rollback_policy_id,
             "frozen_assets": deepcopy(self.frozen_assets or {}),
             "proposal_operator": self.proposal_operator,
+            "rollback_registry_hash": self.rollback_registry_hash,
         }
 
     @property

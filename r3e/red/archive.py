@@ -10,6 +10,7 @@ from r3e.protocol.hashing import canonical_json, hash_payload, utc_now
 from r3e.protocol.ledger import writer_lock
 
 from .novelty import archive_cell, descriptor
+from .lineage import validate_lineage_graph
 
 
 class ArchiveViolation(RuntimeError):
@@ -29,6 +30,10 @@ def load_archive(path: str | Path) -> list[dict[str, Any]]:
         body = {key: value for key, value in row.items() if key != "archive_entry_hash"}
         if row.get("archive_entry_hash") != hash_payload(body):
             raise ArchiveViolation(f"archive entry hash mismatch: {row.get('poison_id')}")
+    try:
+        validate_lineage_graph(rows)
+    except ValueError as exc:
+        raise ArchiveViolation(str(exc)) from exc
     return rows
 
 
@@ -39,6 +44,13 @@ def _elite_kind(row: dict[str, Any]) -> str:
 def update_archive(path: str | Path, poison: dict[str, Any]) -> dict[str, Any]:
     if not poison.get("validity", {}).get("proven_valid"):
         raise ArchiveViolation("invalid poison cannot enter residual archive")
+    formal_status = str(
+        poison.get("validity", {}).get("evidence", {}).get("formal_status")
+        or poison.get("formal_status")
+        or ""
+    )
+    if formal_status != "PROVEN_NON_EQUIV":
+        raise ArchiveViolation("inconclusive formal oracle cannot enter residual archive")
     if not poison.get("challenged_policy_hash"):
         raise ArchiveViolation("archive poison must bind challenged policy hash")
     learnability = str(poison.get("learnability") or "unknown")
@@ -71,6 +83,10 @@ def update_archive(path: str | Path, poison: dict[str, Any]) -> dict[str, Any]:
         ]
         if same_slot and float(same_slot[0].get("hardness") or 0) >= float(row.get("hardness") or 0):
             row["elite_kind"] = "alternate"
+        try:
+            validate_lineage_graph(existing + [row])
+        except ValueError as exc:
+            raise ArchiveViolation(str(exc)) from exc
         body = dict(row)
         row["archive_entry_hash"] = hash_payload(body)
         target.parent.mkdir(parents=True, exist_ok=True)

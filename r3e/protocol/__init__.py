@@ -8,6 +8,7 @@ from .hashing import (
     read_json,
     utc_now,
 )
+from .events import EventLogger
 
 __all__ = [
     "atomic_write_json",
@@ -16,4 +17,5 @@ __all__ = [
     "hash_payload",
     "read_json",
     "utc_now",
+    "EventLogger",
 ]

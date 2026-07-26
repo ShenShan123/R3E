@@ -14,11 +14,21 @@ from typing import Any
 
 from r3e.protocol.hashing import atomic_write_json, hash_payload, read_json, utc_now
 from r3e.protocol.ledger import append_ledger, writer_lock
+from r3e.protocol.events import EventLogger
 
 from .schema import POLICY_SCHEMA_VERSION, PolicyState, PolicyValidationError
 
 
 REGISTRY_SCHEMA_VERSION = "r3e-policy-registry-v2"
+_REGISTRY_FIELDS = {
+    "schema_version",
+    "base_policy",
+    "active_policy_id",
+    "policies",
+    "registry_parent_hash",
+    "updated_at",
+    "registry_hash",
+}
 
 
 class RegistryViolation(RuntimeError):
@@ -47,6 +57,11 @@ def validate_registry(registry: dict[str, Any], *, formal_mode: bool = True) -> 
         raise RegistryViolation("registry schema mismatch")
     if registry.get("registry_hash") != registry_hash(registry):
         raise RegistryViolation("registry hash mismatch")
+    if formal_mode and registry.get("legacy_manual_skills"):
+        raise RegistryViolation("manual/legacy skills are forbidden in formal mode")
+    unknown = set(registry) - _REGISTRY_FIELDS
+    if unknown:
+        raise RegistryViolation(f"undeclared registry fields: {sorted(unknown)}")
     policies = registry.get("policies")
     if not isinstance(policies, dict) or not policies:
         raise RegistryViolation("registry policies missing")
@@ -54,6 +69,8 @@ def validate_registry(registry: dict[str, Any], *, formal_mode: bool = True) -> 
     for policy_id, entry in policies.items():
         if not isinstance(entry, dict) or not isinstance(entry.get("policy"), dict):
             raise RegistryViolation(f"malformed policy entry: {policy_id}")
+        if set(entry) != {"status", "policy_hash", "policy"}:
+            raise RegistryViolation(f"undeclared policy entry fields: {policy_id}")
         try:
             policy = PolicyState.from_dict(entry["policy"])
         except PolicyValidationError as exc:
@@ -73,14 +90,14 @@ def validate_registry(registry: dict[str, Any], *, formal_mode: bool = True) -> 
     base = registry.get("base_policy")
     if not isinstance(base, dict):
         raise RegistryViolation("base policy binding missing")
+    if set(base) != {"policy_id", "path", "hash"}:
+        raise RegistryViolation("undeclared base policy binding fields")
     base_id = str(base.get("policy_id") or "")
     if base_id not in policies:
         raise RegistryViolation("base policy is not registered")
     base_policy = PolicyState.from_dict(policies[base_id]["policy"])
     if base.get("hash") != base_policy.base_policy_hash:
         raise RegistryViolation("base policy hash mismatch")
-    if formal_mode and registry.get("legacy_manual_skills"):
-        raise RegistryViolation("manual/legacy skills are forbidden in formal mode")
     return registry
 
 
@@ -108,6 +125,8 @@ def initialize_registry(
     *,
     base_path_record: str | None = None,
     ledger_path: str | Path | None = None,
+    event_logger: EventLogger | None = None,
+    round_id: str = "",
 ) -> dict[str, Any]:
     base_source = Path(base_policy_path)
     base_raw = read_json(base_source)
@@ -143,6 +162,16 @@ def initialize_registry(
                 "active_policy_hash": policy.policy_hash,
                 "registry_hash_after": created["registry_hash"],
             })
+        if event_logger:
+            event_logger.emit(
+                "policy",
+                "registry_initialized",
+                round_id=round_id,
+                active_policy_id=policy.policy_id,
+                active_policy_hash=policy.policy_hash,
+                registry_hash_before="",
+                registry_hash_after=created["registry_hash"],
+            )
         return created
 
 
@@ -151,6 +180,8 @@ def register_candidate(
     candidate: PolicyState | dict[str, Any],
     *,
     ledger_path: str | Path | None = None,
+    event_logger: EventLogger | None = None,
+    round_id: str = "",
 ) -> dict[str, Any]:
     child = candidate if isinstance(candidate, PolicyState) else PolicyState.from_dict(candidate)
     if child.status != "candidate":
@@ -181,6 +212,17 @@ def register_candidate(
                 "registry_hash_before": before,
                 "registry_hash_after": after["registry_hash"],
             })
+        if event_logger:
+            event_logger.emit(
+                "policy",
+                "child_registered",
+                round_id=round_id,
+                parent_policy_hash=parent.policy_hash,
+                child_policy_id=child.policy_id,
+                child_policy_hash=child.policy_hash,
+                registry_hash_before=before,
+                registry_hash_after=after["registry_hash"],
+            )
         return after
 
 
@@ -205,6 +247,8 @@ def promote_policy(
     decision: dict[str, Any],
     *,
     ledger_path: str | Path | None = None,
+    event_logger: EventLogger | None = None,
+    round_id: str = "",
 ) -> dict[str, Any]:
     path = Path(registry_path)
     with writer_lock(path.with_suffix(path.suffix + ".lock")):
@@ -239,6 +283,7 @@ def promote_policy(
             promotion_decision_hash=decision["decision_hash"],
             validation_manifest_hash=str(decision.get("validation_manifest_hash") or ""),
             rollback_policy_id=parent.policy_id,
+            rollback_registry_hash=before,
         )
         # Lifecycle updates do not alter the immutable policy hash.
         if promoted.policy_hash != candidate.policy_hash:
@@ -265,6 +310,17 @@ def promote_policy(
                 "registry_hash_before": before,
                 "registry_hash_after": after["registry_hash"],
             })
+        if event_logger:
+            event_logger.emit(
+                "policy",
+                "policy_promoted",
+                round_id=round_id,
+                parent_policy_hash=parent.policy_hash,
+                child_policy_hash=candidate.policy_hash,
+                registry_hash_before=before,
+                registry_hash_after=after["registry_hash"],
+                decision_hash=decision["decision_hash"],
+            )
         return after
 
 
@@ -275,6 +331,8 @@ def reject_policy(
     *,
     provisional: bool = False,
     ledger_path: str | Path | None = None,
+    event_logger: EventLogger | None = None,
+    round_id: str = "",
 ) -> dict[str, Any]:
     path = Path(registry_path)
     with writer_lock(path.with_suffix(path.suffix + ".lock")):
@@ -302,6 +360,17 @@ def reject_policy(
                 "registry_hash_before": before,
                 "registry_hash_after": after["registry_hash"],
             })
+        if event_logger:
+            event_logger.emit(
+                "policy",
+                "policy_provisional" if provisional else "policy_rejected",
+                round_id=round_id,
+                candidate_policy_id=candidate_policy_id,
+                candidate_policy_hash=policy.policy_hash,
+                rejection_reasons=list(reasons),
+                registry_hash_before=before,
+                registry_hash_after=after["registry_hash"],
+            )
         return after
 
 
@@ -311,6 +380,8 @@ def rollback_policy(
     expected_active_policy_hash: str | None = None,
     reason: str = "later-audit-regression",
     ledger_path: str | Path | None = None,
+    event_logger: EventLogger | None = None,
+    round_id: str = "",
 ) -> dict[str, Any]:
     path = Path(registry_path)
     with writer_lock(path.with_suffix(path.suffix + ".lock")):
@@ -322,26 +393,45 @@ def rollback_policy(
         rollback_id = active.rollback_policy_id
         if not rollback_id or rollback_id not in registry["policies"]:
             raise RegistryViolation("active policy has no registered rollback parent")
-        parent = PolicyState.from_dict(registry["policies"][rollback_id]["policy"])
-        rolled_back = active.with_updates(status="rolled_back")
-        restored = parent.with_updates(status="active")
-        registry["policies"][active.policy_id] = _policy_entry(rolled_back)
-        registry["policies"][parent.policy_id] = _policy_entry(restored)
-        registry["active_policy_id"] = parent.policy_id
-        registry["registry_parent_hash"] = before
-        registry["updated_at"] = utc_now()
-        _write_registry(path, registry)
+        target_hash = active.rollback_registry_hash
+        if not target_hash:
+            raise RegistryViolation("active policy has no rollback registry version")
+        target_path = _snapshot_path(path, target_hash)
+        if not target_path.is_file():
+            raise RegistryViolation("rollback registry version is missing")
+        restored_registry = read_json(target_path)
+        if restored_registry.get("registry_hash") != target_hash:
+            raise RegistryViolation("rollback registry version hash mismatch")
+        validate_registry(restored_registry)
+        restored = get_active_policy(restored_registry)
+        if restored.policy_id != rollback_id:
+            raise RegistryViolation("rollback snapshot does not restore the bound parent")
+        _save_snapshot(path, registry)
+        atomic_write_json(path, restored_registry)
         after = load_registry(path)
         if ledger_path:
             append_ledger(ledger_path, {
                 "operation": "rollback",
                 "reason": reason,
                 "rolled_back_policy_id": active.policy_id,
-                "restored_policy_id": parent.policy_id,
-                "restored_policy_hash": parent.policy_hash,
+                "restored_policy_id": restored.policy_id,
+                "restored_policy_hash": restored.policy_hash,
                 "registry_hash_before": before,
                 "registry_hash_after": after["registry_hash"],
             })
+        if event_logger:
+            event_logger.emit(
+                "rollback",
+                "policy_rolled_back",
+                round_id=round_id,
+                rolled_back_policy_id=active.policy_id,
+                rolled_back_policy_hash=active.policy_hash,
+                restored_policy_id=restored.policy_id,
+                restored_policy_hash=restored.policy_hash,
+                reason=reason,
+                registry_hash_before=before,
+                registry_hash_after=after["registry_hash"],
+            )
         return after
 
 

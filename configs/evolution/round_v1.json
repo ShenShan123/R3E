@@ -1,29 +1,21 @@
 {
-  "adaptation_fraction": 0.5,
-  "adapter": "your_project.r3e_adapter:create_adapter",
-  "challenge_seeds": [
-    1,
-    2,
-    3
-  ],
-  "decision_ledger": "runtime/registry/decision_ledger.jsonl",
-  "non_target_manifest": "datasets/manifests/non_target_policy_v1.json",
-  "policy_registry": "runtime/registry/policy_registry.json",
-  "policy_search_seed": 20260726,
-  "policy_search_space": "configs/base_policy/policy_search_space_v1.json",
-  "promotion_seeds": [
-    11,
-    12,
-    13
-  ],
-  "promotion_thresholds": {
-    "max_cost_ratio": 1.5,
-    "min_covered_designs": 2,
-    "min_prior_failure_recovery": 2,
-    "min_target_recovery_ratio": 0.5,
-    "non_target_epsilon": 0.02
+  "schema_version": "r3e-round-interface-v1",
+  "phase": "system_upgrade",
+  "executable": false,
+  "authority": {
+    "active_policy": "formal_registry_v2",
+    "runtime_input": "PolicyState",
+    "promotion": "atomic_registry_commit"
   },
-  "red_archive": "runtime/archives/red_residual_archive.jsonl",
-  "rounds_root": "runtime/rounds",
-  "split_seed": 20260726
+  "adapter_interface": "r3e.arena.adapter.EvolutionAdapter",
+  "deferred_experiment_bindings": [
+    "model_name",
+    "seeds",
+    "promotion_thresholds",
+    "non_target_manifest",
+    "child_count",
+    "experiment_budget"
+  ],
+  "system_validation_cli": "python -m r3e.arena.fake_system --rounds 2",
+  "note": "Interface declaration only. It must not be used to launch a real-model experiment."
 }

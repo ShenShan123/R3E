@@ -106,3 +106,26 @@ class RoundState:
         state = self.load()
         index = len(state["checkpoints"])
         return STAGES[index] if index < len(STAGES) else None
+
+    def verify_stage(
+        self,
+        stage: str,
+        *,
+        stage_input: Any | None = None,
+        stage_output: Any,
+    ) -> dict[str, Any]:
+        """Verify a persisted artifact against an immutable checkpoint."""
+        state = self.load()
+        matches = [
+            checkpoint
+            for checkpoint in state["checkpoints"]
+            if checkpoint["stage"] == stage
+        ]
+        if len(matches) != 1:
+            raise RoundStateViolation(f"stage is not completed exactly once: {stage}")
+        checkpoint = matches[0]
+        if stage_input is not None and checkpoint["stage_input_hash"] != hash_payload(stage_input):
+            raise RoundStateViolation(f"stage input hash mismatch: {stage}")
+        if checkpoint["stage_output_hash"] != hash_payload(stage_output):
+            raise RoundStateViolation(f"stage output hash mismatch: {stage}")
+        return checkpoint

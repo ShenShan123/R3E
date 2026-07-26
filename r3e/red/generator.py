@@ -4,32 +4,36 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from r3e.policy.schema import PolicyState
-
-from .feedback_packet import build_capability_packet
+from r3e.protocol.hashing import hash_payload
 
 
 def generate_poison(
     case: dict[str, Any],
     challenged_policy: PolicyState,
-    blue_failure_summary: list[dict[str, Any]],
-    archive_summary: list[dict[str, Any]],
+    capability_packet: dict[str, Any],
+    archive: list[dict[str, Any]],
     *,
     mutator: Callable[..., dict[str, Any]],
     parent_poison: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    packet = build_capability_packet(
-        challenged_policy,
-        design_id=str(case["design_id"]),
-        golden_rtl_hash=str(case["golden_rtl_hash"]),
-        allowed_mutation_operators=list(case["allowed_mutation_operators"]),
-        archive_rows=archive_summary,
-        recent_challenges=blue_failure_summary,
-    )
+    """Generate one poison from an explicit policy-bound capability packet.
+
+    ``archive`` is an input to the stable interface so adapters can use
+    lineage/novelty context.  Authority remains with the caller's gates.
+    """
+    packet = dict(capability_packet)
+    if packet.get("challenged_policy_hash") != challenged_policy.policy_hash:
+        raise ValueError("capability packet is not bound to challenged policy")
+    expected_hash = packet.pop("packet_hash", "")
+    if expected_hash != hash_payload(packet):
+        raise ValueError("capability packet hash mismatch")
+    packet["packet_hash"] = expected_hash
     poison = dict(
         mutator(
             case=case,
             capability_packet=packet,
             parent_poison=parent_poison,
+            archive=list(archive),
         )
     )
     poison["challenged_policy_id"] = challenged_policy.policy_id

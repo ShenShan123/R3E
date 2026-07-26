@@ -222,13 +222,28 @@ def repair_one(case: dict, work_dir, recall_fn=None, evidence_k: int = 1,
             "formal_mode": False,
         })
 
-    preflight = build_preflight_decision(
-        case,
-        preflight_registry,
-        requested_evidence_k=evidence_k,
-        requested_n_candidates=n_candidates,
-        enable_template_preflight=enable_template_preflight,
-    )
+    if formal_mode:
+        # Formal execution is driven only by PolicyState.  Do not even invoke
+        # the legacy preflight compatibility layer.
+        preflight = {
+            "schema_version": "r3e-formal-policy-preflight-v2",
+            "route": "policy_state_only",
+            "skill_id": None,
+            "has_strategy": False,
+            "effective_policy": {
+                "evidence_k": evidence_k,
+                "n_candidates": n_candidates,
+                "patch_scope": policy.configuration["patch_scope"],
+            },
+        }
+    else:
+        preflight = build_preflight_decision(
+            case,
+            preflight_registry,
+            requested_evidence_k=evidence_k,
+            requested_n_candidates=n_candidates,
+            enable_template_preflight=enable_template_preflight,
+        )
     effective_policy = preflight.get("effective_policy", {})
     evidence_k = int(effective_policy.get("evidence_k", evidence_k))
     n_candidates = int(effective_policy.get("n_candidates", n_candidates))
@@ -280,7 +295,9 @@ def repair_one(case: dict, work_dir, recall_fn=None, evidence_k: int = 1,
             rec["n_candidates_tried"] = 0
             return rec
 
-    memory_context = combine_recall_context(case, preflight, recall_fn)
+    memory_context = (
+        "" if formal_mode else combine_recall_context(case, preflight, recall_fn)
+    )
     rec["used_memory"] = bool(memory_context)
     rec["used_strategy"] = bool(preflight.get("has_strategy"))
 
