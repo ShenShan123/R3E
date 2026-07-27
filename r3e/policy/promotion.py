@@ -24,6 +24,28 @@ DEFAULT_THRESHOLDS = {
     "non_target_epsilon": 0.02,
     "max_cost_ratio": 1.5,
 }
+REQUIRED_PROVENANCE_HASHES = {
+    "residual_manifest_hash",
+    "adaptation_manifest_hash",
+    "target_manifest_hash",
+    "non_target_manifest_hash",
+    "paired_result_hash",
+    "toolchain_fingerprint_hash",
+    "run_context_hash",
+}
+
+
+def _provenance_complete(provenance: dict[str, Any]) -> bool:
+    if not str(provenance.get("round_id") or ""):
+        return False
+    if not str(provenance.get("code_commit_sha") or ""):
+        return False
+    for field in REQUIRED_PROVENANCE_HASHES:
+        value = str(provenance.get(field) or "")
+        if not value.startswith("sha256:") or len(value) != 71:
+            return False
+    toolchain = provenance.get("toolchain_fingerprint")
+    return isinstance(toolchain, dict) and bool(toolchain)
 
 
 def _paired(rows: list[dict[str, Any]]) -> dict[str, dict[tuple[str, int], dict[str, dict]]]:
@@ -164,6 +186,7 @@ def decide_policy_promotion(
         if parent_cost > 0
         else (1.0 if candidate_cost == 0 else math.inf)
     )
+    bound_provenance = dict(provenance or {})
     checks = {
         "target_gain": target["delta"] > 0.0,
         "prior_failure_recovery": len(recovered) >= int(gates["min_prior_failure_recovery"]),
@@ -172,6 +195,7 @@ def decide_policy_promotion(
         "non_target_regression": non_target["delta"] >= -float(gates["non_target_epsilon"]),
         "critical_regressions": critical_regressions == 0,
         "candidate_cost": cost_ratio <= float(gates["max_cost_ratio"]),
+        "provenance_complete": _provenance_complete(bound_provenance),
     }
     promote = all(checks.values())
     positive = target["delta"] > 0 and non_target["delta"] >= -float(
@@ -201,7 +225,7 @@ def decide_policy_promotion(
         "rejection_reasons": [key for key, passed in checks.items() if not passed],
         "decision": decision_label,
         "promote": promote,
-        "provenance": dict(provenance or {}),
+        "provenance": bound_provenance,
     }
     result["decision_hash"] = hash_payload(result)
     return result
@@ -230,6 +254,7 @@ def _main() -> None:
     parser.add_argument("--validation-jsonl", required=True)
     parser.add_argument("--validation-manifest-hash", required=True)
     parser.add_argument("--thresholds")
+    parser.add_argument("--provenance")
     parser.add_argument("--out")
     args = parser.parse_args()
     rows = [
@@ -243,6 +268,7 @@ def _main() -> None:
         rows,
         validation_manifest_hash=args.validation_manifest_hash,
         thresholds=read_json(args.thresholds) if args.thresholds else None,
+        provenance=read_json(args.provenance) if args.provenance else None,
     )
     if args.out:
         atomic_write_json(args.out, decision)

@@ -49,6 +49,8 @@ def run_fake_system(
         "rounds_root": str(work / "rounds"),
         "decision_ledger": str(work / "decision_ledger.jsonl"),
         "red_archive": str(work / "red_archive.jsonl"),
+        "covered_archive": str(work / "covered_archive.jsonl"),
+        "round_ledger": str(work / "round_ledger.jsonl"),
         "events_root": str(work / "events"),
         "challenge_seeds": [1, 2, 3],
         "promotion_seeds": [11, 12, 13],

@@ -24,11 +24,19 @@ from r3e.policy.search import propose_children
 from r3e.policy.schema import PolicyState
 from r3e.protocol.hashing import atomic_write_json, canonical_json, hash_payload, read_json
 from r3e.protocol.events import EventLogger, detect_code_version
+from r3e.protocol.provenance import build_run_context, verify_run_context
 from r3e.red.archive import load_archive, update_archive
 from r3e.red.challenge import evaluate_challenge
+from r3e.red.feedback_packet import (
+    build_red_search_context,
+    verify_red_search_context,
+)
+from r3e.red.learnability import validate_learnability_result
 from r3e.red.novelty import archive_cell, novelty_score
+from r3e.red.selection import select_residual_elites
 from r3e.red.validity import validity_gate
 
+from .audit import append_round_ledger, freeze_round_audit
 from .manifests import freeze_manifest, grouped_split, make_manifest, verify_manifest
 from .paired_replay import paired_replay
 from .renewed_challenge import assert_renewed_challenge_binding
@@ -50,8 +58,13 @@ class _SplitEvolutionAdapter:
             "blue": dict(getattr(blue_adapter, "toolchain_fingerprint", {}) or {}),
         }
 
-    def generate_red(self, parent: PolicyState, config: dict[str, Any]):
-        return self.red_adapter.generate_red(parent, config)
+    def generate_red(
+        self,
+        parent: PolicyState,
+        config: dict[str, Any],
+        red_search_context: dict[str, Any],
+    ):
+        return self.red_adapter.generate_red(parent, config, red_search_context)
 
     def prepare_validity(self, poison: dict[str, Any]):
         return self.red_adapter.prepare_validity(poison)
@@ -92,6 +105,23 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
         for line in path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
+
+
+def _archive_duplicate(
+    rows: list[dict[str, Any]], poison: dict[str, Any]
+) -> dict[str, Any] | None:
+    return next(
+        (
+            row for row in rows
+            if row.get("challenged_policy_hash")
+            == poison.get("challenged_policy_hash")
+            and row.get("normalized_diff_hash")
+            == poison.get("normalized_diff_hash")
+            and row.get("failure_signature")
+            == poison.get("failure_signature")
+        ),
+        None,
+    )
 
 
 def _load_adapter(spec: str, config: dict[str, Any]):
@@ -137,9 +167,18 @@ class EvolutionRoundRunner:
         self.archive_path = self.root / config.get(
             "red_archive", "runtime/archives/red_residual_archive.jsonl"
         )
+        self.covered_archive_path = self.root / config.get(
+            "covered_archive", "runtime/archives/red_covered_archive.jsonl"
+        )
+        self.round_ledger_path = self.root / config.get(
+            "round_ledger", "runtime/rounds/round_ledger.jsonl"
+        )
+        self.code_version = str(
+            config.get("code_version") or detect_code_version(self.root)
+        )
         self.events = EventLogger(
             self.root / config.get("events_root", "runtime/events"),
-            code_version=str(config.get("code_version") or detect_code_version(self.root)),
+            code_version=self.code_version,
         )
         self.events.ensure_streams()
         self.state = RoundState(self.round_dir / "round_state.json", round_id=round_id)
@@ -161,15 +200,29 @@ class EvolutionRoundRunner:
         completed = {row["stage"] for row in state["checkpoints"]}
         loaders = {
             "INIT": lambda: {"round_dir": str(self.round_dir)},
-            "LOAD_ACTIVE_POLICY": lambda: read_json(self.round_dir / "active_parent.json"),
+            "LOAD_ACTIVE_POLICY": lambda: {
+                "policy": read_json(self.round_dir / "active_parent.json"),
+                "run_context_hash": verify_run_context(
+                    read_json(self.round_dir / "toolchain.json")
+                )["run_context_hash"],
+            },
             "RED_GENERATE": lambda: _read_jsonl(self.round_dir / "red_candidates.jsonl"),
             "VALIDITY_GATE": lambda: _read_jsonl(self.round_dir / "validity_results.jsonl"),
             "BLUE_CHALLENGE": lambda: _read_jsonl(
                 self.round_dir / "blue_challenge_results.jsonl"
             ),
-            "ARCHIVE_UPDATE": lambda: _read_jsonl(
-                self.round_dir / "archive_updates.jsonl"
-            ),
+            "ARCHIVE_UPDATE": lambda: {
+                "residual": _read_jsonl(self.round_dir / "archive_updates.jsonl"),
+                "covered": _read_jsonl(
+                    self.round_dir / "covered_archive_updates.jsonl"
+                ),
+                "learnability": _read_jsonl(
+                    self.round_dir / "learnability_results.jsonl"
+                ),
+                "excluded": _read_jsonl(
+                    self.round_dir / "archive_exclusions.jsonl"
+                ),
+            },
             "FREEZE_RESIDUAL_MANIFEST": lambda: read_json(
                 self.round_dir / "residual_manifest.json"
             ),
@@ -211,7 +264,16 @@ class EvolutionRoundRunner:
                 raise RoundRunnerViolation(f"no artifact verifier for stage: {stage}")
             try:
                 output = loader()
-                self.state.verify_stage(stage, stage_output=output)
+                stage_input = None
+                if stage == "RED_GENERATE":
+                    stage_input = verify_red_search_context(
+                        read_json(self.round_dir / "red_search_context.json")
+                    )["context_hash"]
+                self.state.verify_stage(
+                    stage,
+                    stage_input=stage_input,
+                    stage_output=output,
+                )
             except (OSError, KeyError, ValueError, RoundStateViolation) as exc:
                 raise RoundRunnerViolation(
                     f"persisted stage artifact mismatch: {stage}: {exc}"
@@ -235,12 +297,48 @@ class EvolutionRoundRunner:
                 raise RoundRunnerViolation("configured parent policy hash is stale")
             atomic_write_json(self.round_dir / "active_parent.json", parent.to_dict())
             atomic_write_json(self.round_dir / "registry_before.json", registry)
-            self._checkpoint("LOAD_ACTIVE_POLICY", registry["registry_hash"], parent.to_dict())
+            run_context = build_run_context(
+                round_id=self.round_id,
+                code_version=self.code_version,
+                round_config=self.config,
+                registry_hash=registry["registry_hash"],
+                active_policy_id=parent.policy_id,
+                active_policy_hash=parent.policy_hash,
+                toolchain_fingerprint=dict(
+                    getattr(self.adapter, "toolchain_fingerprint", {}) or {}
+                ),
+            )
+            atomic_write_json(self.round_dir / "toolchain.json", run_context)
+            self._checkpoint(
+                "LOAD_ACTIVE_POLICY",
+                registry["registry_hash"],
+                {
+                    "policy": parent.to_dict(),
+                    "run_context_hash": run_context["run_context_hash"],
+                },
+            )
 
         parent = PolicyState.from_dict(read_json(self.round_dir / "active_parent.json"))
+        run_context = verify_run_context(read_json(self.round_dir / "toolchain.json"))
 
         if self.state.next_stage() == "RED_GENERATE":
-            candidates = list(self.adapter.generate_red(parent, self.config))
+            red_context = build_red_search_context(
+                parent,
+                residual_archive=load_archive(self.archive_path),
+                covered_archive=load_archive(self.covered_archive_path),
+            )
+            atomic_write_json(
+                self.round_dir / "red_search_context.json",
+                red_context,
+            )
+            candidates = list(
+                self.adapter.generate_red(parent, self.config, red_context)
+            )
+            poison_ids = [str(row.get("poison_id") or "") for row in candidates]
+            if any(not poison_id for poison_id in poison_ids):
+                raise RoundRunnerViolation("red candidate is missing poison_id")
+            if len(poison_ids) != len(set(poison_ids)):
+                raise RoundRunnerViolation("red candidate poison_id must be unique")
             for row in candidates:
                 if row.get("challenged_policy_hash") != parent.policy_hash:
                     raise RoundRunnerViolation("red candidate is not bound to active parent")
@@ -253,7 +351,7 @@ class EvolutionRoundRunner:
                 candidate_count=len(candidates),
                 candidates_hash=hash_payload(candidates),
             )
-            self._checkpoint("RED_GENERATE", parent.policy_hash, candidates)
+            self._checkpoint("RED_GENERATE", red_context["context_hash"], candidates)
 
         candidates = _read_jsonl(self.round_dir / "red_candidates.jsonl")
         if self.state.next_stage() == "VALIDITY_GATE":
@@ -311,49 +409,159 @@ class EvolutionRoundRunner:
 
         challenged = _read_jsonl(self.round_dir / "blue_challenge_results.jsonl")
         if self.state.next_stage() == "ARCHIVE_UPDATE":
-            archive_before = load_archive(self.archive_path)
+            residual_before = load_archive(self.archive_path)
+            covered_before = load_archive(self.covered_archive_path)
+            archive_before = residual_before + covered_before
             archived = []
+            covered_archived = []
+            learnability_rows = []
+            excluded = []
             for row in challenged:
-                if row.get("hardness_class") not in {"hard_residual", "borderline_residual"}:
-                    continue
                 enriched = dict(row)
-                enriched["learnability"] = str(self.adapter.probe_learnability(parent, row))
-                enriched["novelty"] = novelty_score(enriched, archive_before + archived)
-                enriched["archive_cell"] = archive_cell(enriched)
-                if enriched["learnability"] not in {"reachable", "weakly_reachable"}:
-                    continue
-                archived.append(update_archive(self.archive_path, enriched))
+                current = archive_before + archived + covered_archived
+                hardness_class = str(enriched.get("hardness_class") or "")
+                if hardness_class in {"hard_residual", "borderline_residual"}:
+                    duplicate = _archive_duplicate(
+                        residual_before + archived,
+                        enriched,
+                    )
+                    if duplicate is not None:
+                        archived.append(duplicate)
+                        learnability = duplicate.get("learnability")
+                        if isinstance(learnability, dict):
+                            learnability_rows.append(learnability)
+                        continue
+                    enriched["novelty"] = novelty_score(enriched, current)
+                    enriched["archive_cell"] = archive_cell(enriched)
+                    learnability = validate_learnability_result(
+                        parent,
+                        enriched,
+                        self.adapter.probe_learnability(parent, enriched),
+                    )
+                    learnability_rows.append(learnability)
+                    enriched["learnability"] = learnability
+                    if learnability["label"] not in {
+                        "reachable",
+                        "weakly_reachable",
+                    }:
+                        excluded.append({
+                            "poison_id": enriched["poison_id"],
+                            "challenged_policy_hash": parent.policy_hash,
+                            "reason": f"learnability:{learnability['label']}",
+                            "learnability_result_hash": learnability["result_hash"],
+                        })
+                        continue
+                    archived.append(update_archive(
+                        self.archive_path,
+                        enriched,
+                        archive_kind="residual",
+                    ))
+                elif hardness_class in {"mostly_covered", "covered"}:
+                    duplicate = _archive_duplicate(
+                        covered_before + covered_archived,
+                        enriched,
+                    )
+                    if duplicate is not None:
+                        covered_archived.append(duplicate)
+                        continue
+                    enriched["novelty"] = novelty_score(enriched, current)
+                    enriched["archive_cell"] = archive_cell(enriched)
+                    covered_archived.append(update_archive(
+                        self.covered_archive_path,
+                        enriched,
+                        archive_kind="covered",
+                    ))
+                else:
+                    raise RoundRunnerViolation(
+                        f"unknown hardness class: {hardness_class}"
+                    )
             _write_jsonl(self.round_dir / "archive_updates.jsonl", archived)
+            _write_jsonl(
+                self.round_dir / "covered_archive_updates.jsonl",
+                covered_archived,
+            )
+            _write_jsonl(
+                self.round_dir / "learnability_results.jsonl",
+                learnability_rows,
+            )
+            _write_jsonl(self.round_dir / "archive_exclusions.jsonl", excluded)
             self.events.emit(
                 "red",
                 "residual_archive_updated",
                 round_id=self.round_id,
                 challenged_policy_hash=parent.policy_hash,
                 archived_count=len(archived),
+                covered_count=len(covered_archived),
+                excluded_count=len(excluded),
                 archive_updates_hash=hash_payload(archived),
             )
-            self._checkpoint("ARCHIVE_UPDATE", challenged, archived)
+            self._checkpoint("ARCHIVE_UPDATE", challenged, {
+                "residual": archived,
+                "covered": covered_archived,
+                "learnability": learnability_rows,
+                "excluded": excluded,
+            })
 
         archived = _read_jsonl(self.round_dir / "archive_updates.jsonl")
         if self.state.next_stage() == "FREEZE_RESIDUAL_MANIFEST":
+            selected = select_residual_elites(archived)
+            selection = {
+                "schema_version": "r3e-residual-selection-v1",
+                "challenged_policy_id": parent.policy_id,
+                "challenged_policy_hash": parent.policy_hash,
+                "admitted_rows_hash": hash_payload(archived),
+                "selected_poison_ids": [
+                    str(row["poison_id"]) for row in selected
+                ],
+                "selected_count": len(selected),
+            }
+            selection["selection_hash"] = hash_payload(selection)
+            atomic_write_json(self.round_dir / "residual_selection.json", selection)
             residual_manifest = make_manifest(
-                archived,
+                selected,
                 split="residual",
                 metadata={
                     "challenged_policy_id": parent.policy_id,
                     "challenged_policy_hash": parent.policy_hash,
+                    "selection_hash": selection["selection_hash"],
                 },
             )
             freeze_manifest(self.round_dir / "residual_manifest.json", residual_manifest)
-            self._checkpoint("FREEZE_RESIDUAL_MANIFEST", archived, residual_manifest)
+            self._checkpoint("FREEZE_RESIDUAL_MANIFEST", selection, residual_manifest)
 
         residual_manifest = verify_manifest(read_json(self.round_dir / "residual_manifest.json"))
         if self.state.next_stage() == "SPLIT_ADAPT_TARGET":
-            adaptation, target = grouped_split(
-                residual_manifest,
-                adaptation_fraction=float(self.config.get("adaptation_fraction", 0.5)),
-                seed=int(self.config.get("split_seed", 0)),
-            )
+            residual_designs = {
+                str(row.get("design") or row.get("design_id") or "")
+                for row in residual_manifest["rows"]
+            }
+            if len(residual_designs) < 2:
+                source_hash = residual_manifest["manifest_hash"]
+                defer_metadata = {
+                    "group_key": "design",
+                    "promotion_eligible": False,
+                    "defer_reason": "insufficient_residual_designs",
+                }
+                adaptation = make_manifest(
+                    residual_manifest["rows"],
+                    split="adaptation",
+                    source_manifest_hash=source_hash,
+                    metadata=defer_metadata,
+                )
+                target = make_manifest(
+                    [],
+                    split="target",
+                    source_manifest_hash=source_hash,
+                    metadata=defer_metadata,
+                )
+            else:
+                adaptation, target = grouped_split(
+                    residual_manifest,
+                    adaptation_fraction=float(
+                        self.config.get("adaptation_fraction", 0.5)
+                    ),
+                    seed=int(self.config.get("split_seed", 0)),
+                )
             freeze_manifest(self.round_dir / "adaptation_manifest.json", adaptation)
             freeze_manifest(self.round_dir / "target_manifest.json", target)
             self._checkpoint("SPLIT_ADAPT_TARGET", residual_manifest, {
@@ -364,14 +572,17 @@ class EvolutionRoundRunner:
         adaptation = verify_manifest(read_json(self.round_dir / "adaptation_manifest.json"))
         target = verify_manifest(read_json(self.round_dir / "target_manifest.json"))
         if self.state.next_stage() == "PROPOSE_CHILDREN":
-            search_space = read_json(self.root / self.config["policy_search_space"])
-            children = propose_children(
-                parent,
-                adaptation,
-                search_space,
-                round_id=self.round_id,
-                seed=int(self.config.get("policy_search_seed", 0)),
-            )
+            if target["row_count"] == 0:
+                children = []
+            else:
+                search_space = read_json(self.root / self.config["policy_search_space"])
+                children = propose_children(
+                    parent,
+                    adaptation,
+                    search_space,
+                    round_id=self.round_id,
+                    seed=int(self.config.get("policy_search_seed", 0)),
+                )
             registry = load_registry(self.registry_path)
             for child in children:
                 if child.policy_id not in registry["policies"]:
@@ -474,10 +685,14 @@ class EvolutionRoundRunner:
                         "target_manifest_hash": target["manifest_hash"],
                         "non_target_manifest_hash": non_target["manifest_hash"],
                         "paired_result_hash": hash_payload(rows),
-                        "code_commit_sha": str(self.config.get("code_commit_sha") or ""),
-                        "toolchain_fingerprint": dict(
-                            getattr(self.adapter, "toolchain_fingerprint", {}) or {}
-                        ),
+                        "code_commit_sha": run_context["code_version"],
+                        "run_context_hash": run_context["run_context_hash"],
+                        "toolchain_fingerprint_hash": run_context[
+                            "toolchain_fingerprint_hash"
+                        ],
+                        "toolchain_fingerprint": run_context[
+                            "toolchain_fingerprint"
+                        ],
                     },
                 ))
             _write_jsonl(self.round_dir / "promotion_decisions.jsonl", decisions)
@@ -540,6 +755,7 @@ class EvolutionRoundRunner:
             self._checkpoint("RENEWED_CHALLENGE", registry_after["registry_hash"], binding)
 
         if self.state.next_stage() == "COMPLETE":
+            audit = freeze_round_audit(self.round_dir)
             summary = {
                 "round_id": self.round_id,
                 "parent_policy_id": parent.policy_id,
@@ -550,8 +766,17 @@ class EvolutionRoundRunner:
                 "residual_manifest_hash": residual_manifest["manifest_hash"],
                 "target_manifest_hash": target["manifest_hash"],
                 "registry_hash_after": registry_after["registry_hash"],
+                "run_context_hash": run_context["run_context_hash"],
+                "audit_record_hash": audit["audit_record_hash"],
+                "promotion_eligible": target["row_count"] > 0,
+                "defer_reason": (
+                    ""
+                    if target["row_count"] > 0
+                    else "insufficient_residual_designs"
+                ),
             }
             atomic_write_json(self.round_dir / "round_summary.json", summary)
+            append_round_ledger(self.round_ledger_path, audit)
             self._checkpoint("COMPLETE", active.policy_hash, summary)
         return read_json(self.round_dir / "round_summary.json")
 

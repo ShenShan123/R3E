@@ -35,8 +35,28 @@ corrupt, or does not restore the bound parent.
 Every poison binds `challenged_policy_hash`. Only validity evidence with
 `PROVEN_NON_EQUIV` can enter the archive. Archive cells include family,
 effect, affected role, timing bucket, and edit scope, so the same family can
-retain different effect/role elites. Duplicate poison evidence is deduplicated
-and lineage graphs reject missing parents and cycles.
+retain different effect/role elites. Each policy-bound cell materializes
+separate `hardest`, `minimal_edit`, and `most_learnable` views, plus a Pareto
+frontier. Duplicate poison evidence is deduplicated and lineage graphs reject
+missing parents and cycles.
+
+`hard_residual` and `borderline_residual` entries enter the residual archive
+only with structured reachable/weakly-reachable teacher evidence.
+`mostly_covered` and `covered` entries are routed to a separate covered
+archive, so red search can avoid them without consuming adaptation capacity.
+
+Before red generation the runner freezes a field-whitelisted
+`red_search_context.json`. It contains archive descriptors and outcomes but
+never target replay labels, reference patches, or child validation data.
+
+## Learnability teacher
+
+The formal teacher protocol binds the active policy hash and hashes both the
+primary and teacher budgets. `reachable` requires a same-model,
+strictly-expanded budget with at least one success; `weakly_reachable`
+requires stronger-model or expanded-population evidence. `unknown` and
+`unlearnable_or_budget_exceeded` have distinct incomplete/exhausted semantics.
+Teacher evidence is stored separately and hash-bound.
 
 ## Observability
 
@@ -44,6 +64,13 @@ Policy, red, oracle, arena, and rollback modules append hash-chained
 `r3e-event-v1` JSONL records. A promotion event binds parent and child policy
 hashes, registry hashes before/after, round ID, timestamp, and code version.
 Event streams are diagnostic evidence, not state authority.
+
+Each round also freezes a run context binding code version, policy, registry,
+round config, and adapter/toolchain fingerprint. `round_audit.json`
+reconstructs every promotion decision from the original paired rows, checks
+manifest source relationships and design isolation, verifies learnability and
+renewed-challenge bindings, and is appended idempotently to a hash-chain round
+ledger.
 
 ## Current status
 

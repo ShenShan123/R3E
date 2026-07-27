@@ -27,10 +27,124 @@ FORBIDDEN_INPUT_KEYS = {
     "child_validation",
     "target_replay_result",
 }
+RED_SEARCH_CONTEXT_FIELDS = {
+    "poison_id",
+    "archive_kind",
+    "challenged_policy_hash",
+    "archive_cell",
+    "family",
+    "effect",
+    "affected_role",
+    "failure_signature",
+    "hardness_class",
+    "hardness",
+    "learnability_label",
+}
 
 
 class CapabilityPacketViolation(RuntimeError):
     """Raised when hidden promotion information would leak to red search."""
+
+
+def build_red_search_context(
+    policy: PolicyState,
+    *,
+    residual_archive: list[dict[str, Any]],
+    covered_archive: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Expose only a hash-bound archive summary to conditioned red search."""
+    summaries = []
+    for kind, rows in (
+        ("residual", residual_archive),
+        ("covered", covered_archive),
+    ):
+        for row in rows:
+            leaked = FORBIDDEN_INPUT_KEYS & row.keys()
+            if leaked:
+                raise CapabilityPacketViolation(
+                    f"hidden fields supplied by archive: {sorted(leaked)}"
+                )
+            learnability = row.get("learnability")
+            label = (
+                str(learnability.get("label") or "")
+                if isinstance(learnability, dict)
+                else str(learnability or "")
+            )
+            summary = {
+                "poison_id": str(row.get("poison_id") or ""),
+                "archive_kind": kind,
+                "challenged_policy_hash": str(
+                    row.get("challenged_policy_hash") or ""
+                ),
+                "archive_cell": str(row.get("archive_cell") or ""),
+                "family": str(row.get("family") or ""),
+                "effect": str(row.get("effect") or ""),
+                "affected_role": str(row.get("affected_role") or ""),
+                "failure_signature": str(row.get("failure_signature") or ""),
+                "hardness_class": str(row.get("hardness_class") or ""),
+                "hardness": float(row.get("hardness") or 0.0),
+                "learnability_label": label,
+            }
+            if set(summary) != RED_SEARCH_CONTEXT_FIELDS:
+                raise CapabilityPacketViolation("red archive summary schema mismatch")
+            summaries.append(summary)
+    summaries.sort(key=lambda row: (
+        row["archive_kind"],
+        row["challenged_policy_hash"],
+        row["archive_cell"],
+        row["poison_id"],
+    ))
+    context = {
+        "schema_version": "r3e-red-search-context-v1",
+        "challenged_policy_id": policy.policy_id,
+        "challenged_policy_hash": policy.policy_hash,
+        "archive_summary": summaries,
+        "residual_count": sum(
+            row["archive_kind"] == "residual" for row in summaries
+        ),
+        "covered_count": sum(
+            row["archive_kind"] == "covered" for row in summaries
+        ),
+    }
+    context["context_hash"] = hash_payload(context)
+    return context
+
+
+def verify_red_search_context(context: dict[str, Any]) -> dict[str, Any]:
+    if context.get("schema_version") != "r3e-red-search-context-v1":
+        raise CapabilityPacketViolation("red search context schema mismatch")
+    summaries = context.get("archive_summary")
+    if not isinstance(summaries, list):
+        raise CapabilityPacketViolation("red search archive summary missing")
+    if any(set(row) != RED_SEARCH_CONTEXT_FIELDS for row in summaries):
+        raise CapabilityPacketViolation("red search context contains undeclared fields")
+    if any(
+        row.get("archive_kind") not in {"residual", "covered"}
+        or not row.get("poison_id")
+        or not row.get("challenged_policy_hash")
+        for row in summaries
+    ):
+        raise CapabilityPacketViolation("red search context summary is malformed")
+    canonical = sorted(summaries, key=lambda row: (
+        row["archive_kind"],
+        row["challenged_policy_hash"],
+        row["archive_cell"],
+        row["poison_id"],
+    ))
+    if summaries != canonical:
+        raise CapabilityPacketViolation("red search context is not canonical")
+    if context.get("residual_count") != sum(
+        row["archive_kind"] == "residual" for row in summaries
+    ):
+        raise CapabilityPacketViolation("red search residual count mismatch")
+    if context.get("covered_count") != sum(
+        row["archive_kind"] == "covered" for row in summaries
+    ):
+        raise CapabilityPacketViolation("red search covered count mismatch")
+    body = {key: value for key, value in context.items() if key != "context_hash"}
+    if context.get("context_hash") != hash_payload(body):
+        raise CapabilityPacketViolation("red search context hash mismatch")
+    return context
 
 
 def build_capability_packet(

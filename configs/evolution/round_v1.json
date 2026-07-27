@@ -8,6 +8,12 @@
     "promotion": "atomic_registry_commit"
   },
   "adapter_interface": "r3e.arena.adapter.EvolutionAdapter",
+  "formal_protocols": {
+    "red_search_context": "r3e-red-search-context-v1",
+    "learnability": "r3e-learnability-v1",
+    "run_provenance": "r3e-round-provenance-v1",
+    "round_audit": "r3e-round-audit-v1"
+  },
   "deferred_experiment_bindings": [
     "model_name",
     "seeds",

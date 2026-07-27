@@ -16,7 +16,10 @@ class EvolutionAdapter(Protocol):
     toolchain_fingerprint: dict[str, Any]
 
     def generate_red(
-        self, parent: PolicyState, config: dict[str, Any]
+        self,
+        parent: PolicyState,
+        config: dict[str, Any],
+        red_search_context: dict[str, Any],
     ) -> Iterable[dict[str, Any]]: ...
 
     def prepare_validity(self, poison: dict[str, Any]) -> dict[str, Any]: ...
@@ -27,7 +30,7 @@ class EvolutionAdapter(Protocol):
 
     def probe_learnability(
         self, policy: PolicyState, poison: dict[str, Any]
-    ) -> str: ...
+    ) -> dict[str, Any]: ...
 
     def screen_child(
         self,

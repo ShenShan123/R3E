@@ -11,6 +11,7 @@ from r3e.protocol.ledger import writer_lock
 
 from .novelty import archive_cell, descriptor
 from .lineage import validate_lineage_graph
+from .selection import materialize_elites
 
 
 class ArchiveViolation(RuntimeError):
@@ -37,11 +38,14 @@ def load_archive(path: str | Path) -> list[dict[str, Any]]:
     return rows
 
 
-def _elite_kind(row: dict[str, Any]) -> str:
-    return str(row.get("elite_kind") or "hardest")
-
-
-def update_archive(path: str | Path, poison: dict[str, Any]) -> dict[str, Any]:
+def update_archive(
+    path: str | Path,
+    poison: dict[str, Any],
+    *,
+    archive_kind: str = "residual",
+) -> dict[str, Any]:
+    if archive_kind not in {"residual", "covered"}:
+        raise ArchiveViolation(f"unsupported archive kind: {archive_kind}")
     if not poison.get("validity", {}).get("proven_valid"):
         raise ArchiveViolation("invalid poison cannot enter residual archive")
     formal_status = str(
@@ -53,13 +57,27 @@ def update_archive(path: str | Path, poison: dict[str, Any]) -> dict[str, Any]:
         raise ArchiveViolation("inconclusive formal oracle cannot enter residual archive")
     if not poison.get("challenged_policy_hash"):
         raise ArchiveViolation("archive poison must bind challenged policy hash")
-    learnability = str(poison.get("learnability") or "unknown")
-    if learnability == "unlearnable_or_budget_exceeded":
-        raise ArchiveViolation("unlearnable poison is excluded from adaptation archive")
+    hardness_class = str(poison.get("hardness_class") or "")
+    if archive_kind == "residual":
+        if hardness_class and hardness_class not in {
+            "hard_residual",
+            "borderline_residual",
+        }:
+            raise ArchiveViolation("covered poison cannot enter residual archive")
+        learnability = poison.get("learnability") or {}
+        label = (
+            str(learnability.get("label") or "")
+            if isinstance(learnability, dict)
+            else str(learnability)
+        )
+        if label not in {"reachable", "weakly_reachable"}:
+            raise ArchiveViolation("only reachable poison enters adaptation archive")
+    elif hardness_class not in {"mostly_covered", "covered"}:
+        raise ArchiveViolation("residual poison cannot enter covered archive")
     row = dict(poison)
+    row["archive_kind"] = archive_kind
     row["descriptor"] = descriptor(row)
     row["archive_cell"] = archive_cell(row)
-    row.setdefault("elite_kind", "hardest")
     row.setdefault("archived_at", utc_now())
     target = Path(path)
     with writer_lock(target.with_suffix(target.suffix + ".lock")):
@@ -75,14 +93,16 @@ def update_archive(path: str | Path, poison: dict[str, Any]) -> dict[str, Any]:
         )
         if duplicate:
             return duplicate
-        same_slot = [
-            item for item in existing
-            if item.get("challenged_policy_hash") == row["challenged_policy_hash"]
-            and item.get("archive_cell") == row["archive_cell"]
-            and _elite_kind(item) == _elite_kind(row)
-        ]
-        if same_slot and float(same_slot[0].get("hardness") or 0) >= float(row.get("hardness") or 0):
-            row["elite_kind"] = "alternate"
+        current = existing + [row]
+        views = materialize_elites(current)
+        view_key = f"{row['challenged_policy_hash']}::{row['archive_cell']}"
+        row["elite_roles_at_admission"] = sorted(
+            role
+            for role, winner in views[view_key].items()
+            if winner is row
+        )
+        if not row["elite_roles_at_admission"]:
+            row["elite_roles_at_admission"] = ["alternate"]
         try:
             validate_lineage_graph(existing + [row])
         except ValueError as exc:

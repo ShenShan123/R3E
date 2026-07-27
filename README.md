@@ -129,12 +129,38 @@ generate_poison(case, challenged_policy, capability_packet, archive, mutator=...
 run_round(registry, red_adapter, blue_adapter, manifests)
 ```
 
+Formal red adapters receive a hash-bound `red_search_context` containing only
+whitelisted residual/covered archive summaries. Learnability probes return a
+structured `r3e-learnability-v1` object that binds the active policy, primary
+budget, separately expanded teacher budget, attempts, successes, and evidence
+hash. Bare string labels are rejected.
+
+Residual and covered poisons are stored separately. Adaptation manifests use
+the union of the current hardness, minimum-edit, and learnability elite views
+within each policy-bound MAP-Elites cell; covered poisons remain available to
+red search without occupying adaptation capacity.
+Rounds with fewer than two residual designs finish as auditable deferred
+rounds with the parent unchanged instead of creating a leaking target split.
+
 Every round writes hash-chained JSONL events under `runtime/events/`:
 `policy.jsonl`, `red.jsonl`, `oracle.jsonl`, `arena.jsonl`, and
 `rollback.jsonl`. Events are observability records and never grant authority.
 The adapter supplies environment-specific generation and evaluation; the
 runner retains all registry, manifest, split, promotion, and rollback
 authority.
+
+Completed rounds also contain `toolchain.json`, `red_search_context.json`,
+`residual_selection.json`, and `round_audit.json`. Promotion decisions require
+complete code/toolchain/manifest provenance and can be reconstructed from the
+paired replay:
+
+```bash
+python -m r3e.arena.audit \
+  --round-dir runtime/rounds/R001
+```
+
+The idempotent `runtime/rounds/round_ledger.jsonl` binds each completed round's
+audit hash into a hash chain.
 
 ## Offline validation
 

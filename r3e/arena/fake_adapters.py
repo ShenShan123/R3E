@@ -20,7 +20,10 @@ class FakeRedAdapter:
         self.workspace = Path(workspace)
 
     def generate_red(
-        self, parent: PolicyState, config: dict[str, Any]
+        self,
+        parent: PolicyState,
+        config: dict[str, Any],
+        red_search_context: dict[str, Any],
     ) -> Iterable[dict[str, Any]]:
         rtl_dir = self.workspace / parent.policy_hash.replace(":", "_")
         rtl_dir.mkdir(parents=True, exist_ok=True)
@@ -46,7 +49,7 @@ class FakeRedAdapter:
                 design_id=case["design_id"],
                 golden_rtl_hash=case["golden_rtl_hash"],
                 allowed_mutation_operators=case["allowed_mutation_operators"],
-                archive_rows=[],
+                archive_rows=list(red_search_context["archive_summary"]),
                 recent_challenges=[],
             )
             policy_tag = parent.policy_hash.split(":", 1)[-1][:12]
@@ -60,7 +63,7 @@ class FakeRedAdapter:
                 "challenged_policy_hash": parent.policy_hash,
                 "capability_packet_hash": packet["packet_hash"],
                 "family": "constant_error",
-                "effect": f"policy_{policy_tag}_effect_{index % 2}",
+                "effect": f"policy_{policy_tag}_effect_{index}",
                 "affected_role": "control" if index % 2 == 0 else "data",
                 "edit_scope": "expression",
                 "composition_depth": 1,
@@ -105,9 +108,24 @@ class FakeRedAdapter:
 
     @staticmethod
     def probe_learnability(
-        _policy: PolicyState, _poison: dict[str, Any]
-    ) -> str:
-        return "reachable"
+        policy: PolicyState, poison: dict[str, Any]
+    ) -> dict[str, Any]:
+        return {
+            "label": "reachable",
+            "challenged_policy_hash": policy.policy_hash,
+            "teacher_mode": "same_model_expanded",
+            "teacher_budget": {
+                key: int(value) * 2 for key, value in policy.budgets.items()
+            },
+            "attempts": 1,
+            "successes": 1,
+            "budget_exhausted": False,
+            "evidence": {
+                "adapter_mode": "deterministic_fake",
+                "poison_id": poison["poison_id"],
+                "model_calls": 0,
+            },
+        }
 
 
 class FakeBlueAdapter:
@@ -182,8 +200,13 @@ class DeterministicEvolutionAdapter:
         self.blue = FakeBlueAdapter()
         self.promotion = DeterministicPromotionAdapter()
 
-    def generate_red(self, parent: PolicyState, config: dict[str, Any]):
-        return self.red.generate_red(parent, config)
+    def generate_red(
+        self,
+        parent: PolicyState,
+        config: dict[str, Any],
+        red_search_context: dict[str, Any],
+    ):
+        return self.red.generate_red(parent, config, red_search_context)
 
     def prepare_validity(self, poison: dict[str, Any]):
         return self.red.prepare_validity(poison)
@@ -209,13 +232,24 @@ class DeterministicEvolutionAdapter:
 class FailureInjectionAdapter:
     """Raise once at a named adapter method, then delegate normally."""
 
-    def __init__(self, wrapped: Any, *, fail_method: str):
+    def __init__(
+        self,
+        wrapped: Any,
+        *,
+        fail_method: str,
+        fail_on_call: int = 1,
+    ):
+        if fail_on_call < 1:
+            raise ValueError("fail_on_call must be positive")
         self.wrapped = wrapped
         self.fail_method = fail_method
+        self.fail_on_call = fail_on_call
         self.failed = False
+        self.call_counts: dict[str, int] = {}
         self.toolchain_fingerprint = {
             **dict(getattr(wrapped, "toolchain_fingerprint", {}) or {}),
             "failure_injection_method": fail_method,
+            "failure_injection_call": fail_on_call,
         }
 
     def __getattr__(self, name: str):
@@ -224,9 +258,17 @@ class FailureInjectionAdapter:
             return target
 
         def call(*args: Any, **kwargs: Any):
-            if name == self.fail_method and not self.failed:
+            self.call_counts[name] = self.call_counts.get(name, 0) + 1
+            if (
+                name == self.fail_method
+                and not self.failed
+                and self.call_counts[name] == self.fail_on_call
+            ):
                 self.failed = True
-                raise RuntimeError(f"injected failure at adapter method: {name}")
+                raise RuntimeError(
+                    f"injected failure at adapter method: {name}"
+                    f" call {self.fail_on_call}"
+                )
             return target(*args, **kwargs)
 
         return call
@@ -242,5 +284,9 @@ def create_adapter(config: dict[str, Any]) -> DeterministicEvolutionAdapter | Fa
     adapter = DeterministicEvolutionAdapter(workspace)
     fail_method = str(config.get("failure_injection_method") or "")
     if fail_method:
-        adapter = FailureInjectionAdapter(adapter, fail_method=fail_method)
+        adapter = FailureInjectionAdapter(
+            adapter,
+            fail_method=fail_method,
+            fail_on_call=int(config.get("failure_injection_call") or 1),
+        )
     return adapter

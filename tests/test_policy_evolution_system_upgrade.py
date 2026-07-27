@@ -12,6 +12,7 @@ from r3e.arena.fake_adapters import (
     FakeRedAdapter,
     FailureInjectionAdapter,
 )
+from r3e.arena.audit import RoundAuditViolation, verify_frozen_round
 from r3e.arena.manifests import make_manifest
 from r3e.arena.round_state import RoundState, RoundStateViolation
 from r3e.arena.runner import EvolutionRoundRunner, RoundRunnerViolation, run_round
@@ -32,10 +33,22 @@ from r3e.policy.search import propose_children
 from r3e.policy.runtime import PolicyRuntime, PolicyRuntimeViolation
 from r3e.protocol.events import EventLogger, EventViolation, read_events
 from r3e.protocol.hashing import atomic_write_json, hash_payload
+from r3e.protocol.ledger import read_ledger
+from r3e.protocol.provenance import RunContextViolation, verify_run_context
 from r3e.red.archive import ArchiveViolation, load_archive, update_archive
-from r3e.red.feedback_packet import build_capability_packet
+from r3e.red.feedback_packet import (
+    CapabilityPacketViolation,
+    build_capability_packet,
+    build_red_search_context,
+)
 from r3e.red.generator import generate_poison
 from r3e.red.lineage import validate_lineage_graph
+from r3e.red.learnability import (
+    LearnabilityViolation,
+    validate_learnability_result,
+    verify_learnability_result,
+)
+from r3e.red.selection import materialize_elites, pareto_frontier, select_residual_elites
 from semantic_repair_bench import functional_repair
 
 
@@ -94,6 +107,18 @@ def _strong_decision(parent: PolicyState, child: PolicyState) -> dict:
         child,
         rows,
         validation_manifest_hash="sha256:validation",
+        provenance={
+            "round_id": "R900",
+            "residual_manifest_hash": "sha256:" + "1" * 64,
+            "adaptation_manifest_hash": "sha256:" + "2" * 64,
+            "target_manifest_hash": "sha256:" + "3" * 64,
+            "non_target_manifest_hash": "sha256:" + "4" * 64,
+            "paired_result_hash": hash_payload(rows),
+            "code_commit_sha": "test-version",
+            "toolchain_fingerprint_hash": "sha256:" + "5" * 64,
+            "run_context_hash": "sha256:" + "6" * 64,
+            "toolchain_fingerprint": {"adapter": "test"},
+        },
     )
 
 
@@ -177,6 +202,46 @@ def test_registry_rejects_dual_active_and_manual_authority(tmp_path):
         validate_registry(payload)
 
 
+def test_promotion_without_reconstructable_provenance_is_rejected():
+    from r3e.policy.promotion import decide_policy_promotion
+
+    parent = PolicyState.from_dict(
+        json.loads(
+            (ROOT / "configs/base_policy/frozen_base_policy_v1.json").read_text()
+        )
+    )
+    child = _children(parent, 1)[0]
+    complete = _strong_decision(parent, child)
+    rows = [
+        {
+            "case_id": case_id,
+            "design": design,
+            "seed": 1,
+            "split": split,
+            "arm": arm,
+            "oracle_ok": arm == "candidate" or split == "non_target",
+            "model_id": "fake",
+            "budget_hash": "fake",
+            "verifier_hash": "fake",
+            "cost": 1.0,
+        }
+        for split, cases in (
+            ("target", [("t0", "td0"), ("t1", "td1")]),
+            ("non_target", [("n0", "nd0"), ("n1", "nd1")]),
+        )
+        for case_id, design in cases
+        for arm in ("parent", "candidate")
+    ]
+    decision = decide_policy_promotion(
+        parent,
+        child,
+        rows,
+        validation_manifest_hash=complete["validation_manifest_hash"],
+    )
+    assert not decision["promote"]
+    assert decision["checks"]["provenance_complete"] is False
+
+
 def test_registry_tamper_and_missing_rollback_version_fail_closed(tmp_path):
     registry, parent = _init(tmp_path)
     raw = json.loads(registry.read_text())
@@ -242,6 +307,11 @@ def test_fake_adapter_multi_round_switches_policy_and_packets(tmp_path):
         for line in (tmp_path / "runtime/rounds/R002/red_candidates.jsonl").read_text().splitlines()
     ]
     assert first_red[0]["capability_packet_hash"] != second_red[0]["capability_packet_hash"]
+    second_context = json.loads(
+        (tmp_path / "runtime/rounds/R002/red_search_context.json").read_text()
+    )
+    assert second_context["residual_count"] >= 4
+    assert second_context["challenged_policy_hash"] == first["active_policy_hash"]
     assert get_active_policy(load_registry(registry)).policy_hash == second["active_policy_hash"]
 
 
@@ -277,6 +347,26 @@ def test_failure_injection_resumes_without_rewriting_stages(tmp_path):
     assert summary["promoted"]
     stages = [row["stage"] for row in runner.state.load()["checkpoints"]]
     assert stages == list(dict.fromkeys(stages))
+
+
+def test_partial_archive_write_recovers_with_original_teacher_evidence(tmp_path):
+    config, _registry = _project(tmp_path)
+    adapter = FailureInjectionAdapter(
+        DeterministicEvolutionAdapter(tmp_path / "runtime/fake"),
+        fail_method="probe_learnability",
+        fail_on_call=2,
+    )
+    runner = EvolutionRoundRunner(
+        config, round_id="R001", adapter=adapter, project_root=tmp_path
+    )
+    with pytest.raises(RuntimeError, match="probe_learnability call 2"):
+        runner.run()
+    archive = tmp_path / "runtime/archives/red_residual_archive.jsonl"
+    assert len(load_archive(archive)) == 1
+    summary = runner.run()
+    assert summary["promoted"]
+    assert len(load_archive(archive)) == 4
+    verify_frozen_round(tmp_path / "runtime/rounds/R001")
 
 
 def test_runner_rejects_tampered_completed_stage_output(tmp_path):
@@ -348,6 +438,80 @@ def test_no_promotable_child_keeps_exact_parent(tmp_path):
     assert summary["active_policy_hash"] == parent.policy_hash
 
 
+def test_runner_routes_covered_and_unknown_learnability_out_of_residual(tmp_path):
+    config, _registry = _project(tmp_path)
+
+    class RoutingAdapter(DeterministicEvolutionAdapter):
+        def evaluate_blue(self, policy, poison, seed):
+            row = super().evaluate_blue(policy, poison, seed)
+            if str(poison["poison_id"]).endswith("_0"):
+                row["oracle_ok"] = True
+            return row
+
+        def probe_learnability(self, policy, poison):
+            if str(poison["poison_id"]).endswith("_1"):
+                return {
+                    "label": "unknown",
+                    "challenged_policy_hash": policy.policy_hash,
+                    "teacher_mode": "same_model_expanded",
+                    "teacher_budget": {
+                        key: int(value) * 2
+                        for key, value in policy.budgets.items()
+                    },
+                    "attempts": 1,
+                    "successes": 0,
+                    "budget_exhausted": False,
+                    "evidence": {"adapter_mode": "deterministic_fake"},
+                }
+            return super().probe_learnability(policy, poison)
+
+    summary = EvolutionRoundRunner(
+        config,
+        round_id="R001",
+        adapter=RoutingAdapter(tmp_path / "runtime/fake"),
+        project_root=tmp_path,
+    ).run()
+    round_dir = tmp_path / "runtime/rounds/R001"
+    assert not summary["promoted"]
+    assert len(
+        (round_dir / "covered_archive_updates.jsonl").read_text().splitlines()
+    ) == 1
+    assert len((round_dir / "archive_exclusions.jsonl").read_text().splitlines()) == 1
+    assert len((round_dir / "archive_updates.jsonl").read_text().splitlines()) == 2
+    verify_frozen_round(round_dir)
+
+
+def test_round_defers_promotion_when_residual_designs_are_insufficient(tmp_path):
+    config, registry = _project(tmp_path)
+
+    class CoveredAdapter(DeterministicEvolutionAdapter):
+        def evaluate_blue(self, policy, poison, seed):
+            row = super().evaluate_blue(policy, poison, seed)
+            row["oracle_ok"] = True
+            return row
+
+        def probe_learnability(self, policy, poison):
+            raise AssertionError("covered poison must not invoke teacher")
+
+    parent = get_active_policy(load_registry(registry))
+    summary = EvolutionRoundRunner(
+        config,
+        round_id="R001",
+        adapter=CoveredAdapter(tmp_path / "runtime/fake"),
+        project_root=tmp_path,
+    ).run()
+    assert not summary["promoted"]
+    assert not summary["promotion_eligible"]
+    assert summary["defer_reason"] == "insufficient_residual_designs"
+    assert summary["active_policy_hash"] == parent.policy_hash
+    round_dir = tmp_path / "runtime/rounds/R001"
+    assert json.loads((round_dir / "target_manifest.json").read_text())["row_count"] == 0
+    assert len(
+        (round_dir / "covered_archive_updates.jsonl").read_text().splitlines()
+    ) == 4
+    verify_frozen_round(round_dir)
+
+
 def test_event_streams_are_hash_chained_and_tamper_evident(tmp_path):
     config, _registry = _project(tmp_path)
     EvolutionRoundRunner(
@@ -411,6 +575,166 @@ def test_archive_keeps_effect_elites_dedupes_and_rejects_inconclusive(tmp_path):
         )
 
 
+def test_map_elites_keeps_distinct_objective_winners():
+    common = {
+        "challenged_policy_hash": "sha256:" + "a" * 64,
+        "family": "off_by_one",
+        "effect": "terminal",
+        "affected_role": "control",
+        "edit_scope": "expression",
+        "first_divergence_cycle_bucket": "same_cycle",
+        "hardness_class": "hard_residual",
+    }
+    rows = [
+        {
+            **common,
+            "poison_id": "hard",
+            "hardness": 1.0,
+            "novelty": 0.2,
+            "normalized_edit_cost": 5,
+            "learnability": {"label": "reachable"},
+        },
+        {
+            **common,
+            "poison_id": "small",
+            "hardness": 0.7,
+            "novelty": 1.0,
+            "normalized_edit_cost": 1,
+            "learnability": {"label": "weakly_reachable"},
+        },
+        {
+            **common,
+            "poison_id": "dominated",
+            "hardness": 0.5,
+            "novelty": 0.1,
+            "normalized_edit_cost": 7,
+            "learnability": {"label": "unknown"},
+        },
+    ]
+    view = next(iter(materialize_elites(rows).values()))
+    assert view["hardest"]["poison_id"] == "hard"
+    assert view["minimal_edit"]["poison_id"] == "small"
+    assert view["most_learnable"]["poison_id"] == "hard"
+    assert {row["poison_id"] for row in pareto_frontier(rows)} == {"hard", "small"}
+    assert {
+        row["poison_id"] for row in select_residual_elites(rows)
+    } == {"hard", "small"}
+
+
+def test_covered_archive_is_separate_from_adaptation_archive(tmp_path):
+    covered = _archive_poison(
+        poison_id="covered",
+        hardness=0.0,
+        hardness_class="covered",
+        learnability=None,
+    )
+    with pytest.raises(ArchiveViolation, match="residual archive"):
+        update_archive(tmp_path / "residual.jsonl", covered)
+    accepted = update_archive(
+        tmp_path / "covered.jsonl",
+        covered,
+        archive_kind="covered",
+    )
+    assert accepted["archive_kind"] == "covered"
+
+
+def test_learnability_teacher_budget_is_hash_bound_and_separated():
+    policy = PolicyState.from_dict(
+        json.loads(
+            (ROOT / "configs/base_policy/frozen_base_policy_v1.json").read_text()
+        )
+    )
+    poison = {
+        "poison_id": "p0",
+        "challenged_policy_hash": policy.policy_hash,
+    }
+    raw = {
+        "label": "reachable",
+        "challenged_policy_hash": policy.policy_hash,
+        "teacher_mode": "same_model_expanded",
+        "teacher_budget": {
+            key: int(value) * 2 for key, value in policy.budgets.items()
+        },
+        "attempts": 2,
+        "successes": 1,
+        "budget_exhausted": False,
+        "evidence": {"teacher": "fake"},
+    }
+    result = validate_learnability_result(policy, poison, raw)
+    assert verify_learnability_result(result) == result
+    tampered = dict(result)
+    tampered["successes"] = 0
+    with pytest.raises(LearnabilityViolation, match="no success|hash mismatch"):
+        verify_learnability_result(tampered)
+    unexpanded = dict(raw)
+    unexpanded["teacher_budget"] = dict(policy.budgets)
+    with pytest.raises(LearnabilityViolation, match="strictly expand"):
+        validate_learnability_result(policy, poison, unexpanded)
+    wrong_policy = dict(raw)
+    wrong_policy["challenged_policy_hash"] = "sha256:" + "f" * 64
+    with pytest.raises(LearnabilityViolation, match="wrong policy"):
+        validate_learnability_result(policy, poison, wrong_policy)
+
+
+def test_round_audit_reconstructs_decisions_and_round_ledger_is_idempotent(tmp_path):
+    config, _registry = _project(tmp_path)
+    runner = EvolutionRoundRunner(
+        config,
+        round_id="R001",
+        adapter=DeterministicEvolutionAdapter(tmp_path / "runtime/fake"),
+        project_root=tmp_path,
+    )
+    summary = runner.run()
+    audit = verify_frozen_round(tmp_path / "runtime/rounds/R001")
+    assert audit["audit_record_hash"] == summary["audit_record_hash"]
+    assert audit["paired_result_hash"]
+    ledger = read_ledger(tmp_path / "runtime/rounds/round_ledger.jsonl")
+    assert len(ledger) == 1
+    assert runner.run() == summary
+    assert len(read_ledger(tmp_path / "runtime/rounds/round_ledger.jsonl")) == 1
+
+
+def test_round_audit_and_run_context_reject_tampering(tmp_path):
+    config, _registry = _project(tmp_path)
+    EvolutionRoundRunner(
+        config,
+        round_id="R001",
+        adapter=DeterministicEvolutionAdapter(tmp_path / "runtime/fake"),
+        project_root=tmp_path,
+    ).run()
+    round_dir = tmp_path / "runtime/rounds/R001"
+    context_path = round_dir / "toolchain.json"
+    context = json.loads(context_path.read_text())
+    context["toolchain_fingerprint"]["model_calls"] = 99
+    context_path.write_text(json.dumps(context))
+    with pytest.raises(RunContextViolation, match="fingerprint hash mismatch"):
+        verify_run_context(context)
+    with pytest.raises(RunContextViolation):
+        verify_frozen_round(round_dir)
+
+
+def test_round_audit_rejects_paired_replay_tampering(tmp_path):
+    config, _registry = _project(tmp_path)
+    EvolutionRoundRunner(
+        config,
+        round_id="R001",
+        adapter=DeterministicEvolutionAdapter(tmp_path / "runtime/fake"),
+        project_root=tmp_path,
+    ).run()
+    round_dir = tmp_path / "runtime/rounds/R001"
+    paired = round_dir / "paired_validation.jsonl"
+    lines = paired.read_text().splitlines()
+    row = json.loads(lines[0])
+    row["oracle_ok"] = not row["oracle_ok"]
+    lines[0] = json.dumps(row)
+    paired.write_text("\n".join(lines) + "\n")
+    with pytest.raises(
+        RoundAuditViolation,
+        match="provenance mismatch|cannot be reconstructed",
+    ):
+        verify_frozen_round(round_dir)
+
+
 def test_lineage_cycle_is_rejected():
     with pytest.raises(ValueError, match="cycle"):
         validate_lineage_graph([
@@ -448,6 +772,23 @@ def test_generate_poison_requires_policy_bound_packet():
     bad["challenged_policy_hash"] = "sha256:" + "2" * 64
     with pytest.raises(ValueError, match="not bound"):
         generate_poison({}, parent, bad, [], mutator=lambda **_: {})
+
+
+def test_red_search_context_whitelists_archive_fields():
+    parent = PolicyState.from_dict(
+        json.loads(
+            (ROOT / "configs/base_policy/frozen_base_policy_v1.json").read_text()
+        )
+    )
+    with pytest.raises(CapabilityPacketViolation, match="hidden fields"):
+        build_red_search_context(
+            parent,
+            residual_archive=[{
+                **_archive_poison(challenged_policy_hash=parent.policy_hash),
+                "reference_patch": "must not leak",
+            }],
+            covered_archive=[],
+        )
 
 
 def test_formal_policy_bounds_and_prompt_asset_tamper_fail_closed(tmp_path):

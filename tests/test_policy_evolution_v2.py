@@ -20,6 +20,7 @@ from r3e.policy.registry_v2 import (
 )
 from r3e.policy.schema import PolicyState
 from r3e.policy.search import propose_children
+from r3e.protocol.hashing import hash_payload
 from semantic_repair_bench import functional_repair
 
 
@@ -76,6 +77,18 @@ def _decision(parent: PolicyState, child: PolicyState):
         child,
         rows,
         validation_manifest_hash="sha256:validation",
+        provenance={
+            "round_id": "R001",
+            "residual_manifest_hash": "sha256:" + "1" * 64,
+            "adaptation_manifest_hash": "sha256:" + "2" * 64,
+            "target_manifest_hash": "sha256:" + "3" * 64,
+            "non_target_manifest_hash": "sha256:" + "4" * 64,
+            "paired_result_hash": hash_payload(rows),
+            "code_commit_sha": "test-version",
+            "toolchain_fingerprint_hash": "sha256:" + "5" * 64,
+            "run_context_hash": "sha256:" + "6" * 64,
+            "toolchain_fingerprint": {"adapter": "test"},
+        },
     )
 
 
@@ -170,7 +183,9 @@ def test_minimal_round_promotes_and_binds_renewed_challenge(tmp_path):
     rtl_dir.mkdir()
 
     class Adapter:
-        def generate_red(self, parent, _config):
+        toolchain_fingerprint = {"adapter": "test"}
+
+        def generate_red(self, parent, _config, _red_context):
             rows = []
             for index in range(4):
                 golden = rtl_dir / f"g{index}.v"
@@ -219,8 +234,19 @@ def test_minimal_round_promotes_and_binds_renewed_challenge(tmp_path):
             }
 
         @staticmethod
-        def probe_learnability(_policy, _poison):
-            return "reachable"
+        def probe_learnability(policy, poison):
+            return {
+                "label": "reachable",
+                "challenged_policy_hash": policy.policy_hash,
+                "teacher_mode": "same_model_expanded",
+                "teacher_budget": {
+                    key: int(value) * 2 for key, value in policy.budgets.items()
+                },
+                "attempts": 1,
+                "successes": 1,
+                "budget_exhausted": False,
+                "evidence": {"poison_id": poison["poison_id"], "fixture": True},
+            }
 
         @staticmethod
         def screen_child(_parent, child, _adaptation):
