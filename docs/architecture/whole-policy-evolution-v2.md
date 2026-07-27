@@ -51,12 +51,21 @@ separate `hardest`, `minimal_edit`, and `most_learnable` views, plus a Pareto
 frontier. Duplicate poison evidence is deduplicated and lineage graphs reject
 missing parents and cycles.
 
+`PROVEN_NON_EQUIV` means an explicit, hash-bound counterexample, not merely
+an incomplete equivalence proof. Oracle result, witness, toolchain, and
+command hashes are mandatory and are rechecked when the archive is written.
+
 Lineage execution uses a frozen operator space and a hash-bound plan. Adapter
 output is accepted only after runner-owned postcondition checks for policy
 binding, parent descriptor, family/effect/role transition, lineage and
 composition depth, and single-module/single-block scope. A lineage parent may
 have challenged an earlier policy; the child poison always binds the current
 active policy.
+
+Reference materializers cover dependency deepening, temporalization,
+two-effect composition, and counterexample-guided revision. They are
+deterministic descriptor transformations; adapters remain responsible for
+tool-specific RTL materialization and cannot bypass runner postconditions.
 
 `hard_residual` and `borderline_residual` entries enter the residual archive
 only with structured reachable/weakly-reachable teacher evidence.

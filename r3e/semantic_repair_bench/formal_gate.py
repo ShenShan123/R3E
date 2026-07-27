@@ -8,6 +8,7 @@ golden 自作 oracle，verify_equiv(seq_miter/induct, 含 abstract_mul 处理乘
 from __future__ import annotations
 
 import hashlib
+import re
 import sys
 from dataclasses import dataclass, field
 from enum import Enum
@@ -19,6 +20,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from microsurgeon_frontend.semantic.llm_micro_repair import verify_equiv  # noqa: E402
 from semantic_repair_bench.formal_protocol import atomic_write_json, hash_payload  # noqa: E402
 from r3e.protocol.toolchain_fingerprint import fingerprint  # noqa: E402
+
+
+_HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 class FormalStatus(str, Enum):
@@ -40,6 +44,7 @@ class FormalOutcome:
     err: str = ""
     proof_method: str = "yosys_equiv_induct"
     proof_artifact: str = ""
+    counterexample_hash: str = ""
     command_hash: str = ""
     toolchain_fingerprint_hash: str = ""
     toolchain: dict = field(default_factory=dict)
@@ -134,14 +139,11 @@ def formal_judge(golden, deps, candidate, top_module, work_dir,
     elif r.get("yosys_exit") not in {0, 1}:
         status = FormalStatus.TOOL_ERROR
     elif (
-        r.get("proven") is not None
-        and r.get("total") is not None
-        and int(r["total"]) > 0
-        and int(r["total"]) > int(r["proven"])
+        bool(r.get("counterexample_found"))
+        and _HASH_RE.fullmatch(str(r.get("counterexample_hash") or ""))
     ):
-        # equiv_status -assert exits nonzero for a reconstructed unproven
-        # obligation; that is the formal counterexample condition, not a tool
-        # error. A missing parsed obligation still fails closed below.
+        # Only an explicit SAT model is non-equivalence evidence. Unproven
+        # equiv cells without a witness remain inconclusive.
         status = FormalStatus.PROVEN_NON_EQUIV
     else:
         status = FormalStatus.INCONCLUSIVE
@@ -163,6 +165,7 @@ def formal_judge(golden, deps, candidate, top_module, work_dir,
         timed_out=timed_out,
         proof_method=f"yosys_equiv_{method}",
         proof_artifact=str(r.get("log_path") or ""),
+        counterexample_hash=str(r.get("counterexample_hash") or ""),
         command_hash=command_hash,
         toolchain_fingerprint_hash=toolchain["fingerprint_hash"],
         toolchain=toolchain,

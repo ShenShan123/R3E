@@ -12,6 +12,7 @@ from r3e.protocol.ledger import writer_lock
 from .novelty import archive_cell, descriptor
 from .lineage import validate_lineage_graph
 from .selection import materialize_elites
+from .validity import verify_validity_record
 
 
 class ArchiveViolation(RuntimeError):
@@ -55,6 +56,10 @@ def update_archive(
     )
     if formal_status != "PROVEN_NON_EQUIV":
         raise ArchiveViolation("inconclusive formal oracle cannot enter residual archive")
+    try:
+        verify_validity_record(poison.get("validity") or {})
+    except ValueError as exc:
+        raise ArchiveViolation(str(exc)) from exc
     if not poison.get("challenged_policy_hash"):
         raise ArchiveViolation("archive poison must bind challenged policy hash")
     hardness_class = str(poison.get("hardness_class") or "")

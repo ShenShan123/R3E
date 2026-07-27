@@ -8,3 +8,9 @@ The principal monolithic legacy driver is
 `r3e/semantic_repair_bench/correctness_gated_accumulation_curve.py`. New round
 orchestration belongs in `r3e/arena/`; no Whole-Policy Evolution functionality
 may be added to the monolithic driver.
+
+The historical red mutator implementation now lives at
+`r3e/legacy/red_mutator.py`. Its original
+`r3e/semantic_repair_bench/red_mutator.py` path is a deprecated compatibility
+facade. Formal red generation uses `r3e/red/` and never imports the legacy
+mutator.

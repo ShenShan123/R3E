@@ -413,23 +413,34 @@ def gen_poison(
             )
             continue
         # Treat a negative verdict as an admitted red counterexample only when
-        # the formal report contains a rebuildable failed proof obligation.
-        # Parser/tool failures may also report equiv=False and must fail closed.
+        # the formal report contains an explicit, hash-bound SAT witness.
+        # Unproven obligations, parser failures, and old status-less outcomes
+        # are inconclusive and must fail closed.
         formal_status = getattr(j, "status", None)
         formal_status_value = getattr(formal_status, "value", formal_status)
-        # Backward-compatible fallback supports old cached/test outcomes while
-        # the formal runtime itself emits the explicit status enum.
+        counterexample_hash = str(getattr(j, "counterexample_hash", "") or "")
+        command_hash = str(getattr(j, "command_hash", "") or "")
+        toolchain_hash = str(
+            getattr(j, "toolchain_fingerprint_hash", "") or ""
+        )
+        hashes_complete = all(
+            re.fullmatch(r"sha256:[0-9a-f]{64}", value)
+            for value in (counterexample_hash, command_hash, toolchain_hash)
+        )
         has_counterexample = (
             formal_status_value == "PROVEN_NON_EQUIV"
-            if formal_status_value is not None
-            else (
-                not j.equiv
-                and j.proven is not None
-                and j.total is not None
-                and j.total > j.proven
-            )
+            and hashes_complete
         )
         if has_counterexample:
+            oracle_result_hash = formal_hash_payload({
+                "formal_status": formal_status_value,
+                "counterexample_hash": counterexample_hash,
+                "command_hash": command_hash,
+                "toolchain_fingerprint_hash": toolchain_hash,
+                "proven": j.proven,
+                "total": j.total,
+                "yosys_exit": j.yosys_exit,
+            })
             return {
                 "design": design.name,
                 "golden": design.golden,
@@ -448,12 +459,15 @@ def gen_poison(
                     "proven": j.proven,
                     "total": j.total,
                     "yosys_exit": j.yosys_exit,
-                    "formal_status": formal_status_value or "PROVEN_NON_EQUIV",
-                    "command_hash": getattr(j, "command_hash", ""),
-                    "toolchain_fingerprint_hash": getattr(
-                        j, "toolchain_fingerprint_hash", ""
+                    "formal_status": formal_status_value,
+                    "oracle_result_hash": oracle_result_hash,
+                    "counterexample_hash": counterexample_hash,
+                    "command_hash": command_hash,
+                    "toolchain_fingerprint_hash": toolchain_hash,
+                    "criterion": (
+                        "formal_status == PROVEN_NON_EQUIV and "
+                        "counterexample/toolchain/command hashes are bound"
                     ),
-                    "criterion": "formal_status == PROVEN_NON_EQUIV",
                 },
             }
         print(

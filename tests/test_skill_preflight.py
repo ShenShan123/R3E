@@ -30,3 +30,13 @@ def test_legacy_ablation_can_still_use_recall_context():
     )
 
     assert ctx == "PROMOTED_STRATEGY\nRAW_HISTORY_CONTEXT"
+
+
+def test_red_mutator_original_path_is_legacy_facade():
+    from semantic_repair_bench import red_mutator
+
+    assert red_mutator.mutate_once.__module__ == "r3e.legacy.red_mutator"
+    assert (
+        red_mutator.generate_repairable_poison.__module__
+        == "r3e.legacy.red_mutator"
+    )

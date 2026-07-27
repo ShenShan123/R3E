@@ -45,6 +45,7 @@ RED_SEARCH_CONTEXT_FIELDS = {
     "evolution_operator",
     "composition_depth",
     "sequential_depth",
+    "dependency_depth",
 }
 
 
@@ -100,6 +101,7 @@ def build_red_search_context(
                 ),
                 "composition_depth": int(row.get("composition_depth") or 1),
                 "sequential_depth": int(row.get("sequential_depth") or 0),
+                "dependency_depth": int(row.get("dependency_depth") or 0),
             }
             if set(summary) != RED_SEARCH_CONTEXT_FIELDS:
                 raise CapabilityPacketViolation("red archive summary schema mismatch")

@@ -8,6 +8,7 @@ apply_patch          : apply a {line, old_identifier, new_identifier} patch in i
 from __future__ import annotations
 
 import difflib
+import hashlib
 import re
 from pathlib import Path
 from typing import List, Tuple
@@ -298,6 +299,7 @@ _EQUIV_OK_MSG = "Equivalence successfully proven!"
 # seq_miter(retiming/时序变换用): sat 时序 miter 按 I/O 对齐, bounded N 拍. equiv_induct 的
 # k-induction 对齐寄存器, 证不了 retiming(寄存器内容变); sat-miter 不要求寄存器对应 → 能证.
 _SAT_PROOF_OK_MSG = "SAT proof finished - no model found: SUCCESS!"
+_SAT_COUNTEREXAMPLE_MSG = "SAT proof finished - model found:"
 
 
 def _egress_guard(base_url: str) -> str:
@@ -644,8 +646,20 @@ def verify_equiv(
         else ""
     )
 
+    counterexample_found = False
+    counterexample_hash = ""
     if equiv_method == "seq_miter":
         ok = (not timed_out) and (returncode == 0) and (_SAT_PROOF_OK_MSG in log_text)
+        counterexample_found = (
+            not timed_out
+            and returncode != 0
+            and _SAT_COUNTEREXAMPLE_MSG in log_text
+            and _SAT_PROOF_OK_MSG not in log_text
+        )
+        if counterexample_found:
+            counterexample_hash = (
+                "sha256:" + hashlib.sha256(log_text.encode("utf-8")).hexdigest()
+            )
         parsed = {"proven": (1 if ok else 0), "unproven": (0 if ok else 1),
                   "total": 1, "asserted_ok": ok}
     else:
@@ -661,6 +675,8 @@ def verify_equiv(
         "yosys_exit": returncode,
         "timed_out": timed_out,
         "log_path": str(log_path),
+        "counterexample_found": counterexample_found,
+        "counterexample_hash": counterexample_hash,
     }
 
 

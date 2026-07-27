@@ -7,6 +7,7 @@ authority to widen mutation scope or silently change lineage.
 from __future__ import annotations
 
 from pathlib import Path
+import re
 from typing import Any, Callable
 
 from r3e.policy.schema import PolicyState
@@ -34,6 +35,7 @@ _PLAN_FIELDS = {
     "parent_composition_depth",
     "plan_hash",
 }
+_HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 class LineageOperatorViolation(RuntimeError):
@@ -162,6 +164,10 @@ def verify_lineage_execution(
         expected_depth = int(parent.get("lineage_depth") or 0) + 1
         if operator != "compose" and poison.get("family") != parent.get("family"):
             raise LineageOperatorViolation("operator must preserve poison family")
+        if operator == "deepen" and int(poison.get("dependency_depth") or 0) <= int(
+            parent.get("dependency_depth") or 0
+        ):
+            raise LineageOperatorViolation("deepen must increase dependency depth")
         if operator == "relocate" and poison.get("affected_role") == parent.get(
             "affected_role"
         ):
@@ -177,12 +183,31 @@ def verify_lineage_execution(
             raise LineageOperatorViolation(
                 "counterexample_revise must change effect or failure signature"
             )
+        if operator == "counterexample_revise" and not _HASH_RE.fullmatch(
+            str(poison.get("counterexample_hash") or "")
+        ):
+            raise LineageOperatorViolation(
+                "counterexample_revise requires a hash-bound witness"
+            )
         if operator == "compose" and int(poison.get("composition_depth") or 1) != int(
             parent.get("composition_depth") or 1
         ) + 1:
             raise LineageOperatorViolation(
                 "compose must increase composition depth by one"
             )
+        if operator == "compose":
+            effects = poison.get("composed_effects")
+            if (
+                not isinstance(effects, list)
+                or len(effects) != 2
+                or len(set(str(value) for value in effects)) != 2
+                or str(parent.get("effect") or "") not in {
+                    str(value) for value in effects
+                }
+            ):
+                raise LineageOperatorViolation(
+                    "compose requires two distinct effects including the parent"
+                )
     if int(plan.get("expected_lineage_depth", -1)) != expected_depth:
         raise LineageOperatorViolation("lineage plan depth mismatch")
     if (
@@ -206,6 +231,142 @@ def verify_lineage_execution(
     ):
         raise LineageOperatorViolation("maximum changed blocks exceeded")
     return poison
+
+
+def _materializer_base(
+    plan: dict[str, Any],
+    parent: dict[str, Any],
+) -> dict[str, Any]:
+    if plan.get("operator") == "fresh":
+        raise LineageOperatorViolation("lineage materializer requires a parent")
+    result = {
+        "poison_id": str(plan.get("poison_id") or ""),
+        "challenged_policy_id": str(plan.get("challenged_policy_id") or ""),
+        "challenged_policy_hash": str(plan.get("challenged_policy_hash") or ""),
+        "parent_poison_id": str(plan.get("parent_poison_id") or ""),
+        "parent_challenged_policy_hash": str(
+            plan.get("parent_challenged_policy_hash") or ""
+        ),
+        "lineage_depth": int(plan.get("expected_lineage_depth") or 0),
+        "evolution_operator": str(plan.get("operator") or ""),
+        "family": str(parent.get("family") or ""),
+        "effect": str(parent.get("effect") or ""),
+        "affected_role": str(parent.get("affected_role") or ""),
+        "edit_scope": str(parent.get("edit_scope") or "expression"),
+        "composition_depth": int(parent.get("composition_depth") or 1),
+        "sequential_depth": int(parent.get("sequential_depth") or 0),
+        "dependency_depth": int(parent.get("dependency_depth") or 0),
+        "first_divergence_signal": str(
+            parent.get("first_divergence_signal") or ""
+        ),
+        "first_divergence_cycle_bucket": str(
+            parent.get("first_divergence_cycle_bucket") or "same_cycle"
+        ),
+        "failure_signature": str(parent.get("failure_signature") or ""),
+        "changed_modules": 1,
+        "changed_blocks": 1,
+        "lineage_plan": dict(plan),
+    }
+    result["normalized_diff_hash"] = hash_payload({
+        "operator": result["evolution_operator"],
+        "plan_hash": plan.get("plan_hash"),
+        "parent_diff_hash": str(parent.get("normalized_diff_hash") or ""),
+    })
+    return result
+
+
+def materialize_deepen(
+    plan: dict[str, Any], parent: dict[str, Any]
+) -> dict[str, Any]:
+    """Deterministically deepen one same-family dependency chain."""
+    if plan.get("operator") != "deepen":
+        raise LineageOperatorViolation("deepen materializer received another operator")
+    result = _materializer_base(plan, parent)
+    result["dependency_depth"] = int(parent.get("dependency_depth") or 0) + 1
+    result["failure_signature"] = hash_payload({
+        "kind": "deepen",
+        "parent_signature": str(parent.get("failure_signature") or ""),
+        "dependency_depth": result["dependency_depth"],
+    })
+    return result
+
+
+def materialize_temporalize(
+    plan: dict[str, Any], parent: dict[str, Any]
+) -> dict[str, Any]:
+    """Move a same-family effect one deterministic temporal step later."""
+    if plan.get("operator") != "temporalize":
+        raise LineageOperatorViolation(
+            "temporalize materializer received another operator"
+        )
+    result = _materializer_base(plan, parent)
+    result["sequential_depth"] = int(parent.get("sequential_depth") or 0) + 1
+    result["first_divergence_cycle_bucket"] = (
+        "one_cycle"
+        if result["sequential_depth"] == 1
+        else "multi_cycle"
+    )
+    result["failure_signature"] = hash_payload({
+        "kind": "temporalize",
+        "parent_signature": str(parent.get("failure_signature") or ""),
+        "sequential_depth": result["sequential_depth"],
+    })
+    return result
+
+
+def materialize_compose(
+    plan: dict[str, Any],
+    parent: dict[str, Any],
+    *,
+    secondary_effect: str,
+) -> dict[str, Any]:
+    """Compose exactly one additional declared effect within frozen bounds."""
+    if plan.get("operator") != "compose":
+        raise LineageOperatorViolation("compose materializer received another operator")
+    parent_effect = str(parent.get("effect") or "")
+    secondary = str(secondary_effect or "")
+    if not parent_effect or not secondary or secondary == parent_effect:
+        raise LineageOperatorViolation("compose requires a distinct secondary effect")
+    result = _materializer_base(plan, parent)
+    result["composition_depth"] = int(parent.get("composition_depth") or 1) + 1
+    result["composed_effects"] = [parent_effect, secondary]
+    result["effect"] = f"{parent_effect}+{secondary}"
+    result["failure_signature"] = hash_payload({
+        "kind": "compose",
+        "parent_signature": str(parent.get("failure_signature") or ""),
+        "effects": result["composed_effects"],
+    })
+    return result
+
+
+def materialize_counterexample_revise(
+    plan: dict[str, Any],
+    parent: dict[str, Any],
+    *,
+    counterexample_hash: str,
+    revised_effect: str,
+) -> dict[str, Any]:
+    """Revise effect/signature using only a bound counterexample digest."""
+    if plan.get("operator") != "counterexample_revise":
+        raise LineageOperatorViolation(
+            "counterexample materializer received another operator"
+        )
+    witness = str(counterexample_hash or "")
+    effect = str(revised_effect or "")
+    if not _HASH_RE.fullmatch(witness):
+        raise LineageOperatorViolation("counterexample hash is invalid")
+    if not effect or effect == str(parent.get("effect") or ""):
+        raise LineageOperatorViolation("counterexample revision must change effect")
+    result = _materializer_base(plan, parent)
+    result["counterexample_hash"] = witness
+    result["effect"] = effect
+    result["failure_signature"] = hash_payload({
+        "kind": "counterexample_revise",
+        "parent_signature": str(parent.get("failure_signature") or ""),
+        "counterexample_hash": witness,
+        "revised_effect": effect,
+    })
+    return result
 
 
 def execute_lineage_operator(

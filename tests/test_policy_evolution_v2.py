@@ -223,6 +223,16 @@ def test_minimal_round_promotes_and_binds_renewed_challenge(tmp_path):
                 "output_complete": True,
                 "revert_oracle_ok": True,
                 "fresh_output": True,
+                "oracle_result_hash": hash_payload({
+                    "poison_id": poison["poison_id"],
+                    "oracle": "test",
+                }),
+                "counterexample_hash": hash_payload({
+                    "poison_id": poison["poison_id"],
+                    "witness": "test",
+                }),
+                "toolchain_fingerprint_hash": hash_payload({"tool": "test"}),
+                "command_hash": hash_payload({"command": "test"}),
             }
 
         @staticmethod

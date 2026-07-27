@@ -135,6 +135,10 @@ class FakeRedAdapter:
             "revert_oracle_ok": True,
             "fresh_output": True,
             "oracle_result_hash": hash_payload({"poison_id": poison["poison_id"]}),
+            "counterexample_hash": hash_payload({
+                "poison_id": poison["poison_id"],
+                "witness": "deterministic_fake",
+            }),
             "toolchain_fingerprint_hash": hash_payload({"tool": "deterministic_fake"}),
             "command_hash": hash_payload({"command": "deterministic_fake"}),
         }

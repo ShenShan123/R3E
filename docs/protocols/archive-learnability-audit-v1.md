@@ -16,6 +16,13 @@ summary fields:
 Raw target results, reference repairs, child validation, and target oracle
 labels are rejected before the adapter is called.
 
+Formal poison admission is fail closed. `PROVEN_NON_EQUIV` requires an
+explicit SAT counterexample and canonical `oracle_result_hash`,
+`counterexample_hash`, `toolchain_fingerprint_hash`, and `command_hash`.
+Unproven equivalence cells without a witness are `INCONCLUSIVE`; they cannot
+enter either archive. Archive admission re-verifies the complete validity
+record and its result hash instead of trusting an adapter boolean.
+
 Formal adapter signature:
 
 ```python
@@ -68,6 +75,13 @@ increase bounded composition depth by exactly one, and
 Non-compose operators preserve family. Cross-policy ancestry is allowed so a
 new active policy can be challenged by a deepened residual from its parent
 policy, while the new poison itself must bind the current active policy hash.
+
+The deterministic reference materializers are
+`materialize_deepen`, `materialize_temporalize`, `materialize_compose`, and
+`materialize_counterexample_revise`. They produce structured mutation
+descriptors only; RTL/tool-specific realization remains behind the adapter
+boundary. Each materializer is checked against the same frozen plan before
+archive admission.
 
 ## MAP-Elites
 

@@ -49,6 +49,10 @@ from r3e.red.operators import (
     LineageOperatorViolation,
     execute_lineage_operator,
     load_operator_space,
+    materialize_compose,
+    materialize_counterexample_revise,
+    materialize_deepen,
+    materialize_temporalize,
     make_lineage_plan,
     verify_lineage_execution,
 )
@@ -58,6 +62,7 @@ from r3e.red.learnability import (
     verify_learnability_result,
 )
 from r3e.red.selection import materialize_elites, pareto_frontier, select_residual_elites
+from r3e.red.validity import validity_gate
 from semantic_repair_bench import functional_repair
 
 
@@ -181,6 +186,19 @@ def _project(tmp_path: Path) -> tuple[dict, Path]:
 
 
 def _archive_poison(**updates):
+    validity_body = {
+        "proven_valid": True,
+        "checks": {"formal_proven_non_equiv": True, "evidence_complete": True},
+        "rejection_reasons": [],
+        "evidence": {
+            "formal_status": "PROVEN_NON_EQUIV",
+            "oracle_result_hash": hash_payload({"oracle": "archive-test"}),
+            "counterexample_hash": hash_payload({"witness": "archive-test"}),
+            "toolchain_fingerprint_hash": hash_payload({"tool": "archive-test"}),
+            "command_hash": hash_payload({"command": "archive-test"}),
+        },
+    }
+    validity_body["result_hash"] = hash_payload(validity_body)
     row = {
         "poison_id": "p0",
         "challenged_policy_hash": "sha256:" + "a" * 64,
@@ -195,13 +213,45 @@ def _archive_poison(**updates):
         "normalized_diff_hash": "diff0",
         "hardness": 1.0,
         "learnability": "reachable",
-        "validity": {
-            "proven_valid": True,
-            "evidence": {"formal_status": "PROVEN_NON_EQUIV"},
-        },
+        "validity": validity_body,
     }
     row.update(updates)
     return row
+
+
+def test_validity_gate_requires_all_formal_evidence_hashes(tmp_path):
+    golden = tmp_path / "golden.v"
+    buggy = tmp_path / "buggy.v"
+    golden.write_text("module top(output y); assign y=0; endmodule\n")
+    buggy.write_text("module top(output y); assign y=1; endmodule\n")
+    poison = {
+        "golden_rtl": str(golden),
+        "buggy_rtl": str(buggy),
+        "golden_compile_ok": True,
+        "golden_oracle_ok": True,
+        "buggy_compile_ok": True,
+        "buggy_functional_fail": True,
+        "formal_status": "PROVEN_NON_EQUIV",
+        "output_complete": True,
+        "revert_oracle_ok": True,
+        "fresh_output": True,
+        "oracle_result_hash": hash_payload({"oracle": "test"}),
+        "counterexample_hash": hash_payload({"witness": "test"}),
+        "toolchain_fingerprint_hash": hash_payload({"tool": "test"}),
+        "command_hash": hash_payload({"command": "test"}),
+    }
+    assert validity_gate(poison).proven_valid
+    for field in (
+        "oracle_result_hash",
+        "counterexample_hash",
+        "toolchain_fingerprint_hash",
+        "command_hash",
+    ):
+        missing = dict(poison)
+        missing[field] = ""
+        result = validity_gate(missing)
+        assert not result.proven_valid
+        assert any(reason.endswith("_hash_bound") for reason in result.rejection_reasons)
 
 
 def test_registry_rejects_dual_active_and_manual_authority(tmp_path):
@@ -746,6 +796,15 @@ def test_archive_keeps_effect_elites_dedupes_and_rejects_inconclusive(tmp_path):
                 },
             ),
         )
+    incomplete = _archive_poison(poison_id="p3", normalized_diff_hash="diff3")
+    incomplete["validity"]["evidence"]["counterexample_hash"] = ""
+    body = {
+        key: incomplete["validity"][key]
+        for key in ("proven_valid", "checks", "rejection_reasons", "evidence")
+    }
+    incomplete["validity"]["result_hash"] = hash_payload(body)
+    with pytest.raises(ArchiveViolation, match="counterexample_hash"):
+        update_archive(path, incomplete)
 
 
 def test_map_elites_keeps_distinct_objective_winners():
@@ -977,6 +1036,153 @@ def test_lineage_operator_plan_is_hash_bound_and_scope_checked():
             policy=policy,
             operator_space=space,
             available_parents={"p0": parent},
+        )
+
+
+def test_four_lineage_materializers_execute_and_validate():
+    policy = PolicyState.from_dict(
+        json.loads(
+            (ROOT / "configs/base_policy/frozen_base_policy_v1.json").read_text()
+        )
+    )
+    space = load_operator_space(
+        ROOT / "configs/red/lineage_operator_space_v1.json"
+    )
+    parent = {
+        "poison_id": "parent",
+        "challenged_policy_hash": "sha256:" + "8" * 64,
+        "family": "off_by_one",
+        "effect": "counter_terminal",
+        "affected_role": "control",
+        "edit_scope": "expression",
+        "lineage_depth": 1,
+        "composition_depth": 1,
+        "sequential_depth": 0,
+        "dependency_depth": 1,
+        "first_divergence_signal": "count",
+        "first_divergence_cycle_bucket": "same_cycle",
+        "failure_signature": "count:terminal",
+        "normalized_diff_hash": "sha256:" + "7" * 64,
+    }
+
+    def run(operator, executor):
+        plan = make_lineage_plan(
+            policy,
+            operator_space=space,
+            operator=operator,
+            poison_id=f"child-{operator}",
+            parent=parent,
+        )
+        return execute_lineage_operator(
+            plan,
+            parent,
+            policy=policy,
+            operator_space=space,
+            executor=executor,
+        )
+
+    deepened = run(
+        "deepen",
+        lambda plan, bound_parent: materialize_deepen(plan, bound_parent),
+    )
+    assert deepened["dependency_depth"] == 2
+
+    temporal = run(
+        "temporalize",
+        lambda plan, bound_parent: materialize_temporalize(plan, bound_parent),
+    )
+    assert temporal["sequential_depth"] == 1
+    assert temporal["first_divergence_cycle_bucket"] == "one_cycle"
+
+    composed = run(
+        "compose",
+        lambda plan, bound_parent: materialize_compose(
+            plan, bound_parent, secondary_effect="condition_flip"
+        ),
+    )
+    assert composed["composition_depth"] == 2
+    assert composed["composed_effects"] == [
+        "counter_terminal",
+        "condition_flip",
+    ]
+
+    witness = hash_payload({"counterexample": "count diverges"})
+    revised = run(
+        "counterexample_revise",
+        lambda plan, bound_parent: materialize_counterexample_revise(
+            plan,
+            bound_parent,
+            counterexample_hash=witness,
+            revised_effect="state_transition_boundary",
+        ),
+    )
+    assert revised["counterexample_hash"] == witness
+    assert revised["effect"] == "state_transition_boundary"
+
+
+def test_lineage_materializers_reject_unbound_or_out_of_contract_changes():
+    policy = PolicyState.from_dict(
+        json.loads(
+            (ROOT / "configs/base_policy/frozen_base_policy_v1.json").read_text()
+        )
+    )
+    space = load_operator_space(
+        ROOT / "configs/red/lineage_operator_space_v1.json"
+    )
+    parent = {
+        "poison_id": "parent",
+        "challenged_policy_hash": "sha256:" + "8" * 64,
+        "family": "off_by_one",
+        "effect": "counter_terminal",
+        "affected_role": "control",
+        "lineage_depth": 1,
+        "composition_depth": 1,
+        "sequential_depth": 0,
+        "dependency_depth": 1,
+        "failure_signature": "count:terminal",
+    }
+    compose_plan = make_lineage_plan(
+        policy,
+        operator_space=space,
+        operator="compose",
+        poison_id="bad-compose",
+        parent=parent,
+    )
+    with pytest.raises(LineageOperatorViolation, match="distinct secondary"):
+        materialize_compose(
+            compose_plan,
+            parent,
+            secondary_effect="counter_terminal",
+        )
+    revise_plan = make_lineage_plan(
+        policy,
+        operator_space=space,
+        operator="counterexample_revise",
+        poison_id="bad-revise",
+        parent=parent,
+    )
+    with pytest.raises(LineageOperatorViolation, match="hash is invalid"):
+        materialize_counterexample_revise(
+            revise_plan,
+            parent,
+            counterexample_hash="not-a-hash",
+            revised_effect="state_boundary",
+        )
+    deepen_plan = make_lineage_plan(
+        policy,
+        operator_space=space,
+        operator="deepen",
+        poison_id="bad-deepen",
+        parent=parent,
+    )
+    shallow = materialize_deepen(deepen_plan, parent)
+    shallow["dependency_depth"] = parent["dependency_depth"]
+    with pytest.raises(LineageOperatorViolation, match="dependency depth"):
+        verify_lineage_execution(
+            shallow,
+            policy=policy,
+            operator_space=space,
+            available_parents={"parent": parent},
         )
 
 
