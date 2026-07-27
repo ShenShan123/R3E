@@ -1,0 +1,16 @@
+{
+  "schema_version": "r3e-lineage-operator-space-v1",
+  "frozen": true,
+  "max_lineage_depth": 8,
+  "max_composition_depth": 2,
+  "max_changed_modules": 1,
+  "max_changed_blocks": 1,
+  "operators": {
+    "fresh": {"description": "start a new poison lineage"},
+    "deepen": {"description": "increase dependency depth in the same family"},
+    "relocate": {"description": "move the same family to another affected role"},
+    "temporalize": {"description": "increase sequential or temporal depth"},
+    "compose": {"description": "compose at most two bounded effects"},
+    "counterexample_revise": {"description": "revise effect/signature from oracle evidence"}
+  }
+}

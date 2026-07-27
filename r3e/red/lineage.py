@@ -21,16 +21,18 @@ def bind_lineage(
             raise ValueError("non-fresh lineage requires a parent poison")
         result.update({
             "parent_poison_id": "",
+            "parent_challenged_policy_hash": "",
             "lineage_depth": 0,
             "evolution_operator": "fresh",
         })
         return result
-    if parent.get("challenged_policy_hash") != poison.get("challenged_policy_hash"):
-        raise ValueError("lineage parent must bind the same challenged policy")
     if operator != "compose" and parent.get("family") != poison.get("family"):
         raise ValueError("lineage deepening must preserve family")
     result.update({
         "parent_poison_id": str(parent.get("poison_id") or ""),
+        "parent_challenged_policy_hash": str(
+            parent.get("challenged_policy_hash") or ""
+        ),
         "lineage_depth": int(parent.get("lineage_depth") or 0) + 1,
         "evolution_operator": operator,
     })

@@ -27,6 +27,7 @@ from r3e.protocol.provenance import verify_run_context
 from r3e.red.feedback_packet import FORBIDDEN_INPUT_KEYS
 from r3e.red.feedback_packet import verify_red_search_context
 from r3e.red.learnability import verify_learnability_result
+from r3e.red.selection import select_residual_elites
 
 
 ROUND_AUDIT_SCHEMA_VERSION = "r3e-round-audit-v1"
@@ -72,29 +73,78 @@ def reconstruct_round(round_dir: str | Path) -> dict[str, Any]:
         raise RoundAuditViolation("registry_before does not match frozen run context")
     residual = _manifest(root / "residual_manifest.json")
     archive_updates = _read_jsonl(root / "archive_updates.jsonl")
+    accumulated = _read_jsonl(root / "accumulated_residuals.jsonl")
+    accumulation = read_json(root / "residual_accumulation.json")
     covered_updates = _read_jsonl(root / "covered_archive_updates.jsonl")
     archive_exclusions = _read_jsonl(root / "archive_exclusions.jsonl")
     selection = read_json(root / "residual_selection.json")
-    if selection.get("schema_version") != "r3e-residual-selection-v1":
+    if selection.get("schema_version") != "r3e-residual-selection-v2":
         raise RoundAuditViolation("residual selection schema mismatch")
     selection_body = {
         key: value for key, value in selection.items() if key != "selection_hash"
     }
     if selection.get("selection_hash") != hash_payload(selection_body):
         raise RoundAuditViolation("residual selection hash mismatch")
-    if selection.get("admitted_rows_hash") != hash_payload(archive_updates):
-        raise RoundAuditViolation("residual selection admission hash mismatch")
+    accumulation_body = {
+        key: value for key, value in accumulation.items()
+        if key != "accumulation_hash"
+    }
+    if (
+        accumulation.get("schema_version") != "r3e-residual-accumulation-v1"
+        or accumulation.get("accumulation_hash") != hash_payload(accumulation_body)
+        or accumulation.get("accumulated_rows_hash") != hash_payload(accumulated)
+        or accumulation.get("current_round_updates_hash") != hash_payload(archive_updates)
+        or int(accumulation.get("row_count", -1)) != len(accumulated)
+    ):
+        raise RoundAuditViolation("residual accumulation hash mismatch")
+    for row in accumulated:
+        row_body = {
+            key: value for key, value in row.items()
+            if key != "archive_entry_hash"
+        }
+        if row.get("archive_entry_hash") != hash_payload(row_body):
+            raise RoundAuditViolation("accumulated archive entry hash mismatch")
+    if accumulation.get("archive_entry_hashes") != [
+        str(row.get("archive_entry_hash") or "") for row in accumulated
+    ]:
+        raise RoundAuditViolation("residual accumulation entry list mismatch")
+    if accumulation.get("included_round_ids") != sorted({
+        str(row.get("discovered_round") or "")
+        for row in accumulated if row.get("discovered_round")
+    }):
+        raise RoundAuditViolation("residual accumulation round list mismatch")
+    if any(
+        row.get("challenged_policy_hash") != parent.policy_hash
+        for row in accumulated
+    ):
+        raise RoundAuditViolation("residual accumulation mixed policy hashes")
+    if (
+        selection.get("current_round_updates_hash") != hash_payload(archive_updates)
+        or selection.get("accumulated_rows_hash") != hash_payload(accumulated)
+        or selection.get("accumulation_hash") != accumulation["accumulation_hash"]
+    ):
+        raise RoundAuditViolation("residual selection accumulation mismatch")
     if selection.get("challenged_policy_hash") != parent.policy_hash:
         raise RoundAuditViolation("residual selection policy binding mismatch")
     selected_ids = {str(row.get("poison_id") or "") for row in residual["rows"]}
     recorded_ids = {str(value) for value in selection.get("selected_poison_ids") or []}
+    expected_order = [
+        str(row.get("poison_id") or "")
+        for row in select_residual_elites(accumulated)
+    ]
     if (
         selected_ids != recorded_ids
         or len(selected_ids) != int(selection.get("selected_count", -1))
+        or list(selection.get("selected_poison_ids") or []) != expected_order
     ):
         raise RoundAuditViolation("residual manifest does not match elite selection")
     if residual.get("metadata", {}).get("selection_hash") != selection["selection_hash"]:
         raise RoundAuditViolation("residual manifest selection hash mismatch")
+    if (
+        residual.get("metadata", {}).get("accumulation_hash")
+        != accumulation["accumulation_hash"]
+    ):
+        raise RoundAuditViolation("residual manifest accumulation hash mismatch")
     adaptation = _manifest(root / "adaptation_manifest.json")
     target = _manifest(root / "target_manifest.json")
     non_target = _manifest(root / "non_target_manifest.json")

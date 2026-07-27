@@ -19,12 +19,14 @@ from r3e.arena.runner import EvolutionRoundRunner, RoundRunnerViolation, run_rou
 from r3e.policy.migrate import migrate_legacy
 from r3e.policy.registry_v2 import (
     RegistryViolation,
+    audit_fail_policy,
     get_active_policy,
     initialize_registry,
     load_registry,
     promote_policy,
     register_candidate,
     registry_hash,
+    retire_policy,
     rollback_policy,
     validate_registry,
 )
@@ -43,6 +45,13 @@ from r3e.red.feedback_packet import (
 )
 from r3e.red.generator import generate_poison
 from r3e.red.lineage import validate_lineage_graph
+from r3e.red.operators import (
+    LineageOperatorViolation,
+    execute_lineage_operator,
+    load_operator_space,
+    make_lineage_plan,
+    verify_lineage_execution,
+)
 from r3e.red.learnability import (
     LearnabilityViolation,
     validate_learnability_result,
@@ -120,6 +129,19 @@ def _strong_decision(parent: PolicyState, child: PolicyState) -> dict:
             "toolchain_fingerprint": {"adapter": "test"},
         },
     )
+
+
+def _audit_failure(policy: PolicyState, reason: str = "offline regression") -> dict:
+    evidence = {
+        "schema_version": "r3e-policy-audit-failure-v1",
+        "audit_result": "fail",
+        "policy_id": policy.policy_id,
+        "policy_hash": policy.policy_hash,
+        "reason": reason,
+        "checks": {"held_out_regression": False},
+    }
+    evidence["evidence_hash"] = hash_payload(evidence)
+    return evidence
 
 
 def _project(tmp_path: Path) -> tuple[dict, Path]:
@@ -275,6 +297,108 @@ def test_registry_serializes_concurrent_writers(tmp_path):
     assert get_active_policy(loaded).policy_id == "B0"
 
 
+def test_registry_retire_preserves_active_and_protects_authority(tmp_path):
+    registry, parent = _init(tmp_path)
+    child = _children(parent, 1)[0]
+    register_candidate(registry, child)
+    retired = retire_policy(registry, child.policy_id, reason="stale search branch")
+    assert retired["policies"][child.policy_id]["status"] == "retired"
+    assert get_active_policy(retired).policy_hash == parent.policy_hash
+    with pytest.raises(RegistryViolation, match="base policy"):
+        retire_policy(registry, parent.policy_id, reason="forbidden")
+
+
+def test_registry_audit_fail_exactly_restores_and_tombstones_hash(tmp_path):
+    registry, parent = _init(tmp_path)
+    child = _children(parent, 1)[0]
+    registered = register_candidate(registry, child)
+    prepromotion_hash = registered["registry_hash"]
+    promoted = promote_policy(
+        registry, child.policy_id, _strong_decision(parent, child)
+    )
+    active = get_active_policy(promoted)
+    restored = audit_fail_policy(
+        registry,
+        active.policy_id,
+        _audit_failure(active),
+        expected_policy_hash=active.policy_hash,
+    )
+    assert restored["registry_hash"] == prepromotion_hash
+    assert get_active_policy(restored).policy_hash == parent.policy_hash
+    tombstones = read_ledger(
+        registry.parent / f".{registry.name}.audit_failures.jsonl"
+    )
+    assert len(tombstones) == 1
+    assert tombstones[0]["failed_policy_hash"] == active.policy_hash
+    assert audit_fail_policy(
+        registry, active.policy_id, _audit_failure(active)
+    )["registry_hash"] == prepromotion_hash
+    with pytest.raises(RegistryViolation, match="permanently barred"):
+        promote_policy(registry, child.policy_id, _strong_decision(parent, child))
+
+
+def test_registry_audit_fail_rejects_conflicting_evidence(tmp_path):
+    registry, parent = _init(tmp_path)
+    child = _children(parent, 1)[0]
+    register_candidate(registry, child)
+    first = _audit_failure(child, "failed check A")
+    result = audit_fail_policy(registry, child.policy_id, first)
+    assert result["policies"][child.policy_id]["status"] == "audit_failed"
+    with pytest.raises(RegistryViolation, match="conflicting"):
+        audit_fail_policy(
+            registry, child.policy_id, _audit_failure(child, "failed check B")
+        )
+
+
+def test_registry_audit_fail_recovers_after_tombstone_before_restore(
+    tmp_path, monkeypatch
+):
+    import r3e.policy.registry_v2 as registry_module
+
+    registry, parent = _init(tmp_path)
+    child = _children(parent, 1)[0]
+    registered = register_candidate(registry, child)
+    promote_policy(registry, child.policy_id, _strong_decision(parent, child))
+    real_write = registry_module.atomic_write_json
+    interrupted = {"done": False}
+
+    def fail_registry_replace(path, payload):
+        if Path(path) == registry and not interrupted["done"]:
+            interrupted["done"] = True
+            raise RuntimeError("injected audit rollback interruption")
+        return real_write(path, payload)
+
+    monkeypatch.setattr(registry_module, "atomic_write_json", fail_registry_replace)
+    with pytest.raises(RuntimeError, match="interruption"):
+        audit_fail_policy(registry, child.policy_id, _audit_failure(child))
+    assert get_active_policy(load_registry(registry)).policy_hash == child.policy_hash
+    restored = audit_fail_policy(registry, child.policy_id, _audit_failure(child))
+    assert restored["registry_hash"] == registered["registry_hash"]
+    assert len(read_ledger(
+        registry.parent / f".{registry.name}.audit_failures.jsonl"
+    )) == 1
+
+
+def test_registry_serializes_concurrent_lifecycle_writers(tmp_path):
+    registry, parent = _init(tmp_path)
+    children = _children(parent, 2)
+    for child in children:
+        register_candidate(registry, child)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        list(pool.map(
+            lambda child: retire_policy(
+                registry, child.policy_id, reason="concurrent cleanup"
+            ),
+            children,
+        ))
+    loaded = load_registry(registry)
+    assert all(
+        loaded["policies"][child.policy_id]["status"] == "retired"
+        for child in children
+    )
+    assert get_active_policy(loaded).policy_hash == parent.policy_hash
+
+
 def test_round_state_detects_artifact_hash_mismatch_and_repeat(tmp_path):
     state = RoundState(tmp_path / "state.json", round_id="R001")
     state.initialize({"config": 1})
@@ -312,7 +436,56 @@ def test_fake_adapter_multi_round_switches_policy_and_packets(tmp_path):
     )
     assert second_context["residual_count"] >= 4
     assert second_context["challenged_policy_hash"] == first["active_policy_hash"]
+    assert second_red[0]["lineage_depth"] == 1
+    assert second_red[0]["parent_challenged_policy_hash"] == first["parent_policy_hash"]
+    assert second_red[0]["challenged_policy_hash"] == first["active_policy_hash"]
     assert get_active_policy(load_registry(registry)).policy_hash == second["active_policy_hash"]
+
+
+def test_residuals_accumulate_until_later_round_becomes_promotable(tmp_path):
+    config, registry = _project(tmp_path)
+
+    class OneNewDesignPerRound(DeterministicEvolutionAdapter):
+        def generate_red(self, parent, round_config, red_search_context):
+            rows = list(super().generate_red(parent, round_config, red_search_context))
+            return [rows[0]] if red_search_context["residual_count"] == 0 else rows[1:]
+
+    adapter = OneNewDesignPerRound(tmp_path / "runtime/fake")
+    first = EvolutionRoundRunner(
+        config, round_id="R001", adapter=adapter, project_root=tmp_path
+    ).run()
+    assert not first["promotion_eligible"]
+    second = EvolutionRoundRunner(
+        config, round_id="R002", adapter=adapter, project_root=tmp_path
+    ).run()
+    assert second["promotion_eligible"]
+    assert second["promoted"]
+    accumulation = json.loads(
+        (tmp_path / "runtime/rounds/R002/residual_accumulation.json").read_text()
+    )
+    assert accumulation["row_count"] == 4
+    assert accumulation["included_round_ids"] == ["R001", "R002"]
+    assert get_active_policy(load_registry(registry)).policy_hash == second[
+        "active_policy_hash"
+    ]
+
+
+def test_round_audit_rejects_accumulated_residual_tampering(tmp_path):
+    config, _registry = _project(tmp_path)
+    EvolutionRoundRunner(
+        config,
+        round_id="R001",
+        adapter=DeterministicEvolutionAdapter(tmp_path / "runtime/fake"),
+        project_root=tmp_path,
+    ).run()
+    path = tmp_path / "runtime/rounds/R001/accumulated_residuals.jsonl"
+    rows = path.read_text().splitlines()
+    first = json.loads(rows[0])
+    first["effect"] = "tampered"
+    rows[0] = json.dumps(first)
+    path.write_text("\n".join(rows) + "\n")
+    with pytest.raises(RoundAuditViolation, match="accumulation hash mismatch"):
+        verify_frozen_round(tmp_path / "runtime/rounds/R001")
 
 
 def test_stable_run_round_accepts_separate_red_and_blue_adapters(tmp_path):
@@ -741,6 +914,70 @@ def test_lineage_cycle_is_rejected():
             {"poison_id": "a", "parent_poison_id": "b"},
             {"poison_id": "b", "parent_poison_id": "a"},
         ])
+
+
+def test_lineage_operator_plan_is_hash_bound_and_scope_checked():
+    policy = PolicyState.from_dict(
+        json.loads(
+            (ROOT / "configs/base_policy/frozen_base_policy_v1.json").read_text()
+        )
+    )
+    space = load_operator_space(
+        ROOT / "configs/red/lineage_operator_space_v1.json"
+    )
+    parent = {
+        "poison_id": "p0",
+        "challenged_policy_hash": "sha256:" + "9" * 64,
+        "family": "constant_error",
+        "effect": "wrong_value",
+        "affected_role": "control",
+        "lineage_depth": 2,
+        "composition_depth": 1,
+        "sequential_depth": 0,
+    }
+    poison = {
+        **parent,
+        "poison_id": "p1",
+        "challenged_policy_hash": policy.policy_hash,
+        "affected_role": "data",
+        "parent_poison_id": "p0",
+        "parent_challenged_policy_hash": parent["challenged_policy_hash"],
+        "lineage_depth": 3,
+        "evolution_operator": "relocate",
+        "changed_modules": 1,
+        "changed_blocks": 1,
+    }
+    poison["lineage_plan"] = make_lineage_plan(
+        policy,
+        operator_space=space,
+        operator="relocate",
+        poison_id="p1",
+        parent=parent,
+    )
+    assert execute_lineage_operator(
+        poison["lineage_plan"],
+        parent,
+        policy=policy,
+        operator_space=space,
+        executor=lambda _plan, _parent: poison,
+    ) == poison
+    poison["changed_modules"] = 2
+    with pytest.raises(LineageOperatorViolation, match="changed modules"):
+        verify_lineage_execution(
+            poison,
+            policy=policy,
+            operator_space=space,
+            available_parents={"p0": parent},
+        )
+    poison["changed_modules"] = 1
+    poison["lineage_plan"]["expected_lineage_depth"] = 99
+    with pytest.raises(LineageOperatorViolation, match="plan hash mismatch"):
+        verify_lineage_execution(
+            poison,
+            policy=policy,
+            operator_space=space,
+            available_parents={"p0": parent},
+        )
 
 
 def test_generate_poison_requires_policy_bound_packet():

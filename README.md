@@ -69,11 +69,18 @@ available only with `formal_mode=False`.
 The v2 architecture consists of exactly one active `PolicyState`, red
 challenges conditioned on that policy hash, a multi-elite residual archive,
 hash-bound child search, paired target/non-target replay, atomic promotion,
-exact rollback, and a renewed challenge bound to the newly active policy.
+exact rollback, executable lineage deepening, policy-bound cross-round
+residual accumulation, and a renewed challenge bound to the newly active
+policy.
 
 Formal runtime reads only Policy Registry V2. A child must bind the exact
 active parent hash, stale children cannot be promoted, and rollback restores
 the exact pre-promotion registry snapshot.
+
+Non-authoritative policies can be retired through the registry CLI. An
+`audit-fail` transition writes a permanent hash-chain tombstone; if the failed
+policy is active, the registry restores its exact parent snapshot and the
+failed hash remains barred from later promotion.
 
 > 当前仓库提供系统基础设施和协议实现，不代表已经获得真实模型驱动的多轮演化实验结果。
 
@@ -100,6 +107,25 @@ python -m r3e.policy.migrate \
 The migration writes only to ignored `runtime/` paths by default. Manual
 skills become a frozen B0 asset; entries without Registry V2 promotion
 evidence never enter active evolution history.
+
+Lifecycle commands remain registry-authoritative:
+
+```bash
+python -m r3e.policy.registry_v2 retire \
+  --registry runtime/registry/policy_registry.json \
+  --policy-id B0_R001_C02 \
+  --reason "stale candidate"
+
+python -m r3e.policy.registry_v2 audit-fail \
+  --registry runtime/registry/policy_registry.json \
+  --policy-id B0_R001_C01 \
+  --expected-policy-hash sha256:... \
+  --evidence audit_failure.json
+```
+
+Audit evidence uses `r3e-policy-audit-failure-v1`, includes
+`audit_result: "fail"`, the exact policy ID/hash, structured checks and reason,
+and an `evidence_hash` over all other fields.
 
 ### Model-free system validation
 
@@ -141,6 +167,14 @@ within each policy-bound MAP-Elites cell; covered poisons remain available to
 red search without occupying adaptation capacity.
 Rounds with fewer than two residual designs finish as auditable deferred
 rounds with the parent unchanged instead of creating a leaking target split.
+Those residuals remain available to later rounds only while that exact parent
+hash stays active. `accumulated_residuals.jsonl` and
+`residual_accumulation.json` freeze the cross-round pool used by selection.
+
+Lineage generation is governed by
+`configs/red/lineage_operator_space_v1.json`. Each poison carries a hash-bound
+operator plan, and runner-owned checks enforce parent lineage, current-policy
+binding, semantic operator postconditions, and mutation-scope ceilings.
 
 Every round writes hash-chained JSONL events under `runtime/events/`:
 `policy.jsonl`, `red.jsonl`, `oracle.jsonl`, `arena.jsonl`, and
@@ -150,7 +184,8 @@ runner retains all registry, manifest, split, promotion, and rollback
 authority.
 
 Completed rounds also contain `toolchain.json`, `red_search_context.json`,
-`residual_selection.json`, and `round_audit.json`. Promotion decisions require
+`residual_accumulation.json`, `residual_selection.json`, and
+`round_audit.json`. Promotion decisions require
 complete code/toolchain/manifest provenance and can be reconstructed from the
 paired replay:
 

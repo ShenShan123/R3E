@@ -33,6 +33,12 @@ from r3e.red.feedback_packet import (
 )
 from r3e.red.learnability import validate_learnability_result
 from r3e.red.novelty import archive_cell, novelty_score
+from r3e.red.operators import (
+    LineageOperatorViolation,
+    load_operator_space,
+    make_lineage_plan,
+    verify_lineage_execution,
+)
 from r3e.red.selection import select_residual_elites
 from r3e.red.validity import validity_gate
 
@@ -173,6 +179,16 @@ class EvolutionRoundRunner:
         self.round_ledger_path = self.root / config.get(
             "round_ledger", "runtime/rounds/round_ledger.jsonl"
         )
+        operator_space_path = self.root / config.get(
+            "lineage_operator_space",
+            "configs/red/lineage_operator_space_v1.json",
+        )
+        if not operator_space_path.is_file() and "lineage_operator_space" not in config:
+            operator_space_path = (
+                Path(__file__).resolve().parents[2]
+                / "configs/red/lineage_operator_space_v1.json"
+            )
+        self.operator_space = load_operator_space(operator_space_path)
         self.code_version = str(
             config.get("code_version") or detect_code_version(self.root)
         )
@@ -342,6 +358,34 @@ class EvolutionRoundRunner:
             for row in candidates:
                 if row.get("challenged_policy_hash") != parent.policy_hash:
                     raise RoundRunnerViolation("red candidate is not bound to active parent")
+                # V1 adapters that emit a genuinely fresh poison are upgraded
+                # by the authoritative runner. Non-fresh ancestry always
+                # requires an explicit, hash-bound operator plan.
+                if "lineage_plan" not in row and not row.get("parent_poison_id"):
+                    row.update({
+                        "parent_poison_id": "",
+                        "parent_challenged_policy_hash": "",
+                        "lineage_depth": 0,
+                        "evolution_operator": "fresh",
+                    })
+                    row["lineage_plan"] = make_lineage_plan(
+                        parent,
+                        operator_space=self.operator_space,
+                        operator="fresh",
+                        poison_id=str(row["poison_id"]),
+                    )
+                try:
+                    verify_lineage_execution(
+                        row,
+                        policy=parent,
+                        operator_space=self.operator_space,
+                        available_parents={
+                            str(item["poison_id"]): item
+                            for item in red_context["archive_summary"]
+                        },
+                    )
+                except LineageOperatorViolation as exc:
+                    raise RoundRunnerViolation(str(exc)) from exc
             _write_jsonl(self.round_dir / "red_candidates.jsonl", candidates)
             self.events.emit(
                 "red",
@@ -433,6 +477,7 @@ class EvolutionRoundRunner:
                         continue
                     enriched["novelty"] = novelty_score(enriched, current)
                     enriched["archive_cell"] = archive_cell(enriched)
+                    enriched["discovered_round"] = self.round_id
                     learnability = validate_learnability_result(
                         parent,
                         enriched,
@@ -466,6 +511,7 @@ class EvolutionRoundRunner:
                         continue
                     enriched["novelty"] = novelty_score(enriched, current)
                     enriched["archive_cell"] = archive_cell(enriched)
+                    enriched["discovered_round"] = self.round_id
                     covered_archived.append(update_archive(
                         self.covered_archive_path,
                         enriched,
@@ -504,12 +550,51 @@ class EvolutionRoundRunner:
 
         archived = _read_jsonl(self.round_dir / "archive_updates.jsonl")
         if self.state.next_stage() == "FREEZE_RESIDUAL_MANIFEST":
-            selected = select_residual_elites(archived)
-            selection = {
-                "schema_version": "r3e-residual-selection-v1",
+            accumulated = [
+                row for row in load_archive(self.archive_path)
+                if row.get("challenged_policy_hash") == parent.policy_hash
+            ]
+            accumulated.sort(key=lambda row: (
+                str(row.get("discovered_round") or ""),
+                str(row.get("poison_id") or ""),
+                str(row.get("archive_entry_hash") or ""),
+            ))
+            if len({
+                str(row.get("poison_id") or "") for row in accumulated
+            }) != len(accumulated):
+                raise RoundRunnerViolation("accumulated residual poison ids are not unique")
+            _write_jsonl(
+                self.round_dir / "accumulated_residuals.jsonl",
+                accumulated,
+            )
+            accumulation = {
+                "schema_version": "r3e-residual-accumulation-v1",
                 "challenged_policy_id": parent.policy_id,
                 "challenged_policy_hash": parent.policy_hash,
-                "admitted_rows_hash": hash_payload(archived),
+                "included_round_ids": sorted({
+                    str(row.get("discovered_round") or "")
+                    for row in accumulated if row.get("discovered_round")
+                }),
+                "archive_entry_hashes": [
+                    str(row.get("archive_entry_hash") or "") for row in accumulated
+                ],
+                "current_round_updates_hash": hash_payload(archived),
+                "accumulated_rows_hash": hash_payload(accumulated),
+                "row_count": len(accumulated),
+            }
+            accumulation["accumulation_hash"] = hash_payload(accumulation)
+            atomic_write_json(
+                self.round_dir / "residual_accumulation.json",
+                accumulation,
+            )
+            selected = select_residual_elites(accumulated)
+            selection = {
+                "schema_version": "r3e-residual-selection-v2",
+                "challenged_policy_id": parent.policy_id,
+                "challenged_policy_hash": parent.policy_hash,
+                "current_round_updates_hash": hash_payload(archived),
+                "accumulated_rows_hash": hash_payload(accumulated),
+                "accumulation_hash": accumulation["accumulation_hash"],
                 "selected_poison_ids": [
                     str(row["poison_id"]) for row in selected
                 ],
@@ -524,6 +609,7 @@ class EvolutionRoundRunner:
                     "challenged_policy_id": parent.policy_id,
                     "challenged_policy_hash": parent.policy_hash,
                     "selection_hash": selection["selection_hash"],
+                    "accumulation_hash": accumulation["accumulation_hash"],
                 },
             )
             freeze_manifest(self.round_dir / "residual_manifest.json", residual_manifest)

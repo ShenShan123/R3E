@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from r3e.protocol.hashing import atomic_write_json, hash_payload, read_json, utc_now
-from r3e.protocol.ledger import append_ledger, writer_lock
+from r3e.protocol.ledger import append_ledger, read_ledger, writer_lock
 from r3e.protocol.events import EventLogger
 
 from .schema import POLICY_SCHEMA_VERSION, PolicyState, PolicyValidationError
@@ -231,6 +231,23 @@ def _snapshot_path(registry_path: Path, digest: str) -> Path:
     return registry_path.parent / f".{registry_path.name}.versions" / f"{safe}.json"
 
 
+def _audit_failure_path(registry_path: Path) -> Path:
+    return registry_path.parent / f".{registry_path.name}.audit_failures.jsonl"
+
+
+def _audit_failure_for_hash(
+    registry_path: Path, policy_hash: str
+) -> dict[str, Any] | None:
+    return next(
+        (
+            row for row in read_ledger(_audit_failure_path(registry_path))
+            if row.get("operation") == "audit-fail"
+            and row.get("failed_policy_hash") == policy_hash
+        ),
+        None,
+    )
+
+
 def _save_snapshot(registry_path: Path, registry: dict[str, Any]) -> None:
     snapshot = _snapshot_path(registry_path, registry["registry_hash"])
     if snapshot.exists():
@@ -261,6 +278,10 @@ def promote_policy(
         candidate = PolicyState.from_dict(entry["policy"])
         if candidate.status != "candidate":
             raise RegistryViolation("only candidate policy can be promoted")
+        if _audit_failure_for_hash(path, candidate.policy_hash):
+            raise RegistryViolation(
+                "audit-failed policy hash is permanently barred from promotion"
+            )
         if candidate.parent_policy_id != parent.policy_id:
             raise RegistryViolation("stale candidate parent id")
         if candidate.parent_policy_hash != parent.policy_hash:
@@ -435,6 +456,186 @@ def rollback_policy(
         return after
 
 
+def retire_policy(
+    registry_path: str | Path,
+    policy_id: str,
+    *,
+    reason: str,
+    ledger_path: str | Path | None = None,
+    event_logger: EventLogger | None = None,
+    round_id: str = "",
+) -> dict[str, Any]:
+    """Retire a non-authoritative policy without changing the active policy."""
+    if not reason.strip():
+        raise RegistryViolation("retirement reason is required")
+    path = Path(registry_path)
+    with writer_lock(path.with_suffix(path.suffix + ".lock")):
+        registry = load_registry(path)
+        before = registry["registry_hash"]
+        entry = registry["policies"].get(policy_id)
+        if not entry:
+            raise RegistryViolation("retirement policy is not registered")
+        policy = PolicyState.from_dict(entry["policy"])
+        active = get_active_policy(registry)
+        if policy.policy_id == registry["base_policy"]["policy_id"]:
+            raise RegistryViolation("frozen base policy cannot be retired")
+        if policy.policy_id == active.policy_id:
+            raise RegistryViolation("active policy cannot be retired")
+        if policy.policy_id == active.rollback_policy_id:
+            raise RegistryViolation("active rollback parent cannot be retired")
+        if policy.status in {"retired", "audit_failed"}:
+            raise RegistryViolation(f"policy is already terminal: {policy.status}")
+        retired = policy.with_updates(status="retired")
+        registry["policies"][policy_id] = _policy_entry(retired)
+        registry["registry_parent_hash"] = before
+        registry["updated_at"] = utc_now()
+        _write_registry(path, registry)
+        after = load_registry(path)
+        record = {
+            "operation": "retire",
+            "policy_id": policy.policy_id,
+            "policy_hash": policy.policy_hash,
+            "reason": reason,
+            "registry_hash_before": before,
+            "registry_hash_after": after["registry_hash"],
+        }
+        if ledger_path:
+            append_ledger(ledger_path, record)
+        if event_logger:
+            event_logger.emit(
+                "policy",
+                "policy_retired",
+                round_id=round_id,
+                **{key: value for key, value in record.items() if key != "operation"},
+            )
+        return after
+
+
+def audit_fail_policy(
+    registry_path: str | Path,
+    policy_id: str,
+    evidence: dict[str, Any],
+    *,
+    expected_policy_hash: str | None = None,
+    ledger_path: str | Path | None = None,
+    event_logger: EventLogger | None = None,
+    round_id: str = "",
+) -> dict[str, Any]:
+    """Tombstone an audit-failed hash and exactly restore its promotion parent.
+
+    The tombstone lives outside registry snapshots, so exact rollback cannot
+    accidentally make the failed candidate promotable again.
+    """
+    body = {key: value for key, value in evidence.items() if key != "evidence_hash"}
+    if (
+        evidence.get("schema_version") != "r3e-policy-audit-failure-v1"
+        or evidence.get("audit_result") != "fail"
+        or evidence.get("policy_id") != policy_id
+        or evidence.get("evidence_hash") != hash_payload(body)
+    ):
+        raise RegistryViolation("invalid audit-failure evidence")
+    evidence_policy_hash = str(evidence.get("policy_hash") or "")
+    if expected_policy_hash and evidence_policy_hash != expected_policy_hash:
+        raise RegistryViolation("audit evidence policy hash does not match expectation")
+
+    path = Path(registry_path)
+    tombstone_path = _audit_failure_path(path)
+    with writer_lock(path.with_suffix(path.suffix + ".lock")):
+        registry = load_registry(path)
+        entry = registry["policies"].get(policy_id)
+        if not entry:
+            raise RegistryViolation("audit-failure policy is not registered")
+        policy = PolicyState.from_dict(entry["policy"])
+        if policy.policy_hash != evidence_policy_hash:
+            raise RegistryViolation("audit evidence policy hash mismatch")
+        existing = _audit_failure_for_hash(path, policy.policy_hash)
+        if existing:
+            if existing.get("evidence_hash") != evidence["evidence_hash"]:
+                raise RegistryViolation("conflicting audit-failure evidence")
+            if (
+                existing.get("active_at_failure") is True
+                and get_active_policy(registry).policy_id != policy.policy_id
+            ):
+                return registry
+            if (
+                existing.get("active_at_failure") is False
+                and policy.status == "audit_failed"
+            ):
+                return registry
+
+        before = registry["registry_hash"]
+        active = get_active_policy(registry)
+        restored_registry: dict[str, Any] | None = None
+        restored_policy: PolicyState | None = None
+        if active.policy_id == policy.policy_id:
+            if not active.rollback_policy_id or not active.rollback_registry_hash:
+                raise RegistryViolation("active audit-failed policy has no rollback binding")
+            target_path = _snapshot_path(path, active.rollback_registry_hash)
+            if not target_path.is_file():
+                raise RegistryViolation("audit-failure rollback version is missing")
+            restored_registry = read_json(target_path)
+            validate_registry(restored_registry)
+            restored_policy = get_active_policy(restored_registry)
+            if restored_policy.policy_id != active.rollback_policy_id:
+                raise RegistryViolation("audit-failure snapshot restores wrong parent")
+        elif policy.policy_id == registry["base_policy"]["policy_id"]:
+            raise RegistryViolation("frozen base policy cannot be audit-failed")
+
+        tombstone = existing or append_ledger(tombstone_path, {
+            "operation": "audit-fail",
+            "failed_policy_id": policy.policy_id,
+            "failed_policy_hash": policy.policy_hash,
+            "evidence_hash": evidence["evidence_hash"],
+            "reason": str(evidence.get("reason") or ""),
+            "active_at_failure": active.policy_id == policy.policy_id,
+            "registry_hash_observed": before,
+        })
+        if active.policy_id == policy.policy_id:
+            _save_snapshot(path, registry)
+            assert restored_registry is not None
+            atomic_write_json(path, restored_registry)
+        else:
+            registry["policies"][policy_id] = _policy_entry(
+                policy.with_updates(status="audit_failed")
+            )
+            registry["registry_parent_hash"] = before
+            registry["updated_at"] = utc_now()
+            _write_registry(path, registry)
+        after = load_registry(path)
+        record = {
+            "operation": "audit-fail",
+            "failed_policy_id": policy.policy_id,
+            "failed_policy_hash": policy.policy_hash,
+            "evidence_hash": evidence["evidence_hash"],
+            "tombstone_hash": tombstone["ledger_entry_hash"],
+            "restored_policy_id": (
+                restored_policy.policy_id if restored_policy else ""
+            ),
+            "restored_policy_hash": (
+                restored_policy.policy_hash if restored_policy else ""
+            ),
+            "registry_hash_before": before,
+            "registry_hash_after": after["registry_hash"],
+        }
+        if ledger_path:
+            append_ledger(ledger_path, record)
+        if event_logger:
+            event_logger.emit(
+                "policy",
+                "policy_audit_failed",
+                round_id=round_id,
+                **{key: value for key, value in record.items() if key != "operation"},
+            )
+            if restored_policy:
+                event_logger.emit(
+                    "rollback",
+                    "audit_failure_rollback",
+                    round_id=round_id,
+                    **{key: value for key, value in record.items() if key != "operation"},
+                )
+        return after
+
+
 def _main() -> None:
     parser = argparse.ArgumentParser(description="R³E Formal Policy Registry V2")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -460,6 +661,17 @@ def _main() -> None:
     reject.add_argument("--reason", action="append", required=True)
     reject.add_argument("--provisional", action="store_true")
     reject.add_argument("--ledger")
+    retire = sub.add_parser("retire")
+    retire.add_argument("--registry", required=True)
+    retire.add_argument("--policy-id", required=True)
+    retire.add_argument("--reason", required=True)
+    retire.add_argument("--ledger")
+    audit_fail = sub.add_parser("audit-fail")
+    audit_fail.add_argument("--registry", required=True)
+    audit_fail.add_argument("--policy-id", required=True)
+    audit_fail.add_argument("--expected-policy-hash")
+    audit_fail.add_argument("--evidence", required=True)
+    audit_fail.add_argument("--ledger")
     args = parser.parse_args()
     if args.command == "init":
         result = initialize_registry(args.base, args.registry, ledger_path=args.ledger)
@@ -482,12 +694,29 @@ def _main() -> None:
             ledger_path=args.ledger,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
-    else:
+    elif args.command == "reject":
         result = reject_policy(
             args.registry,
             args.candidate_id,
             args.reason,
             provisional=args.provisional,
+            ledger_path=args.ledger,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif args.command == "retire":
+        result = retire_policy(
+            args.registry,
+            args.policy_id,
+            reason=args.reason,
+            ledger_path=args.ledger,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        result = audit_fail_policy(
+            args.registry,
+            args.policy_id,
+            read_json(args.evidence),
+            expected_policy_hash=args.expected_policy_hash,
             ledger_path=args.ledger,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))

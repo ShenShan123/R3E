@@ -2,7 +2,7 @@
 
 ## Red search context
 
-`r3e-red-search-context-v1` is created by the authoritative runner before red
+`r3e-red-search-context-v2` is created by the authoritative runner before red
 generation. It binds the current policy and contains only whitelisted archive
 summary fields:
 
@@ -10,6 +10,8 @@ summary fields:
 - challenged policy hash and archive cell;
 - family, effect, affected role, and failure signature;
 - hardness class/value and learnability label.
+- parent poison/policy hash, lineage depth/operator, and bounded composition
+  and sequential depth.
 
 Raw target results, reference repairs, child validation, and target oracle
 labels are rejected before the adapter is called.
@@ -44,6 +46,28 @@ If fewer than two residual designs remain after selection, the runner freezes
 an empty target manifest, records `insufficient_residual_designs`, keeps the
 current parent active, and completes an auditable no-promotion round. It does
 not fabricate a non-disjoint split or crash midway through the state machine.
+Residuals are accumulated only while the same policy hash remains active.
+Every round freezes `accumulated_residuals.jsonl` and
+`residual_accumulation.json`, binding all included archive-entry hashes and
+discovery rounds. Later archive mutations cannot alter the round decision.
+Once promotion changes the active hash, the new policy starts a distinct
+accumulation pool.
+
+## Executable lineage operators
+
+`configs/red/lineage_operator_space_v1.json` freezes the allowed operators and
+scope ceilings. A generated poison carries an `r3e-lineage-plan-v1` binding
+the current challenged policy, parent poison and its challenged-policy hash,
+operator, expected depth, and frozen operator-space hash.
+
+`execute_lineage_operator(...)` delegates materialization to an adapter, then
+the formal validator checks all postconditions. `relocate` must change the
+affected role, `temporalize` must increase sequential depth, `compose` must
+increase bounded composition depth by exactly one, and
+`counterexample_revise` must change the effect or failure signature.
+Non-compose operators preserve family. Cross-policy ancestry is allowed so a
+new active policy can be challenged by a deepened residual from its parent
+policy, while the new poison itself must bind the current active policy hash.
 
 ## MAP-Elites
 
@@ -62,7 +86,8 @@ challenged policy
 Three independent role winners are retained: maximum hardness, minimum edit
 cost, and maximum learnability. The frozen residual manifest contains the
 union of role winners and nondominated Pareto rows; it records the hash of
-`residual_selection.json`.
+`residual_selection.json`; that selection also binds the frozen accumulation
+snapshot rather than the mutable global archive.
 
 ## Round provenance and reconstruction
 

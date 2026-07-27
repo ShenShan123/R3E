@@ -39,6 +39,12 @@ RED_SEARCH_CONTEXT_FIELDS = {
     "hardness_class",
     "hardness",
     "learnability_label",
+    "parent_poison_id",
+    "parent_challenged_policy_hash",
+    "lineage_depth",
+    "evolution_operator",
+    "composition_depth",
+    "sequential_depth",
 }
 
 
@@ -84,6 +90,16 @@ def build_red_search_context(
                 "hardness_class": str(row.get("hardness_class") or ""),
                 "hardness": float(row.get("hardness") or 0.0),
                 "learnability_label": label,
+                "parent_poison_id": str(row.get("parent_poison_id") or ""),
+                "parent_challenged_policy_hash": str(
+                    row.get("parent_challenged_policy_hash") or ""
+                ),
+                "lineage_depth": int(row.get("lineage_depth") or 0),
+                "evolution_operator": str(
+                    row.get("evolution_operator") or "fresh"
+                ),
+                "composition_depth": int(row.get("composition_depth") or 1),
+                "sequential_depth": int(row.get("sequential_depth") or 0),
             }
             if set(summary) != RED_SEARCH_CONTEXT_FIELDS:
                 raise CapabilityPacketViolation("red archive summary schema mismatch")
@@ -95,7 +111,7 @@ def build_red_search_context(
         row["poison_id"],
     ))
     context = {
-        "schema_version": "r3e-red-search-context-v1",
+        "schema_version": "r3e-red-search-context-v2",
         "challenged_policy_id": policy.policy_id,
         "challenged_policy_hash": policy.policy_hash,
         "archive_summary": summaries,
@@ -111,7 +127,7 @@ def build_red_search_context(
 
 
 def verify_red_search_context(context: dict[str, Any]) -> dict[str, Any]:
-    if context.get("schema_version") != "r3e-red-search-context-v1":
+    if context.get("schema_version") != "r3e-red-search-context-v2":
         raise CapabilityPacketViolation("red search context schema mismatch")
     summaries = context.get("archive_summary")
     if not isinstance(summaries, list):

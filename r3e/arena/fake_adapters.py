@@ -11,6 +11,7 @@ from typing import Any, Iterable
 from r3e.policy.schema import PolicyState
 from r3e.protocol.hashing import hash_payload
 from r3e.red.feedback_packet import build_capability_packet
+from r3e.red.operators import load_operator_space, make_lineage_plan
 
 
 class FakeRedAdapter:
@@ -28,6 +29,14 @@ class FakeRedAdapter:
         rtl_dir = self.workspace / parent.policy_hash.replace(":", "_")
         rtl_dir.mkdir(parents=True, exist_ok=True)
         rows = []
+        operator_space = load_operator_space(
+            Path(__file__).resolve().parents[2]
+            / "configs/red/lineage_operator_space_v1.json"
+        )
+        residual_parents = [
+            row for row in red_search_context["archive_summary"]
+            if row["archive_kind"] == "residual"
+        ]
         for index in range(4):
             golden = rtl_dir / f"golden_{index}.v"
             buggy = rtl_dir / f"buggy_{index}.v"
@@ -53,7 +62,7 @@ class FakeRedAdapter:
                 recent_challenges=[],
             )
             policy_tag = parent.policy_hash.split(":", 1)[-1][:12]
-            rows.append({
+            row = {
                 "poison_id": f"fake_{policy_tag}_{index}",
                 "case_id": f"fake_{policy_tag}_{index}",
                 "design": case["design_id"],
@@ -67,6 +76,8 @@ class FakeRedAdapter:
                 "affected_role": "control" if index % 2 == 0 else "data",
                 "edit_scope": "expression",
                 "composition_depth": 1,
+                "changed_modules": 1,
+                "changed_blocks": 1,
                 "sequential_depth": index % 2,
                 "first_divergence_signal": "y",
                 "first_divergence_cycle_bucket": "combinational",
@@ -75,7 +86,40 @@ class FakeRedAdapter:
                     "policy": parent.policy_hash,
                     "index": index,
                 }),
-            })
+            }
+            lineage_parent = residual_parents[index % len(residual_parents)] if residual_parents else None
+            if lineage_parent is None:
+                operator = "fresh"
+                row.update({
+                    "parent_poison_id": "",
+                    "parent_challenged_policy_hash": "",
+                    "lineage_depth": 0,
+                    "evolution_operator": operator,
+                })
+            else:
+                operator = "relocate"
+                row["family"] = lineage_parent["family"]
+                row["affected_role"] = (
+                    "data"
+                    if lineage_parent["affected_role"] != "data"
+                    else "control"
+                )
+                row.update({
+                    "parent_poison_id": lineage_parent["poison_id"],
+                    "parent_challenged_policy_hash": lineage_parent[
+                        "challenged_policy_hash"
+                    ],
+                    "lineage_depth": int(lineage_parent["lineage_depth"]) + 1,
+                    "evolution_operator": operator,
+                })
+            row["lineage_plan"] = make_lineage_plan(
+                parent,
+                operator_space=operator_space,
+                operator=operator,
+                poison_id=row["poison_id"],
+                parent=lineage_parent,
+            )
+            rows.append(row)
         return rows
 
     @staticmethod
