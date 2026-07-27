@@ -275,6 +275,44 @@ def _materializer_base(
     return result
 
 
+def materialize_fresh(
+    plan: dict[str, Any],
+    descriptor: dict[str, Any],
+) -> dict[str, Any]:
+    """Bind a fresh adapter descriptor to the frozen plan and policy."""
+    if plan.get("operator") != "fresh":
+        raise LineageOperatorViolation("fresh materializer received another operator")
+    result = dict(descriptor)
+    result.update({
+        "poison_id": str(plan.get("poison_id") or ""),
+        "challenged_policy_id": str(plan.get("challenged_policy_id") or ""),
+        "challenged_policy_hash": str(plan.get("challenged_policy_hash") or ""),
+        "parent_poison_id": "",
+        "parent_challenged_policy_hash": "",
+        "lineage_depth": 0,
+        "evolution_operator": "fresh",
+        "lineage_plan": dict(plan),
+    })
+    result.setdefault("composition_depth", 1)
+    result.setdefault("sequential_depth", 0)
+    result.setdefault("dependency_depth", 0)
+    result.setdefault("changed_modules", 1)
+    result.setdefault("changed_blocks", 1)
+    result.setdefault(
+        "normalized_diff_hash",
+        hash_payload({
+            "operator": "fresh",
+            "plan_hash": plan.get("plan_hash"),
+            "descriptor": {
+                key: value
+                for key, value in result.items()
+                if key not in {"lineage_plan", "normalized_diff_hash"}
+            },
+        }),
+    )
+    return result
+
+
 def materialize_deepen(
     plan: dict[str, Any], parent: dict[str, Any]
 ) -> dict[str, Any]:
@@ -287,6 +325,31 @@ def materialize_deepen(
         "kind": "deepen",
         "parent_signature": str(parent.get("failure_signature") or ""),
         "dependency_depth": result["dependency_depth"],
+    })
+    return result
+
+
+def materialize_relocate(
+    plan: dict[str, Any],
+    parent: dict[str, Any],
+    *,
+    target_role: str,
+) -> dict[str, Any]:
+    """Move one same-family effect to a distinct affected role."""
+    if plan.get("operator") != "relocate":
+        raise LineageOperatorViolation(
+            "relocate materializer received another operator"
+        )
+    role = str(target_role or "")
+    if not role or role == str(parent.get("affected_role") or ""):
+        raise LineageOperatorViolation("relocate requires a distinct target role")
+    result = _materializer_base(plan, parent)
+    result["affected_role"] = role
+    result["failure_signature"] = hash_payload({
+        "kind": "relocate",
+        "parent_signature": str(parent.get("failure_signature") or ""),
+        "parent_role": str(parent.get("affected_role") or ""),
+        "target_role": role,
     })
     return result
 
@@ -367,6 +430,61 @@ def materialize_counterexample_revise(
         "revised_effect": effect,
     })
     return result
+
+
+def materialize_lineage_operator(
+    plan: dict[str, Any],
+    parent: dict[str, Any] | None,
+    **parameters: Any,
+) -> dict[str, Any]:
+    """Dispatch all six frozen operators with an exact parameter contract."""
+    operator = str(plan.get("operator") or "")
+    expected_parameters = {
+        "fresh": {"descriptor"},
+        "deepen": set(),
+        "relocate": {"target_role"},
+        "temporalize": set(),
+        "compose": {"secondary_effect"},
+        "counterexample_revise": {"counterexample_hash", "revised_effect"},
+    }
+    expected = expected_parameters.get(operator)
+    if expected is None:
+        raise LineageOperatorViolation(f"unsupported materializer operator: {operator}")
+    if set(parameters) != expected:
+        raise LineageOperatorViolation(
+            f"{operator} materializer parameters must be {sorted(expected)}"
+        )
+    if operator == "fresh":
+        if parent is not None:
+            raise LineageOperatorViolation("fresh materializer cannot receive a parent")
+        descriptor = parameters["descriptor"]
+        if not isinstance(descriptor, dict):
+            raise LineageOperatorViolation("fresh descriptor must be an object")
+        return materialize_fresh(plan, descriptor)
+    if parent is None:
+        raise LineageOperatorViolation(f"{operator} materializer requires a parent")
+    if operator == "deepen":
+        return materialize_deepen(plan, parent)
+    if operator == "relocate":
+        return materialize_relocate(
+            plan,
+            parent,
+            target_role=str(parameters["target_role"]),
+        )
+    if operator == "temporalize":
+        return materialize_temporalize(plan, parent)
+    if operator == "compose":
+        return materialize_compose(
+            plan,
+            parent,
+            secondary_effect=str(parameters["secondary_effect"]),
+        )
+    return materialize_counterexample_revise(
+        plan,
+        parent,
+        counterexample_hash=str(parameters["counterexample_hash"]),
+        revised_effect=str(parameters["revised_effect"]),
+    )
 
 
 def execute_lineage_operator(

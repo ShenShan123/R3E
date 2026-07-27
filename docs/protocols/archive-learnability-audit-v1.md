@@ -76,12 +76,13 @@ Non-compose operators preserve family. Cross-policy ancestry is allowed so a
 new active policy can be challenged by a deepened residual from its parent
 policy, while the new poison itself must bind the current active policy hash.
 
-The deterministic reference materializers are
-`materialize_deepen`, `materialize_temporalize`, `materialize_compose`, and
-`materialize_counterexample_revise`. They produce structured mutation
-descriptors only; RTL/tool-specific realization remains behind the adapter
-boundary. Each materializer is checked against the same frozen plan before
-archive admission.
+The deterministic reference materializers are `materialize_fresh`,
+`materialize_deepen`, `materialize_relocate`, `materialize_temporalize`,
+`materialize_compose`, and `materialize_counterexample_revise`.
+`materialize_lineage_operator` dispatches all six with an exact parameter
+contract. They produce structured mutation descriptors only; RTL/tool-specific
+realization remains behind the adapter boundary. Each materializer is checked
+against the same frozen plan before archive admission.
 
 ## MAP-Elites
 

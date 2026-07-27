@@ -13,6 +13,12 @@ from r3e.arena.fake_adapters import (
     FailureInjectionAdapter,
 )
 from r3e.arena.audit import RoundAuditViolation, verify_frozen_round
+from r3e.arena.conformance import (
+    AdapterConformanceGate,
+    AdapterConformanceViolation,
+    bind_adapter_output,
+    make_toolchain_fingerprint,
+)
 from r3e.arena.manifests import make_manifest
 from r3e.arena.round_state import RoundState, RoundStateViolation
 from r3e.arena.runner import EvolutionRoundRunner, RoundRunnerViolation, run_round
@@ -32,7 +38,11 @@ from r3e.policy.registry_v2 import (
 )
 from r3e.policy.schema import PolicyState
 from r3e.policy.search import propose_children
-from r3e.policy.runtime import PolicyRuntime, PolicyRuntimeViolation
+from r3e.policy.runtime import (
+    PolicyRuntime,
+    PolicyRuntimeViolation,
+    resolve_prompt_template,
+)
 from r3e.protocol.events import EventLogger, EventViolation, read_events
 from r3e.protocol.hashing import atomic_write_json, hash_payload
 from r3e.protocol.ledger import read_ledger
@@ -52,6 +62,9 @@ from r3e.red.operators import (
     materialize_compose,
     materialize_counterexample_revise,
     materialize_deepen,
+    materialize_fresh,
+    materialize_lineage_operator,
+    materialize_relocate,
     materialize_temporalize,
     make_lineage_plan,
     verify_lineage_execution,
@@ -553,6 +566,109 @@ def test_stable_run_round_accepts_separate_red_and_blue_adapters(tmp_path):
     assert summary["promoted"]
 
 
+def test_adapter_conformance_gate_validates_all_six_method_outputs(tmp_path):
+    parent = PolicyState.from_dict(
+        json.loads(
+            (ROOT / "configs/base_policy/frozen_base_policy_v1.json").read_text()
+        )
+    )
+    adapter = DeterministicEvolutionAdapter(tmp_path / "fake")
+    gate = AdapterConformanceGate(adapter)
+    context = build_red_search_context(
+        parent,
+        residual_archive=[],
+        covered_archive=[],
+    )
+    poison = gate.validate(
+        "generate_red",
+        list(adapter.generate_red(parent, {}, context))[0],
+    )
+    gate.validate("prepare_validity", adapter.prepare_validity(poison))
+    gate.validate(
+        "evaluate_blue",
+        adapter.evaluate_blue(parent, poison, 1),
+    )
+    gate.validate(
+        "probe_learnability",
+        adapter.probe_learnability(parent, poison),
+    )
+    child = _children(parent, 1)[0]
+    adaptation = make_manifest(
+        [{"case_id": poison["poison_id"], "design": poison["design"]}],
+        split="adaptation",
+    )
+    gate.validate(
+        "screen_child",
+        adapter.screen_child(parent, child, adaptation),
+    )
+    gate.validate("replay", adapter.replay(parent, poison, 11))
+
+
+def test_adapter_conformance_rejects_identity_hash_and_schema_forgery(tmp_path):
+    adapter = DeterministicEvolutionAdapter(tmp_path / "fake")
+    gate = AdapterConformanceGate(adapter)
+    parent = PolicyState.from_dict(
+        json.loads(
+            (ROOT / "configs/base_policy/frozen_base_policy_v1.json").read_text()
+        )
+    )
+    result = adapter.evaluate_blue(
+        parent,
+        {"poison_id": "p", "challenged_policy_hash": parent.policy_hash},
+        1,
+    )
+
+    for field in ("budget_hash", "verifier_hash", "command_hash"):
+        malformed = dict(result)
+        malformed[field] = "not-a-digest"
+        with pytest.raises(AdapterConformanceViolation, match=field):
+            gate.validate("evaluate_blue", malformed)
+
+    empty_model = dict(result)
+    empty_model["model_id"] = ""
+    with pytest.raises(AdapterConformanceViolation, match="model_id"):
+        gate.validate("evaluate_blue", empty_model)
+
+    tampered = dict(result)
+    tampered["oracle_ok"] = True
+    with pytest.raises(AdapterConformanceViolation, match="result hash"):
+        gate.validate("evaluate_blue", tampered)
+
+    wrong_schema = dict(result)
+    wrong_schema["output_schema_version"] = "unfrozen-schema"
+    wrong_schema["result_hash"] = hash_payload({
+        key: value for key, value in wrong_schema.items()
+        if key != "result_hash"
+    })
+    with pytest.raises(AdapterConformanceViolation, match="schema mismatch"):
+        gate.validate("evaluate_blue", wrong_schema)
+
+    foreign = make_toolchain_fingerprint(
+        adapter_id="foreign",
+        adapter_version="1",
+        model_id="foreign-model",
+        model_version="1",
+        verifier_id="foreign-verifier",
+        verifier_version="1",
+        runtime_id="foreign-runtime",
+        runtime_version="1",
+    )
+    wrong_toolchain = dict(result)
+    wrong_toolchain["toolchain_fingerprint_hash"] = hash_payload(foreign)
+    wrong_toolchain["result_hash"] = hash_payload({
+        key: value for key, value in wrong_toolchain.items()
+        if key != "result_hash"
+    })
+    with pytest.raises(AdapterConformanceViolation, match="undeclared toolchain"):
+        gate.validate("evaluate_blue", wrong_toolchain)
+
+    class MissingFingerprint:
+        pass
+
+    with pytest.raises(AdapterConformanceViolation, match="fingerprint"):
+        AdapterConformanceGate(MissingFingerprint())
+
+
 def test_failure_injection_resumes_without_rewriting_stages(tmp_path):
     config, _registry = _project(tmp_path)
     adapter = FailureInjectionAdapter(
@@ -648,7 +764,9 @@ def test_no_promotable_child_keeps_exact_parent(tmp_path):
             row = super().replay(policy, case, seed)
             if case.get("challenged_policy_hash"):
                 row["oracle_ok"] = False
-            return row
+            return bind_adapter_output(
+                row, "replay", self.toolchain_fingerprint
+            )
 
     parent = get_active_policy(load_registry(registry))
     summary = EvolutionRoundRunner(
@@ -669,11 +787,13 @@ def test_runner_routes_covered_and_unknown_learnability_out_of_residual(tmp_path
             row = super().evaluate_blue(policy, poison, seed)
             if str(poison["poison_id"]).endswith("_0"):
                 row["oracle_ok"] = True
-            return row
+            return bind_adapter_output(
+                row, "evaluate_blue", self.toolchain_fingerprint
+            )
 
         def probe_learnability(self, policy, poison):
             if str(poison["poison_id"]).endswith("_1"):
-                return {
+                return bind_adapter_output({
                     "label": "unknown",
                     "challenged_policy_hash": policy.policy_hash,
                     "teacher_mode": "same_model_expanded",
@@ -685,7 +805,7 @@ def test_runner_routes_covered_and_unknown_learnability_out_of_residual(tmp_path
                     "successes": 0,
                     "budget_exhausted": False,
                     "evidence": {"adapter_mode": "deterministic_fake"},
-                }
+                }, "probe_learnability", self.toolchain_fingerprint)
             return super().probe_learnability(policy, poison)
 
     summary = EvolutionRoundRunner(
@@ -711,7 +831,9 @@ def test_round_defers_promotion_when_residual_designs_are_insufficient(tmp_path)
         def evaluate_blue(self, policy, poison, seed):
             row = super().evaluate_blue(policy, poison, seed)
             row["oracle_ok"] = True
-            return row
+            return bind_adapter_output(
+                row, "evaluate_blue", self.toolchain_fingerprint
+            )
 
         def probe_learnability(self, policy, poison):
             raise AssertionError("covered poison must not invoke teacher")
@@ -1039,7 +1161,7 @@ def test_lineage_operator_plan_is_hash_bound_and_scope_checked():
         )
 
 
-def test_four_lineage_materializers_execute_and_validate():
+def test_six_lineage_materializers_dispatch_and_validate():
     policy = PolicyState.from_dict(
         json.loads(
             (ROOT / "configs/base_policy/frozen_base_policy_v1.json").read_text()
@@ -1065,7 +1187,33 @@ def test_four_lineage_materializers_execute_and_validate():
         "normalized_diff_hash": "sha256:" + "7" * 64,
     }
 
-    def run(operator, executor):
+    fresh_plan = make_lineage_plan(
+        policy,
+        operator_space=space,
+        operator="fresh",
+        poison_id="fresh",
+    )
+    fresh = execute_lineage_operator(
+        fresh_plan,
+        None,
+        policy=policy,
+        operator_space=space,
+        executor=lambda plan, _parent: materialize_lineage_operator(
+            plan,
+            None,
+            descriptor={
+                "family": "off_by_one",
+                "effect": "counter_terminal",
+                "affected_role": "control",
+                "edit_scope": "expression",
+                "failure_signature": "fresh:terminal",
+            },
+        ),
+    )
+    assert fresh["evolution_operator"] == "fresh"
+    assert fresh["lineage_depth"] == 0
+
+    def run(operator, **parameters):
         plan = make_lineage_plan(
             policy,
             operator_space=space,
@@ -1078,27 +1226,27 @@ def test_four_lineage_materializers_execute_and_validate():
             parent,
             policy=policy,
             operator_space=space,
-            executor=executor,
+            executor=lambda bound_plan, bound_parent: materialize_lineage_operator(
+                bound_plan,
+                bound_parent,
+                **parameters,
+            ),
         )
 
-    deepened = run(
-        "deepen",
-        lambda plan, bound_parent: materialize_deepen(plan, bound_parent),
-    )
+    deepened = run("deepen")
     assert deepened["dependency_depth"] == 2
 
-    temporal = run(
-        "temporalize",
-        lambda plan, bound_parent: materialize_temporalize(plan, bound_parent),
-    )
+    relocated = run("relocate", target_role="valid_control")
+    assert relocated["affected_role"] == "valid_control"
+    assert relocated["effect"] == parent["effect"]
+
+    temporal = run("temporalize")
     assert temporal["sequential_depth"] == 1
     assert temporal["first_divergence_cycle_bucket"] == "one_cycle"
 
     composed = run(
         "compose",
-        lambda plan, bound_parent: materialize_compose(
-            plan, bound_parent, secondary_effect="condition_flip"
-        ),
+        secondary_effect="condition_flip",
     )
     assert composed["composition_depth"] == 2
     assert composed["composed_effects"] == [
@@ -1109,12 +1257,8 @@ def test_four_lineage_materializers_execute_and_validate():
     witness = hash_payload({"counterexample": "count diverges"})
     revised = run(
         "counterexample_revise",
-        lambda plan, bound_parent: materialize_counterexample_revise(
-            plan,
-            bound_parent,
-            counterexample_hash=witness,
-            revised_effect="state_transition_boundary",
-        ),
+        counterexample_hash=witness,
+        revised_effect="state_transition_boundary",
     )
     assert revised["counterexample_hash"] == witness
     assert revised["effect"] == "state_transition_boundary"
@@ -1167,6 +1311,26 @@ def test_lineage_materializers_reject_unbound_or_out_of_contract_changes():
             parent,
             counterexample_hash="not-a-hash",
             revised_effect="state_boundary",
+        )
+    relocate_plan = make_lineage_plan(
+        policy,
+        operator_space=space,
+        operator="relocate",
+        poison_id="bad-relocate",
+        parent=parent,
+    )
+    with pytest.raises(LineageOperatorViolation, match="distinct target role"):
+        materialize_relocate(
+            relocate_plan,
+            parent,
+            target_role="control",
+        )
+    with pytest.raises(LineageOperatorViolation, match="parameters"):
+        materialize_lineage_operator(
+            relocate_plan,
+            parent,
+            target_role="data",
+            undeclared="forbidden",
         )
     deepen_plan = make_lineage_plan(
         policy,
@@ -1254,6 +1418,10 @@ def test_formal_policy_bounds_and_prompt_asset_tamper_fail_closed(tmp_path):
     (prompt_root / "generic_v1.txt").write_text("tampered", encoding="utf-8")
     with pytest.raises(PolicyRuntimeViolation, match="hash mismatch"):
         PolicyRuntime.from_registry(registry, project_root=tmp_path)
+    child = _children(_parent, 1)[0]
+    assert child.frozen_assets == _parent.frozen_assets
+    with pytest.raises(PolicyRuntimeViolation, match="hash mismatch"):
+        resolve_prompt_template(child, project_root=tmp_path)
 
 
 def test_formal_repair_budget_exhaustion_discards_candidate(monkeypatch, tmp_path):
@@ -1301,6 +1469,13 @@ def test_formal_repair_budget_exhaustion_discards_candidate(monkeypatch, tmp_pat
     monkeypatch.setattr(functional_repair, "judge", fake_judge)
     monkeypatch.setattr(functional_repair, "propose", fake_propose)
     monkeypatch.setattr(functional_repair, "apply_block", fake_apply)
+    monkeypatch.setattr(
+        functional_repair,
+        "_legacy_preflight_api",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("formal runtime imported legacy preflight")
+        ),
+    )
     result = functional_repair.repair_one(
         {
             "design_name": "budget",
@@ -1314,6 +1489,72 @@ def test_formal_repair_budget_exhaustion_discards_candidate(monkeypatch, tmp_pat
     assert not result["repaired"]
     assert result["budget_exhausted"] == "max_tokens_per_case"
     assert calls == {"propose": 1, "apply": 0}
+
+
+def test_formal_repair_checks_wall_budget_after_model_return(monkeypatch, tmp_path):
+    raw = json.loads(
+        (ROOT / "configs/base_policy/frozen_base_policy_v1.json").read_text()
+    )
+    raw["budgets"]["max_wall_seconds_per_case"] = 1
+    raw["base_policy_hash"] = hash_payload({
+        "schema_version": raw["schema_version"],
+        "configuration": raw["configuration"],
+        "budgets": raw["budgets"],
+        "frozen_assets": raw["frozen_assets"],
+    })
+    policy = PolicyState.from_dict(raw)
+    buggy = tmp_path / "buggy.v"
+    buggy.write_text("module top(output y); assign y=1; endmodule\n")
+    clock = {"now": 0.0}
+    applied = {"value": False}
+
+    def fake_judge(*_args, **_kwargs):
+        return type("Outcome", (), {
+            "ok": False,
+            "stage": "compare",
+            "mismatch": "y mismatch",
+            "err": "",
+            "structured": "",
+            "detail": {},
+        })()
+
+    def slow_propose(*_args, **_kwargs):
+        clock["now"] = 2.0
+        return {
+            "start_line": 1,
+            "end_line": 1,
+            "new_code": "module top(output y); assign y=0; endmodule",
+            "_formal_prompt_hash": hash_payload({"prompt": "slow"}),
+            "_formal_response_hash": hash_payload({"response": "slow"}),
+            "_formal_prompt_chars": 10,
+            "_formal_response_chars": 10,
+        }
+
+    def forbidden_apply(*_args, **_kwargs):
+        applied["value"] = True
+        raise AssertionError("over-time candidate must not be applied")
+
+    monkeypatch.setattr(functional_repair, "judge", fake_judge)
+    monkeypatch.setattr(functional_repair, "propose", slow_propose)
+    monkeypatch.setattr(functional_repair, "apply_block", forbidden_apply)
+    monkeypatch.setattr(
+        functional_repair.time,
+        "monotonic",
+        lambda: clock["now"],
+    )
+    result = functional_repair.repair_one(
+        {
+            "design_name": "wall-budget",
+            "top_module": "top",
+            "buggy_rtl": str(buggy),
+        },
+        tmp_path / "work",
+        policy=policy,
+        formal_mode=True,
+    )
+    assert result["budget_exhausted"] == "max_wall_seconds_per_case"
+    assert result["repaired"] is False
+    assert applied["value"] is False
 
 
 def test_legacy_migration_freezes_skills_without_promoting_history(tmp_path):

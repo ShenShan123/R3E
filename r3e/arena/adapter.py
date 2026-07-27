@@ -13,6 +13,9 @@ class EvolutionAdapter(Protocol):
     active policy, mutate manifests, decide promotion, or write the registry.
     """
 
+    # Exact ``r3e-adapter-toolchain-v1`` identity. Every method result must
+    # carry the operation-specific ``r3e-evolution-adapter-v1`` provenance
+    # envelope validated by ``AdapterConformanceGate``.
     toolchain_fingerprint: dict[str, Any]
 
     def generate_red(

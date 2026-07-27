@@ -43,6 +43,11 @@ from r3e.red.selection import select_residual_elites
 from r3e.red.validity import validity_gate
 
 from .audit import append_round_ledger, freeze_round_audit
+from .conformance import (
+    AdapterConformanceGate,
+    adapter_output_metadata,
+    strip_adapter_metadata,
+)
 from .manifests import freeze_manifest, grouped_split, make_manifest, verify_manifest
 from .paired_replay import paired_replay
 from .renewed_challenge import assert_renewed_challenge_binding
@@ -59,9 +64,16 @@ class _SplitEvolutionAdapter:
     def __init__(self, red_adapter: Any, blue_adapter: Any):
         self.red_adapter = red_adapter
         self.blue_adapter = blue_adapter
+        red_fingerprint = getattr(red_adapter, "toolchain_fingerprint", None)
+        blue_fingerprint = getattr(blue_adapter, "toolchain_fingerprint", None)
+        self.conformance_fingerprints = [
+            red_fingerprint,
+            blue_fingerprint,
+        ]
         self.toolchain_fingerprint = {
-            "red": dict(getattr(red_adapter, "toolchain_fingerprint", {}) or {}),
-            "blue": dict(getattr(blue_adapter, "toolchain_fingerprint", {}) or {}),
+            "schema_version": "r3e-split-adapter-toolchain-v1",
+            "red": dict(red_fingerprint or {}),
+            "blue": dict(blue_fingerprint or {}),
         }
 
     def generate_red(
@@ -163,6 +175,7 @@ class EvolutionRoundRunner:
         )
         if missing:
             raise RoundRunnerViolation(f"evolution adapter missing methods: {missing}")
+        self.adapter_gate = AdapterConformanceGate(adapter)
         self.root = Path(project_root)
         self.round_dir = self.root / config.get("rounds_root", "runtime/rounds") / round_id
         self.round_dir.mkdir(parents=True, exist_ok=True)
@@ -347,9 +360,12 @@ class EvolutionRoundRunner:
                 self.round_dir / "red_search_context.json",
                 red_context,
             )
-            candidates = list(
-                self.adapter.generate_red(parent, self.config, red_context)
-            )
+            candidates = [
+                self.adapter_gate.validate("generate_red", row)
+                for row in self.adapter.generate_red(
+                    parent, self.config, red_context
+                )
+            ]
             poison_ids = [str(row.get("poison_id") or "") for row in candidates]
             if any(not poison_id for poison_id in poison_ids):
                 raise RoundRunnerViolation("red candidate is missing poison_id")
@@ -402,7 +418,18 @@ class EvolutionRoundRunner:
             validity_rows = []
             valid = []
             for poison in candidates:
-                prepared = dict(self.adapter.prepare_validity(poison))
+                prepared = self.adapter_gate.validate(
+                    "prepare_validity",
+                    self.adapter.prepare_validity(poison),
+                )
+                if (
+                    prepared.get("poison_id") != poison.get("poison_id")
+                    or prepared.get("challenged_policy_hash")
+                    != poison.get("challenged_policy_hash")
+                ):
+                    raise RoundRunnerViolation(
+                        "validity adapter changed poison identity or policy binding"
+                    )
                 result = validity_gate(prepared)
                 row = dict(prepared)
                 row["validity"] = {
@@ -431,12 +458,19 @@ class EvolutionRoundRunner:
         valid = _read_jsonl(self.round_dir / "valid_poisons.jsonl")
         if self.state.next_stage() == "BLUE_CHALLENGE":
             seeds = [int(seed) for seed in self.config.get("challenge_seeds", [1, 2, 3])]
+
+            def evaluate_blue(policy, poison, seed):
+                return self.adapter_gate.validate(
+                    "evaluate_blue",
+                    self.adapter.evaluate_blue(policy, poison, seed),
+                )
+
             challenged = [
                 evaluate_challenge(
                     parent,
                     poison,
                     seeds=seeds,
-                    evaluator=self.adapter.evaluate_blue,
+                    evaluator=evaluate_blue,
                 )
                 for poison in valid
             ]
@@ -478,10 +512,18 @@ class EvolutionRoundRunner:
                     enriched["novelty"] = novelty_score(enriched, current)
                     enriched["archive_cell"] = archive_cell(enriched)
                     enriched["discovered_round"] = self.round_id
+                    probe = self.adapter_gate.validate(
+                        "probe_learnability",
+                        self.adapter.probe_learnability(parent, enriched),
+                    )
+                    probe_payload = strip_adapter_metadata(probe)
+                    probe_evidence = dict(probe_payload.get("evidence") or {})
+                    probe_evidence["adapter_output"] = adapter_output_metadata(probe)
+                    probe_payload["evidence"] = probe_evidence
                     learnability = validate_learnability_result(
                         parent,
                         enriched,
-                        self.adapter.probe_learnability(parent, enriched),
+                        probe_payload,
                     )
                     learnability_rows.append(learnability)
                     enriched["learnability"] = learnability
@@ -696,7 +738,10 @@ class EvolutionRoundRunner:
                 {
                     "policy_id": child.policy_id,
                     "policy_hash": child.policy_hash,
-                    **dict(self.adapter.screen_child(parent, child, adaptation)),
+                    **self.adapter_gate.validate(
+                        "screen_child",
+                        self.adapter.screen_child(parent, child, adaptation),
+                    ),
                 }
                 for child in children
             ]
@@ -732,6 +777,13 @@ class EvolutionRoundRunner:
         if self.state.next_stage() == "PAIRED_REPLAY":
             replay_rows = []
             seeds = [int(seed) for seed in self.config.get("promotion_seeds", [11, 12, 13])]
+
+            def replay(policy, case, seed):
+                return self.adapter_gate.validate(
+                    "replay",
+                    self.adapter.replay(policy, case, seed),
+                )
+
             for child in children:
                 if child.policy_id not in survivors:
                     continue
@@ -741,7 +793,7 @@ class EvolutionRoundRunner:
                     target_manifest=target,
                     non_target_manifest=non_target,
                     seeds=seeds,
-                    evaluator=self.adapter.replay,
+                    evaluator=replay,
                 ):
                     row["candidate_policy_id"] = child.policy_id
                     replay_rows.append(row)

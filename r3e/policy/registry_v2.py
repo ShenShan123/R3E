@@ -98,6 +98,12 @@ def validate_registry(registry: dict[str, Any], *, formal_mode: bool = True) -> 
     base_policy = PolicyState.from_dict(policies[base_id]["policy"])
     if base.get("hash") != base_policy.base_policy_hash:
         raise RegistryViolation("base policy hash mismatch")
+    for policy_id, entry in policies.items():
+        policy = PolicyState.from_dict(entry["policy"])
+        if policy.frozen_assets != base_policy.frozen_assets:
+            raise RegistryViolation(
+                f"policy frozen assets differ from base policy: {policy_id}"
+            )
     return registry
 
 

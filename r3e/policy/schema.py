@@ -117,17 +117,17 @@ class PolicyState:
         frozen_assets = deepcopy(payload.get("frozen_assets") or {})
         if not isinstance(frozen_assets, dict):
             raise PolicyValidationError("frozen_assets must be an object")
+        if not frozen_assets:
+            raise PolicyValidationError("every policy must bind frozen prompt assets")
+        if any(
+            not isinstance(path, str)
+            or not path
+            or not isinstance(digest, str)
+            or not _HASH_RE.fullmatch(digest)
+            for path, digest in frozen_assets.items()
+        ):
+            raise PolicyValidationError("invalid frozen asset binding")
         if policy_id == "B0":
-            if not frozen_assets:
-                raise PolicyValidationError("B0 must bind frozen prompt assets")
-            if any(
-                not isinstance(path, str)
-                or not path
-                or not isinstance(digest, str)
-                or not _HASH_RE.fullmatch(digest)
-                for path, digest in frozen_assets.items()
-            ):
-                raise PolicyValidationError("invalid frozen asset binding")
             expected_base_hash = hash_payload({
                 "schema_version": schema,
                 "configuration": configuration,

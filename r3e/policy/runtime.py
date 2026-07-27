@@ -14,6 +14,28 @@ class PolicyRuntimeViolation(RuntimeError):
     """Raised when formal runtime attempts an unfrozen override."""
 
 
+def resolve_prompt_template(
+    policy: PolicyState,
+    *,
+    project_root: str | Path | None = None,
+) -> str:
+    """Load one policy lens only after verifying its frozen asset binding."""
+    if not isinstance(policy, PolicyState):
+        raise PolicyRuntimeViolation("prompt resolution requires PolicyState")
+    root = Path(project_root) if project_root else Path(__file__).resolve().parents[2]
+    lens = policy.configuration["prompt_lens_id"]
+    asset_key = f"prompt_templates/{lens}.txt"
+    prompt_path = root / "configs" / "base_policy" / asset_key
+    if not prompt_path.is_file():
+        raise PolicyRuntimeViolation(f"frozen prompt lens missing: {lens}")
+    expected = (policy.frozen_assets or {}).get(asset_key)
+    if not expected:
+        raise PolicyRuntimeViolation(f"policy does not bind frozen prompt lens: {lens}")
+    if expected != hash_file(prompt_path):
+        raise PolicyRuntimeViolation(f"frozen prompt lens hash mismatch: {lens}")
+    return prompt_path.read_text(encoding="utf-8").strip()
+
+
 @dataclass(frozen=True)
 class PolicyRuntime:
     policy: PolicyState
@@ -31,18 +53,13 @@ class PolicyRuntime:
         registry = load_registry(registry_path, formal_mode=formal_mode)
         policy = get_active_policy(registry)
         root = Path(project_root) if project_root else Path(__file__).resolve().parents[2]
-        lens = policy.configuration["prompt_lens_id"]
-        prompt_path = root / "configs" / "base_policy" / "prompt_templates" / f"{lens}.txt"
-        if not prompt_path.is_file():
-            raise PolicyRuntimeViolation(f"frozen prompt lens missing: {lens}")
         base_entry = registry["policies"][registry["base_policy"]["policy_id"]]["policy"]
         base_policy = PolicyState.from_dict(base_entry)
-        asset_key = f"prompt_templates/{lens}.txt"
-        if (base_policy.frozen_assets or {}).get(asset_key) != hash_file(prompt_path):
-            raise PolicyRuntimeViolation(f"frozen prompt lens hash mismatch: {lens}")
+        if policy.frozen_assets != base_policy.frozen_assets:
+            raise PolicyRuntimeViolation("active policy frozen assets differ from base policy")
         return cls(
             policy=policy,
-            prompt_template=prompt_path.read_text(encoding="utf-8").strip(),
+            prompt_template=resolve_prompt_template(policy, project_root=root),
             registry_hash=registry["registry_hash"],
         )
 

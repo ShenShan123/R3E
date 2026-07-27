@@ -1367,6 +1367,14 @@ python -m r3e.arena.renewed_challenge \
 
 # 十六、实施阶段
 
+> **工程里程碑（2026-07-27）：System Upgrade Complete V1**
+>
+> Phase 0–4 的系统基础设施和协议实现已经冻结，权威 manifest 为
+> `configs/evolution/system_upgrade_complete_v1.json`。Phase 5 仅完成
+> deterministic fake-adapter 多轮状态机验证；真实模型、实验 seeds、
+> promotion thresholds、non-target manifest 和实验预算仍未冻结，也不构成
+> 真实模型驱动的 `B0→B1→B2` 实验结果。
+
 ## Phase 0：基线冻结与安全修复
 
 任务：
@@ -1920,36 +1928,36 @@ git checkout -b dev/policy-evolution-v2
 
 ## P0：基础可信性
 
-* [ ] 创建开发分支与 legacy tag。
-* [ ] 修复 oracle 输出列数。
-* [ ] 拒绝额外 candidate cycles。
-* [ ] 检查 vvp return code。
-* [ ] 解决 basename collision。
-* [ ] formal status 枚举化。
-* [ ] `configs/skills.json` 移出 formal runtime。
-* [ ] 新建 frozen base policy。
-* [ ] 新建 PolicyState schema。
-* [ ] registry 改成单 active policy。
-* [ ] 每条 repair result 记录 policy hash。
+* [x] 创建开发分支与 legacy tag。
+* [x] 修复 oracle 输出列数。
+* [x] 拒绝额外 candidate cycles。
+* [x] 检查 vvp return code。
+* [x] 解决 basename collision。
+* [x] formal status 枚举化。
+* [x] `configs/skills.json` 移出 formal runtime。
+* [x] 新建 frozen base policy。
+* [x] 新建 PolicyState schema。
+* [x] registry 改成单 active policy。
+* [x] 每条 repair result 记录 policy hash。
 
 ## P1：最小闭环
 
-* [ ] Blue Capability Packet。
-* [ ] challenged-policy binding。
-* [ ] 3-seed hardness probe。
-* [ ] residual archive。
-* [ ] grouped adaptation/target split。
-* [ ] 四维局部 policy search。
-* [ ] paired promotion replay。
-* [ ] 完成 B0→B1。
-* [ ] 完成 R1(B1)。
-* [ ] 完成 B1→B2。
+* [x] Blue Capability Packet。
+* [x] challenged-policy binding。
+* [x] 3-seed hardness probe。
+* [x] residual archive。
+* [x] grouped adaptation/target split。
+* [x] 四维局部 policy search。
+* [x] paired promotion replay。
+* [x] 完成 B0→B1（deterministic fake system validation）。
+* [x] 完成 R1(B1)（deterministic fake system validation）。
+* [x] 完成 B1→B2（deterministic fake system validation）。
 
 ## P2：研究强化
 
-* [ ] MAP-Elites archive。
-* [ ] lineage deepening。
-* [ ] learnability teacher。
+* [x] MAP-Elites archive。
+* [x] lineage deepening（六类 frozen operator 统一 dispatch）。
+* [x] learnability teacher。
 * [ ] prompt lens search。
 * [ ] model routing。
 * [ ] population policy。

@@ -123,6 +123,7 @@ def propose_children(
             "validation_manifest_hash": "",
             "promotion_decision_hash": "",
             "rollback_policy_id": parent.policy_id,
+            "frozen_assets": deepcopy(parent.frozen_assets or {}),
             "proposal_operator": operator,
         })
         children.append(child)

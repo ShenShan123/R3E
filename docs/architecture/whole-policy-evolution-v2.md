@@ -62,10 +62,11 @@ composition depth, and single-module/single-block scope. A lineage parent may
 have challenged an earlier policy; the child poison always binds the current
 active policy.
 
-Reference materializers cover dependency deepening, temporalization,
-two-effect composition, and counterexample-guided revision. They are
-deterministic descriptor transformations; adapters remain responsible for
-tool-specific RTL materialization and cannot bypass runner postconditions.
+One dispatcher covers all six frozen operators: fresh generation, dependency
+deepening, role relocation, temporalization, two-effect composition, and
+counterexample-guided revision. These are deterministic descriptor
+transformations; adapters remain responsible for tool-specific RTL
+materialization and cannot bypass runner postconditions.
 
 `hard_residual` and `borderline_residual` entries enter the residual archive
 only with structured reachable/weakly-reachable teacher evidence.
@@ -104,9 +105,25 @@ manifest source relationships and design isolation, verifies learnability and
 renewed-challenge bindings, and is appended idempotently to a hash-chain round
 ledger.
 
+## Adapter conformance
+
+Every adapter declares an exact `r3e-adapter-toolchain-v1` fingerprint. Each
+of its six method outputs carries an operation-specific schema plus model ID,
+budget hash, verifier hash, toolchain fingerprint hash, command hash, and
+result hash. The runner validates this envelope before accepting red,
+validity, challenge, learnability, screening, or replay output. Rehashed
+outputs from an undeclared toolchain are rejected.
+
+Formal prompt loading follows the same fail-closed rule whether invoked
+through `PolicyRuntime.from_registry(...)` or `repair_one(..., policy)`.
+Every child inherits the base frozen-asset map, and a prompt hash mismatch is
+rejected before repair. Legacy preflight is imported only in
+`formal_mode=False`.
+
 ## Current status
 
-The current phase freezes software interfaces and validates them with
-deterministic fake adapters. Model identity, seeds, promotion thresholds,
-non-target datasets, child counts, and experiment budgets remain future
-experiment-design inputs.
+System Upgrade Complete V1 freezes the Phase 0–4 software interfaces and
+validates them with deterministic fake adapters. Its hash-bound manifest is
+`configs/evolution/system_upgrade_complete_v1.json`. Real model identity,
+experiment seeds, promotion thresholds, non-target datasets, child counts,
+and experiment budgets remain future experiment-design inputs.

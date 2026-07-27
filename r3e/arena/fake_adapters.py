@@ -11,11 +11,31 @@ from typing import Any, Iterable
 from r3e.policy.schema import PolicyState
 from r3e.protocol.hashing import hash_payload
 from r3e.red.feedback_packet import build_capability_packet
-from r3e.red.operators import load_operator_space, make_lineage_plan
+from r3e.red.operators import (
+    load_operator_space,
+    make_lineage_plan,
+    materialize_lineage_operator,
+)
+
+from .conformance import bind_adapter_output, make_toolchain_fingerprint
+
+
+DETERMINISTIC_TOOLCHAIN_FINGERPRINT = make_toolchain_fingerprint(
+    adapter_id="r3e-deterministic-fake",
+    adapter_version="1",
+    model_id="deterministic-fake-model",
+    model_version="1",
+    verifier_id="deterministic-fake-verifier",
+    verifier_version="1",
+    runtime_id="python-deterministic-fixture",
+    runtime_version="1",
+)
 
 
 class FakeRedAdapter:
     """Generate policy-conditioned, valid-by-construction synthetic poisons."""
+
+    toolchain_fingerprint = DETERMINISTIC_TOOLCHAIN_FINGERPRINT
 
     def __init__(self, workspace: str | Path):
         self.workspace = Path(workspace)
@@ -90,41 +110,41 @@ class FakeRedAdapter:
             lineage_parent = residual_parents[index % len(residual_parents)] if residual_parents else None
             if lineage_parent is None:
                 operator = "fresh"
-                row.update({
-                    "parent_poison_id": "",
-                    "parent_challenged_policy_hash": "",
-                    "lineage_depth": 0,
-                    "evolution_operator": operator,
-                })
             else:
                 operator = "relocate"
                 row["family"] = lineage_parent["family"]
-                row["affected_role"] = (
-                    "data"
-                    if lineage_parent["affected_role"] != "data"
-                    else "control"
-                )
-                row.update({
-                    "parent_poison_id": lineage_parent["poison_id"],
-                    "parent_challenged_policy_hash": lineage_parent[
-                        "challenged_policy_hash"
-                    ],
-                    "lineage_depth": int(lineage_parent["lineage_depth"]) + 1,
-                    "evolution_operator": operator,
-                })
-            row["lineage_plan"] = make_lineage_plan(
+                relocation_roles = ("data", "output", "valid_control", "state")
+                target_role = relocation_roles[index % len(relocation_roles)]
+                if target_role == lineage_parent["affected_role"]:
+                    target_role = relocation_roles[
+                        (index + 1) % len(relocation_roles)
+                    ]
+            plan = make_lineage_plan(
                 parent,
                 operator_space=operator_space,
                 operator=operator,
                 poison_id=row["poison_id"],
                 parent=lineage_parent,
             )
-            rows.append(row)
+            materialized = materialize_lineage_operator(
+                plan,
+                lineage_parent,
+                **(
+                    {"descriptor": row}
+                    if operator == "fresh"
+                    else {"target_role": target_role}
+                ),
+            )
+            rows.append(bind_adapter_output(
+                {**row, **materialized},
+                "generate_red",
+                self.toolchain_fingerprint,
+            ))
         return rows
 
     @staticmethod
     def prepare_validity(poison: dict[str, Any]) -> dict[str, Any]:
-        return {
+        return bind_adapter_output({
             **poison,
             "golden_compile_ok": True,
             "golden_oracle_ok": True,
@@ -141,24 +161,24 @@ class FakeRedAdapter:
             }),
             "toolchain_fingerprint_hash": hash_payload({"tool": "deterministic_fake"}),
             "command_hash": hash_payload({"command": "deterministic_fake"}),
-        }
+        }, "prepare_validity", DETERMINISTIC_TOOLCHAIN_FINGERPRINT)
 
     @staticmethod
     def evaluate_blue(
         policy: PolicyState, poison: dict[str, Any], seed: int
     ) -> dict[str, Any]:
-        return {
+        return bind_adapter_output({
             "policy_hash": policy.policy_hash,
             "seed": seed,
             "oracle_ok": False,
             "adapter_mode": "deterministic_fake",
-        }
+        }, "evaluate_blue", DETERMINISTIC_TOOLCHAIN_FINGERPRINT)
 
     @staticmethod
     def probe_learnability(
         policy: PolicyState, poison: dict[str, Any]
     ) -> dict[str, Any]:
-        return {
+        return bind_adapter_output({
             "label": "reachable",
             "challenged_policy_hash": policy.policy_hash,
             "teacher_mode": "same_model_expanded",
@@ -173,22 +193,24 @@ class FakeRedAdapter:
                 "poison_id": poison["poison_id"],
                 "model_calls": 0,
             },
-        }
+        }, "probe_learnability", DETERMINISTIC_TOOLCHAIN_FINGERPRINT)
 
 
 class FakeBlueAdapter:
     """Deterministic parent-fails/child-passes replay fixture."""
 
+    toolchain_fingerprint = DETERMINISTIC_TOOLCHAIN_FINGERPRINT
+
     @staticmethod
     def evaluate_blue(
         policy: PolicyState, _poison: dict[str, Any], seed: int
     ) -> dict[str, Any]:
-        return {
+        return bind_adapter_output({
             "policy_hash": policy.policy_hash,
             "seed": seed,
             "oracle_ok": False,
             "adapter_mode": "deterministic_fake",
-        }
+        }, "evaluate_blue", DETERMINISTIC_TOOLCHAIN_FINGERPRINT)
 
     @staticmethod
     def screen_child(
@@ -207,20 +229,22 @@ class FakeBlueAdapter:
         challenged_hash = str(case.get("challenged_policy_hash") or "")
         is_target = bool(challenged_hash)
         oracle_ok = not is_target or policy.policy_hash != challenged_hash
-        return {
+        return bind_adapter_output({
             "policy_hash": policy.policy_hash,
             "seed": seed,
             "oracle_ok": oracle_ok,
             "model_id": "deterministic-fake-model",
-            "budget_hash": "deterministic-fake-budget",
-            "verifier_hash": "deterministic-fake-verifier",
+            "budget_hash": hash_payload({"budget": "deterministic-fake"}),
+            "verifier_hash": DETERMINISTIC_TOOLCHAIN_FINGERPRINT["verifier_hash"],
             "cost": 1.0,
             "adapter_mode": "deterministic_fake",
-        }
+        }, "replay", DETERMINISTIC_TOOLCHAIN_FINGERPRINT)
 
 
 class DeterministicPromotionAdapter:
     """Select one deterministic survivor; formal promotion remains runner-owned."""
+
+    toolchain_fingerprint = DETERMINISTIC_TOOLCHAIN_FINGERPRINT
 
     @staticmethod
     def screen_child(
@@ -228,20 +252,16 @@ class DeterministicPromotionAdapter:
         child: PolicyState,
         _adaptation_manifest: dict[str, Any],
     ) -> dict[str, Any]:
-        return {
+        return bind_adapter_output({
             "survive": child.policy_id.endswith("C01"),
             "adapter_mode": "deterministic_fake",
-        }
+        }, "screen_child", DETERMINISTIC_TOOLCHAIN_FINGERPRINT)
 
 
 class DeterministicEvolutionAdapter:
     """Composite adapter implementing the runner's full environment protocol."""
 
-    toolchain_fingerprint = {
-        "adapter_mode": "deterministic_fake",
-        "model_calls": 0,
-        "eda_calls": 0,
-    }
+    toolchain_fingerprint = DETERMINISTIC_TOOLCHAIN_FINGERPRINT
 
     def __init__(self, workspace: str | Path):
         self.red = FakeRedAdapter(workspace)
@@ -294,11 +314,14 @@ class FailureInjectionAdapter:
         self.fail_on_call = fail_on_call
         self.failed = False
         self.call_counts: dict[str, int] = {}
-        self.toolchain_fingerprint = {
-            **dict(getattr(wrapped, "toolchain_fingerprint", {}) or {}),
-            "failure_injection_method": fail_method,
-            "failure_injection_call": fail_on_call,
-        }
+        self.toolchain_fingerprint = dict(wrapped.toolchain_fingerprint)
+        self.conformance_fingerprints = list(
+            getattr(
+                wrapped,
+                "conformance_fingerprints",
+                [wrapped.toolchain_fingerprint],
+            )
+        )
 
     def __getattr__(self, name: str):
         target = getattr(self.wrapped, name)

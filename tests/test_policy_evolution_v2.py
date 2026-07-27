@@ -6,6 +6,10 @@ from pathlib import Path
 import pytest
 
 from r3e.arena.manifests import ManifestViolation, grouped_split, make_manifest
+from r3e.arena.conformance import (
+    bind_adapter_output,
+    make_toolchain_fingerprint,
+)
 from r3e.arena.runner import EvolutionRoundRunner
 from r3e.arena.round_state import RoundState, RoundStateViolation
 from r3e.policy.promotion import decide_policy_promotion
@@ -183,7 +187,16 @@ def test_minimal_round_promotes_and_binds_renewed_challenge(tmp_path):
     rtl_dir.mkdir()
 
     class Adapter:
-        toolchain_fingerprint = {"adapter": "test"}
+        toolchain_fingerprint = make_toolchain_fingerprint(
+            adapter_id="minimal-round-test",
+            adapter_version="1",
+            model_id="fixed-test-model",
+            model_version="1",
+            verifier_id="fixed-test-verifier",
+            verifier_version="1",
+            runtime_id="pytest",
+            runtime_version="1",
+        )
 
         def generate_red(self, parent, _config, _red_context):
             rows = []
@@ -192,7 +205,7 @@ def test_minimal_round_promotes_and_binds_renewed_challenge(tmp_path):
                 buggy = rtl_dir / f"b{index}.v"
                 golden.write_text("module top(output y); assign y=0; endmodule\n")
                 buggy.write_text("module top(output y); assign y=1; endmodule\n")
-                rows.append({
+                rows.append(bind_adapter_output({
                     "poison_id": f"p{index}",
                     "case_id": f"p{index}",
                     "design": f"d{index}",
@@ -207,13 +220,12 @@ def test_minimal_round_promotes_and_binds_renewed_challenge(tmp_path):
                     "sequential_depth": 1,
                     "first_divergence_cycle_bucket": "one_cycle",
                     "failure_signature": f"signature{index}",
-                    "normalized_diff_hash": f"diff{index}",
-                })
+                    "normalized_diff_hash": hash_payload({"diff": index}),
+                }, "generate_red", self.toolchain_fingerprint))
             return rows
 
-        @staticmethod
-        def prepare_validity(poison):
-            return {
+        def prepare_validity(self, poison):
+            return bind_adapter_output({
                 **poison,
                 "golden_compile_ok": True,
                 "golden_oracle_ok": True,
@@ -233,19 +245,17 @@ def test_minimal_round_promotes_and_binds_renewed_challenge(tmp_path):
                 }),
                 "toolchain_fingerprint_hash": hash_payload({"tool": "test"}),
                 "command_hash": hash_payload({"command": "test"}),
-            }
+            }, "prepare_validity", self.toolchain_fingerprint)
 
-        @staticmethod
-        def evaluate_blue(policy, _poison, seed):
-            return {
+        def evaluate_blue(self, policy, _poison, seed):
+            return bind_adapter_output({
                 "policy_hash": policy.policy_hash,
                 "seed": seed,
                 "oracle_ok": False,
-            }
+            }, "evaluate_blue", self.toolchain_fingerprint)
 
-        @staticmethod
-        def probe_learnability(policy, poison):
-            return {
+        def probe_learnability(self, policy, poison):
+            return bind_adapter_output({
                 "label": "reachable",
                 "challenged_policy_hash": policy.policy_hash,
                 "teacher_mode": "same_model_expanded",
@@ -256,25 +266,24 @@ def test_minimal_round_promotes_and_binds_renewed_challenge(tmp_path):
                 "successes": 1,
                 "budget_exhausted": False,
                 "evidence": {"poison_id": poison["poison_id"], "fixture": True},
-            }
+            }, "probe_learnability", self.toolchain_fingerprint)
 
-        @staticmethod
-        def screen_child(_parent, child, _adaptation):
-            return {"survive": child.policy_id.endswith("C01")}
+        def screen_child(self, _parent, child, _adaptation):
+            return bind_adapter_output(
+                {"survive": child.policy_id.endswith("C01")},
+                "screen_child",
+                self.toolchain_fingerprint,
+            )
 
-        @staticmethod
-        def replay(policy, case, seed):
+        def replay(self, policy, case, seed):
             is_candidate = policy.policy_id != "B0"
             is_target = str(case["case_id"]).startswith("p")
-            return {
+            return bind_adapter_output({
                 "policy_hash": policy.policy_hash,
                 "seed": seed,
                 "oracle_ok": is_candidate or not is_target,
-                "model_id": "fixed",
-                "budget_hash": "fixed-budget",
-                "verifier_hash": "fixed-verifier",
                 "cost": 1.0,
-            }
+            }, "replay", self.toolchain_fingerprint)
 
     config = {
         "policy_registry": "runtime/registry/policy_registry.json",

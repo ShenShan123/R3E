@@ -143,6 +143,12 @@ challenge, and rollback without model or EDA calls. The interface-only
 `configs/evolution/round_v1.json` intentionally contains no model, seed,
 threshold, non-target dataset, child count, or experiment budget binding.
 
+Phase 0–4 are frozen as **System Upgrade Complete V1**. The machine-readable
+milestone is `configs/evolution/system_upgrade_complete_v1.json`; it binds the
+base policy, policy search space, six-operator lineage space, round interface,
+validation commands, and explicit experiment exclusions. It does not claim a
+real-model multi-round result.
+
 ### Stable interfaces and events
 
 The engineering interfaces are:
@@ -174,7 +180,13 @@ hash stays active. `accumulated_residuals.jsonl` and
 Lineage generation is governed by
 `configs/red/lineage_operator_space_v1.json`. Each poison carries a hash-bound
 operator plan, and runner-owned checks enforce parent lineage, current-policy
-binding, semantic operator postconditions, and mutation-scope ceilings.
+binding, semantic operator postconditions, and mutation-scope ceilings. A
+single dispatcher covers fresh, deepen, relocate, temporalize, compose, and
+counterexample-guided revision.
+
+All six adapter methods pass through `r3e-evolution-adapter-v1` conformance.
+Their outputs bind an operation-specific schema, model, budget, verifier,
+toolchain, command, and result hash before the runner accepts them.
 
 Every round writes hash-chained JSONL events under `runtime/events/`:
 `policy.jsonl`, `red.jsonl`, `oracle.jsonl`, `arena.jsonl`, and

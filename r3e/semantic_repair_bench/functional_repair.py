@@ -21,16 +21,15 @@ sys.path.insert(0, str(Path(__file__).parent))
 from microsurgeon_flow.backend_eco_oneshot import call_llm  # noqa: E402
 
 from oracle_gate import judge  # noqa: E402
-from skill_preflight import (  # noqa: E402
-    build_preflight_decision,
-    combine_recall_context,
-    try_deterministic_template_patch,
-)
 # 复用蓝方系统真 primitive(纳入蓝方: 修复应用走 llm_micro_repair.apply_block_patch)
 from microsurgeon_frontend.semantic.llm_micro_repair import (  # noqa: E402
     apply_block_patch as _blue_apply_block_patch,
 )
-from r3e.policy.runtime import PolicyRuntime, PolicyRuntimeViolation
+from r3e.policy.runtime import (
+    PolicyRuntime,
+    PolicyRuntimeViolation,
+    resolve_prompt_template,
+)
 from r3e.policy.schema import PolicyState
 
 _PROMPT = """你是 RTL 功能 bug 修复专家。下面的 Verilog 模块**能编译通过**，但 testbench 仿真
@@ -49,6 +48,21 @@ _PROMPT = """你是 RTL 功能 bug 修复专家。下面的 Verilog 模块**能�
 """
 
 _MAX_BLOCK = 40
+
+
+def _legacy_preflight_api():
+    """Import legacy routing only for explicitly non-formal execution."""
+    from r3e.legacy.skill_preflight import (
+        build_preflight_decision,
+        combine_recall_context,
+        try_deterministic_template_patch,
+    )
+
+    return (
+        build_preflight_decision,
+        combine_recall_context,
+        try_deterministic_template_patch,
+    )
 
 
 def _numbered(text: str) -> str:
@@ -195,16 +209,7 @@ def repair_one(case: dict, work_dir, recall_fn=None, evidence_k: int = 1,
         structured_evidence = configuration["evidence_mode"] == "hybrid"
     prompt_lens = runtime.prompt_template if runtime is not None else ""
     if formal_mode and not prompt_lens:
-        lens_path = (
-            Path(__file__).resolve().parents[2]
-            / "configs"
-            / "base_policy"
-            / "prompt_templates"
-            / f"{policy.configuration['prompt_lens_id']}.txt"
-        )
-        if not lens_path.is_file():
-            raise PolicyRuntimeViolation("frozen prompt lens is missing")
-        prompt_lens = lens_path.read_text(encoding="utf-8").strip()
+        prompt_lens = resolve_prompt_template(policy)
     if policy is not None:
         rec.update({
             "policy_id": policy.policy_id,
@@ -237,6 +242,11 @@ def repair_one(case: dict, work_dir, recall_fn=None, evidence_k: int = 1,
             },
         }
     else:
+        (
+            build_preflight_decision,
+            combine_recall_context,
+            try_deterministic_template_patch,
+        ) = _legacy_preflight_api()
         preflight = build_preflight_decision(
             case,
             preflight_registry,
@@ -270,7 +280,15 @@ def repair_one(case: dict, work_dir, recall_fn=None, evidence_k: int = 1,
         rec["note"] = f"golden 跑不了, case 无效: {pre.err}"
         return rec
 
-    template_attempt = try_deterministic_template_patch(case, preflight, pre)
+    template_attempt = (
+        {
+            "enabled": False,
+            "status": "forbidden_in_formal_mode",
+            "hit": False,
+        }
+        if formal_mode
+        else try_deterministic_template_patch(case, preflight, pre)
+    )
     rec["preflight"]["template_attempt"] = {
         k: v for k, v in template_attempt.items()
         if k != "patch"
@@ -295,9 +313,9 @@ def repair_one(case: dict, work_dir, recall_fn=None, evidence_k: int = 1,
             rec["n_candidates_tried"] = 0
             return rec
 
-    memory_context = (
-        "" if formal_mode else combine_recall_context(case, preflight, recall_fn)
-    )
+    memory_context = ""
+    if not formal_mode:
+        memory_context = combine_recall_context(case, preflight, recall_fn)
     rec["used_memory"] = bool(memory_context)
     rec["used_strategy"] = bool(preflight.get("has_strategy"))
 
@@ -337,6 +355,14 @@ def repair_one(case: dict, work_dir, recall_fn=None, evidence_k: int = 1,
             memory_context,
             prompt_lens=prompt_lens,
         )
+        if time.monotonic() - started > max_wall_seconds:
+            cr["error"] = "max_wall_seconds_per_case exceeded"
+            if isinstance(prop, dict):
+                cr["prompt_hash"] = prop.get("_formal_prompt_hash")
+                cr["response_hash"] = prop.get("_formal_response_hash")
+            cand_recs.append(cr)
+            rec["budget_exhausted"] = "max_wall_seconds_per_case"
+            break
         if isinstance(prop, list):
             prop = next((x for x in prop if isinstance(x, dict)), None) or {
                 "llm_call_error": "llm returned list with no dict element"}
