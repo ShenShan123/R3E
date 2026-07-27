@@ -1,4 +1,4 @@
-# R³E: Red-Team-Guided Evolution for Correctness-Gated RTL Repair
+# R3E: Verifier-Mediated Red–Blue Policy Evolution for RTL Repair
 
 Anonymous research-code release for R³E. This upload package contains the core
 implementation, frozen public benchmark inputs, offline audit/aggregation
