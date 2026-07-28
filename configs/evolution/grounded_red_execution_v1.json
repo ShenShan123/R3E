@@ -27,7 +27,7 @@
     "r3e-verilog-token-ast-v1"
   ],
   "frozen_assets": {
-    "docs/protocols/grounded-red-execution-v1.md": "sha256:00b17c495cc0ea60144c1d1c76e272fa941298550d0fa835b1df2cee4458a381"
+    "docs/protocols/grounded-red-execution-v1.md": "sha256:cf20fbb0d5281b225b58988dd1bfd0e9fec707108877b10cdcec353300793844"
   },
   "required_validation": [
     "pytest -q -p no:cacheprovider",
@@ -49,5 +49,5 @@
     "real-model-multi-round-pilot"
   ],
   "claim_boundary": "Frozen local Icarus-backed GRD-1 execution and one comparator materializer only; no formal-engine, full-SystemVerilog-AST, all-operator, arena, real-model, multi-round, bug-yield, or empirical-result claim.",
-  "milestone_hash": "sha256:958c9486b7cf59b6c624bfd5f4596cc1ebb02fdd67addc92a837c982d8f51c6b"
+  "milestone_hash": "sha256:6346deb2ce937c2641a3887878ab1c0363c585b625465b1638e0620fce6f78bb"
 }
