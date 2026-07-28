@@ -28,6 +28,20 @@ from r3e.red.feedback_packet import FORBIDDEN_INPUT_KEYS
 from r3e.red.feedback_packet import verify_red_search_context
 from r3e.red.learnability import verify_learnability_result
 from r3e.red.selection import select_residual_elites
+from r3e.red.poison_payload import verify_poison_payload
+from r3e.red.validity import validity_gate
+from r3e.red.grounded.arena_validity import (
+    ARENA_GROUNDED_AUTHORITY,
+    verify_grounded_arena_validity,
+)
+from r3e.red.grounded.execution import (
+    verify_grounded_execution_bundle,
+)
+
+from .grounded_authority import (
+    GROUNDED_ARENA_AUTHORITY,
+    load_arena_grounded_registries,
+)
 
 
 ROUND_AUDIT_SCHEMA_VERSION = "r3e-round-audit-v1"
@@ -63,6 +77,59 @@ def reconstruct_round(round_dir: str | Path) -> dict[str, Any]:
     parent = PolicyState.from_dict(read_json(root / "active_parent.json"))
     if parent.policy_hash != context["active_policy_hash"]:
         raise RoundAuditViolation("active parent does not match frozen run context")
+    validity_authority = str(
+        config.get(
+            "validity_authority",
+            "legacy_adapter_evidence_v1",
+        )
+    )
+    validity_rows = _read_jsonl(root / "validity_results.jsonl")
+    if validity_authority == GROUNDED_ARENA_AUTHORITY:
+        project_root = root.parents[2]
+        registries = load_arena_grounded_registries(
+            project_root, config
+        )
+        for row in validity_rows:
+            try:
+                verify_poison_payload(row)
+                bundle = verify_grounded_execution_bundle(
+                    row.get("grounded_execution_bundle") or {},
+                    policy=parent,
+                    registries=registries,
+                )
+                validity = verify_grounded_arena_validity(
+                    row.get("validity") or {},
+                    execution_bundle=bundle,
+                )
+            except Exception as exc:
+                raise RoundAuditViolation(
+                    "Grounded validity row cannot be reconstructed"
+                ) from exc
+            if (
+                validity["evidence"]["authority_mode"]
+                != ARENA_GROUNDED_AUTHORITY
+                or row.get("grounded_plan_hash")
+                != bundle["plan"]["plan_hash"]
+                or row.get("poison_id") != bundle["plan"]["plan_id"]
+            ):
+                raise RoundAuditViolation(
+                    "Grounded validity row is not cross-bound"
+                )
+    else:
+        for row in validity_rows:
+            verify_poison_payload(row)
+            rebuilt = validity_gate(row)
+            expected = {
+                "proven_valid": rebuilt.proven_valid,
+                "checks": rebuilt.checks,
+                "rejection_reasons": rebuilt.rejection_reasons,
+                "evidence": rebuilt.evidence,
+                "result_hash": rebuilt.result_hash,
+            }
+            if row.get("validity") != expected:
+                raise RoundAuditViolation(
+                    "legacy validity result cannot be reconstructed"
+                )
     red_context = verify_red_search_context(
         read_json(root / "red_search_context.json")
     )
@@ -292,6 +359,8 @@ def reconstruct_round(round_dir: str | Path) -> dict[str, Any]:
         "residual_manifest_hash": residual["manifest_hash"],
         "residual_selection_hash": selection["selection_hash"],
         "residual_archive_updates_hash": hash_payload(archive_updates),
+        "validity_authority": validity_authority,
+        "validity_results_hash": hash_payload(validity_rows),
         "covered_archive_updates_hash": hash_payload(covered_updates),
         "archive_exclusions_hash": hash_payload(archive_exclusions),
         "learnability_results_hash": hash_payload(learnability_rows),

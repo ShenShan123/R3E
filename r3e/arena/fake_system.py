@@ -59,6 +59,7 @@ def run_fake_system(
         "policy_search_seed": 5,
         "code_version": "deterministic-fake-system",
         "adapter_mode": "deterministic_fake",
+        "validity_authority": "legacy_adapter_evidence_v1",
     }
     adapter = DeterministicEvolutionAdapter(work / "adapter_workspace")
     summaries = []

@@ -4,7 +4,7 @@
   "status": "frozen",
   "parent_milestone": {
     "milestone_id": "grounded-red-execution-v1",
-    "milestone_hash": "sha256:6346deb2ce937c2641a3887878ab1c0363c585b625465b1638e0620fce6f78bb"
+    "milestone_hash": "sha256:c89c05636193c425f71365e533f5348e0e6119999a978f56e4ea9245de6c2089"
   },
   "completed_scope": [
     "ten-operator-unified-parser-backed-dispatch",
@@ -24,9 +24,7 @@
     "r3e-formal-proof-triplet-v1",
     "r3e-yosys-sat-formal-v1"
   ],
-  "frozen_assets": {
-    "docs/protocols/grounded-red-grd2-formal-v1.md": "sha256:58b85f9e527a7f9e65d95703f76e84f7a469cd7b3c1ef2f63f494b1e44e9489b"
-  },
+  "frozen_assets": {},
   "required_validation": [
     "pytest -q -p no:cacheprovider",
     "pytest -q tests/test_grounded_red_grd2_formal.py tests/test_grounded_red_execution.py",
@@ -46,5 +44,5 @@
     "real-model-multi-round-pilot"
   ],
   "claim_boundary": "Frozen constrained parser-backed GRD-2 ten-operator portfolio and local Yosys SAT formal proof provider only; no full-SystemVerilog-AST, formal-arena-authority, real-model, multi-round discovery, bug-yield, or empirical-result claim.",
-  "milestone_hash": "sha256:316a268c29a35366659fcb011325c68d940163b57a1142d208540b2de39a4c1f"
+  "milestone_hash": "sha256:b01137b62e4fd2ebd770c9eb0edcde73e5e34dcb3c698bf229fe782c58095eee"
 }

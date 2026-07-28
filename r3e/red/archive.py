@@ -13,6 +13,11 @@ from .novelty import archive_cell, descriptor
 from .lineage import validate_lineage_graph
 from .selection import materialize_elites
 from .validity import verify_validity_record
+from .grounded.arena_validity import (
+    ARENA_GROUNDED_AUTHORITY,
+    GroundedArenaValidityViolation,
+    verify_grounded_arena_validity,
+)
 
 
 class ArchiveViolation(RuntimeError):
@@ -49,17 +54,34 @@ def update_archive(
         raise ArchiveViolation(f"unsupported archive kind: {archive_kind}")
     if not poison.get("validity", {}).get("proven_valid"):
         raise ArchiveViolation("invalid poison cannot enter residual archive")
-    formal_status = str(
-        poison.get("validity", {}).get("evidence", {}).get("formal_status")
-        or poison.get("formal_status")
-        or ""
+    validity = poison.get("validity") or {}
+    authority_mode = str(
+        validity.get("evidence", {}).get("authority_mode") or ""
     )
-    if formal_status != "PROVEN_NON_EQUIV":
-        raise ArchiveViolation("inconclusive formal oracle cannot enter residual archive")
-    try:
-        verify_validity_record(poison.get("validity") or {})
-    except ValueError as exc:
-        raise ArchiveViolation(str(exc)) from exc
+    if authority_mode == ARENA_GROUNDED_AUTHORITY:
+        try:
+            verify_grounded_arena_validity(
+                validity,
+                execution_bundle=poison.get(
+                    "grounded_execution_bundle"
+                ),
+            )
+        except GroundedArenaValidityViolation as exc:
+            raise ArchiveViolation(str(exc)) from exc
+    else:
+        formal_status = str(
+            validity.get("evidence", {}).get("formal_status")
+            or poison.get("formal_status")
+            or ""
+        )
+        if formal_status != "PROVEN_NON_EQUIV":
+            raise ArchiveViolation(
+                "inconclusive formal oracle cannot enter residual archive"
+            )
+        try:
+            verify_validity_record(validity)
+        except ValueError as exc:
+            raise ArchiveViolation(str(exc)) from exc
     if not poison.get("challenged_policy_hash"):
         raise ArchiveViolation("archive poison must bind challenged policy hash")
     hardness_class = str(poison.get("hardness_class") or "")

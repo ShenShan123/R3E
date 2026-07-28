@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,8 +36,39 @@ FORBIDDEN_NAMES = {
     ".micro_surgeon_memory",
 }
 FORBIDDEN_SUFFIXES = {".pyc", ".log", ".odb", ".db", ".spef", ".vcd", ".sh"}
+FORBIDDEN_TRACKED_PREFIXES = {
+    "docs/",
+    "runtime/",
+    "results/",
+    "artifacts/",
+    "logs/",
+    "local_data/",
+    "private_data/",
+    "experiment_data/",
+}
+FORBIDDEN_EXPERIMENT_DATA_SUFFIXES = {
+    ".jsonl", ".log", ".out", ".vcd", ".fst", ".csv", ".parquet",
+    ".npy", ".npz", ".pt", ".pth",
+}
 
 violations = []
+tracked = subprocess.run(
+    ["git", "-C", str(ROOT), "ls-files", "-z"],
+    check=True,
+    stdout=subprocess.PIPE,
+).stdout.decode("utf-8").split("\0")
+for relative in tracked:
+    if not relative:
+        continue
+    if any(relative.startswith(prefix) for prefix in FORBIDDEN_TRACKED_PREFIXES):
+        violations.append(f"forbidden tracked path: {relative}")
+    path = Path(relative)
+    if (
+        path.parts[:1] == ("experiments",)
+        and path.suffix.lower() in FORBIDDEN_EXPERIMENT_DATA_SUFFIXES
+    ):
+        violations.append(f"tracked local experiment data: {relative}")
+
 for path in ROOT.rglob("*"):
     rel = path.relative_to(ROOT)
     generated_result_dir = any(

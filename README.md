@@ -6,8 +6,9 @@ utilities, and protocol tests.
 
 It intentionally excludes private cluster launchers, generated results,
 model responses, repair candidates, runtime memory/registry contents,
-credentials, internal documents, machine-specific paths, and third-party tool
-installations.
+credentials, the entire local `docs/` tree, machine-specific paths, and
+third-party tool installations. Public milestones bind repository-shipped
+schemas/configuration instead of unpublished local design documents.
 
 ## Layout
 
@@ -149,9 +150,10 @@ open and blocks a Grounded Runtime or empirical continual-learning claim.
 
 ### Grounded Red Discovery
 
-The red-team V2 engineering path is defined in
-`docs/design/red-v2.md`. Its first checkpoint, **Grounded Red Protocol
-Foundation V1**, introduces frozen family/operator/effect registries,
+The red-team V2 engineering path is represented publicly by its frozen
+milestone configurations and executable protocol tests. Its first checkpoint,
+**Grounded Red Protocol Foundation V1**, introduces frozen
+family/operator/effect registries,
 policy-bound MutationPlan objects, reconstructable G1-G11 admission,
 semantic/effect receipts, separate formal archives, coverage state, and a
 sanitized active-blue capability packet.
@@ -196,14 +198,31 @@ python -m r3e.red.grounded.execution \
   --allowed-file-manifest-hash sha256:...
 ```
 
+The Whole-Policy arena now supports `grounded_red_execution_v1` as a
+runner-owned validity authority. In this mode the runner executes and stores
+the exact Icarus Grounded execution bundle, reconstructs G1-G11 during offline
+audit, and never delegates validity to the model adapter. The historical
+adapter evidence path remains explicit as
+`legacy_adapter_evidence_v1`. This integration is frozen as
+**Grounded Authority Integration V1** in
+`configs/evolution/grounded_authority_integration_v1.json`.
+
 The fake fixture remains model-free and is not grounded evidence. The
 operator library intentionally supports a constrained parser-backed
 SystemVerilog subset rather than claiming complete language coverage. Formal
-triplet receipts are independently reconstructable, but are not yet wired into
-arena admission authority. No real-model discovery run, bug-yield result, or
-empirical gain is claimed. The legacy `r3e.red.validity_gate` remains available
-for historical Whole-Policy compatibility, but is not Grounded Red admission
-authority.
+triplet receipts are independently reconstructable, but are not required by
+the current Icarus-backed arena authority. No real-model discovery run,
+bug-yield result, or empirical gain is claimed. The legacy
+`r3e.red.validity_gate` remains available for historical Whole-Policy
+compatibility, but is not Grounded Red admission authority.
+
+### Publication boundary
+
+The Git repository excludes `docs/` and local experiment data by policy.
+Generated runs belong under ignored `runtime/`, `results/`, `artifacts/`, or
+experiment-local `runtime/`, `results/`, `outputs/`, and `artifacts/`
+directories. `scripts/check_release.py` fails if those paths, or common
+experiment-result formats, are tracked.
 
 ### Registry and migration
 

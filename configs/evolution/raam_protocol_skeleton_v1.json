@@ -4,7 +4,7 @@
   "status": "frozen",
   "parent_milestone": {
     "milestone_id": "system-upgrade-complete-v1",
-    "milestone_hash": "sha256:a5b8ec0bc876e9b470dbac438de33d1a03962275380bb2f5c7a80be53f359a1f"
+    "milestone_hash": "sha256:bf10e53e19b18e8c8fb76de67e9b26d35a8e9783c83531964bf8ee27c9ed5161"
   },
   "phase_scope": [
     "phase-1-immutable-experience-archive",
@@ -34,10 +34,7 @@
     "r3e-memory-red-plan-v1"
   ],
   "frozen_assets": {
-    "configs/memory/control_whitelist_v1.json": "sha256:a67300092fbe7b857f673db029d058a35153102c2e727654c6dbc95c14f534aa",
-    "docs/protocols/replay-activated-adversarial-memory-v1.md": "sha256:626bf95280be5c4d79d9a30e185f00b683d9c202de130584e39d3030f18efdaf",
-    "docs/protocols/raam-threat-model-v1.md": "sha256:d6872d01d236811690bd7cb48aad2fd70336595be8a349746fc8f96324713e34",
-    "docs/protocols/raam-test-matrix-v1.md": "sha256:f3e9215224a85ee6eb24775eb3952668f4044ee0df7028110c50067b37ce0876"
+    "configs/memory/control_whitelist_v1.json": "sha256:a67300092fbe7b857f673db029d058a35153102c2e727654c6dbc95c14f534aa"
   },
   "required_validation": [
     "pytest -q -p no:cacheprovider",
@@ -60,5 +57,5 @@
     "parser_backed_rtl_semantic_diff"
   ],
   "claim_boundary": "Deterministic protocol skeleton and partial authority closure only; no grounded-runtime completion, real-model memory effectiveness, or continual-learning result.",
-  "milestone_hash": "sha256:45d40fbe5aa70a8e3922185274f40e1039073349afd4777d39fe77f4a57ef5f0"
+  "milestone_hash": "sha256:7e70a241b01a15621122fa8b08c31c97b79abd7be335580181551fa7939c1b99"
 }

@@ -4,7 +4,7 @@
   "status": "frozen",
   "parent_milestone": {
     "milestone_id": "raam-protocol-skeleton-v1",
-    "milestone_hash": "sha256:45d40fbe5aa70a8e3922185274f40e1039073349afd4777d39fe77f4a57ef5f0"
+    "milestone_hash": "sha256:7e70a241b01a15621122fa8b08c31c97b79abd7be335580181551fa7939c1b99"
   },
   "closed_authority_gates": [
     "episode-backed-strict-evidence-set-reconstruction",
@@ -28,9 +28,7 @@
     "r3e-policy-v2",
     "r3e-raam-audit-v2"
   ],
-  "frozen_assets": {
-    "docs/protocols/raam-authority-closure-v1.md": "sha256:8b9c13f199dd0eeb5dcaabb471f1ec9d854c6a2bf72f84217aff4838098941fe"
-  },
+  "frozen_assets": {},
   "required_validation": [
     "pytest -q -p no:cacheprovider",
     "python -m r3e.arena.fake_system --workspace /tmp/r3e-raam-authority-v1 --rounds 3",
@@ -47,5 +45,5 @@
     "fully_verified_authority_dag"
   ],
   "claim_boundary": "Authority objects, evidence reconstruction, stable identities, and promotion no-op gates only; no grounded-runtime completion or empirical memory-gain claim.",
-  "milestone_hash": "sha256:f38e4165dc3a5c5f3262bc7bc901a8408b5d48950585f75a1cb076de5985bafb"
+  "milestone_hash": "sha256:77eac802aa67c64facb1905d9540ad27658e0e3106023a85d8b943ee64ba7a16"
 }

@@ -19,7 +19,7 @@
   "frozen_assets": {
     "configs/base_policy/frozen_base_policy_v1.json": "sha256:c78dc01a6060f34b3a95919bae5cf745a1afe48fca168fe9d6ef82024dbc699e",
     "configs/base_policy/policy_search_space_v1.json": "sha256:281451b8643724c35d368a87ccf3ad30164c9bc27de5d2b9906ed6063c229b27",
-    "configs/evolution/round_v1.json": "sha256:8a3f12325f23635cd8b3f09fe2a12e5fa0b1fca1ed8b484422f5aff395518c76",
+    "configs/evolution/round_v1.json": "sha256:63db73cc0f9c8b4696580a21e11f01120406914a575e909d061ab37ca6e510fa",
     "configs/red/lineage_operator_space_v1.json": "sha256:4aa48e31b669010835a53e8a9c642f1e96059ca85d7a818a80c0678c353fc13c"
   },
   "required_validation": [
@@ -38,5 +38,5 @@
     "rq1_to_rq5_results"
   ],
   "claim_boundary": "System infrastructure and protocol implementation only; no real-model multi-round evolution result.",
-  "milestone_hash": "sha256:a5b8ec0bc876e9b470dbac438de33d1a03962275380bb2f5c7a80be53f359a1f"
+  "milestone_hash": "sha256:bf10e53e19b18e8c8fb76de67e9b26d35a8e9783c83531964bf8ee27c9ed5161"
 }

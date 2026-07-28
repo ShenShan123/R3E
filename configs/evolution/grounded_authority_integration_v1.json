@@ -1,0 +1,49 @@
+{
+  "schema_version": "r3e-grounded-authority-integration-milestone-v1",
+  "milestone_id": "grounded-authority-integration-v1",
+  "status": "frozen",
+  "parent_milestone": {
+    "milestone_id": "grounded-red-grd2-formal-v1",
+    "milestone_hash": "sha256:b01137b62e4fd2ebd770c9eb0edcde73e5e34dcb3c698bf229fe782c58095eee"
+  },
+  "completed_scope": [
+    "runner-owned-grounded-arena-validity",
+    "exact-mutation-plan-policy-and-source-cross-binding",
+    "g1-to-g11-grounded-validity-normalization",
+    "grounded-execution-bundle-resume-reuse",
+    "offline-grounded-validity-reconstruction",
+    "explicit-legacy-adapter-evidence-compatibility",
+    "formal-archive-grounded-authority-dispatch",
+    "public-release-doc-and-experiment-data-boundary"
+  ],
+  "frozen_interfaces": [
+    "grounded_red_execution_v1",
+    "legacy_adapter_evidence_v1",
+    "r3e-arena-grounded-validity-v1",
+    "r3e-grounded-red-execution-bundle-v1",
+    "r3e-round-audit-v1",
+    "r3e-poison-payload-v1"
+  ],
+  "frozen_assets": {
+    "configs/evolution/round_v1.json": "sha256:63db73cc0f9c8b4696580a21e11f01120406914a575e909d061ab37ca6e510fa",
+    "configs/red/grounded_family_registry_v1.json": "sha256:a33cb70b9139b489ff2d8d7823c8220678add8bc31be320edcd30b4adfac3ed5",
+    "configs/red/grounded_operator_registry_v1.json": "sha256:c066e6dc070e6e45f8ef3bbb9453314b483d99e96dc1cccf1e52552d5483bf2b",
+    "configs/red/grounded_effect_registry_v1.json": "sha256:cafc655d3426fc0a53272f8eb998c37d87c789ee7b44fc652a7c30083237f8b2"
+  },
+  "required_validation": [
+    "pytest -q -p no:cacheprovider",
+    "pytest -q -p no:cacheprovider tests/test_grounded_authority_integration.py",
+    "python -m r3e.arena.fake_system --workspace /tmp/r3e-grounded-authority-integration-v1 --rounds 3",
+    "python scripts/check_release.py",
+    "python scripts/verify_datasets.py"
+  ],
+  "deferred_scope": [
+    "arena-required-yosys-formal-proof-triplet",
+    "grounded-raam-failure-descriptor-integration",
+    "parser-backed-memory-challenge-materialization",
+    "fully-verified-cross-system-authority-dag",
+    "real-model-multi-round-pilot"
+  ],
+  "claim_boundary": "Frozen runner-owned Icarus Grounded arena authority and reconstructable protocol integration only; no required Yosys arena proof, real-model discovery, bug-yield, multi-round evolution, memory-gain, or empirical-result claim.",
+  "milestone_hash": "sha256:9c090596407990479db9d6fe192903f608836d67f2149320a71aa42642528917"
+}

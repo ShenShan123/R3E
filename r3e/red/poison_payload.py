@@ -38,6 +38,7 @@ _DOWNSTREAM_FIELDS = {
     "challenge_budget_hash",
     "challenge_result_hash",
     "validity_adapter_output",
+    "grounded_execution_bundle",
 }
 
 

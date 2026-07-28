@@ -5,8 +5,10 @@
   "authority": {
     "active_policy": "formal_registry_v2",
     "runtime_input": "PolicyState",
-    "promotion": "atomic_registry_commit"
+    "promotion": "atomic_registry_commit",
+    "validity": "grounded_red_execution_v1"
   },
+  "validity_authority": "grounded_red_execution_v1",
   "adapter_interface": "r3e.arena.adapter.EvolutionAdapter",
   "formal_protocols": {
     "red_search_context": "r3e-red-search-context-v2",

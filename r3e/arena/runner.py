@@ -62,6 +62,13 @@ from r3e.red.poison_payload import (
 from r3e.red.memory_challenge import build_memory_capability_packet
 
 from .audit import append_round_ledger, freeze_round_audit
+from .grounded_authority import (
+    ARENA_VALIDITY_AUTHORITIES,
+    GROUNDED_ARENA_AUTHORITY,
+    GroundedAuthorityIntegrationViolation,
+    execute_grounded_arena_validity,
+    load_arena_grounded_registries,
+)
 from .conformance import (
     AdapterConformanceGate,
     adapter_output_metadata,
@@ -200,14 +207,25 @@ class EvolutionRoundRunner:
         self.config = config
         self.round_id = round_id
         self.adapter = adapter
+        self.validity_authority = str(
+            config.get(
+                "validity_authority",
+                "legacy_adapter_evidence_v1",
+            )
+        )
+        if self.validity_authority not in ARENA_VALIDITY_AUTHORITIES:
+            raise RoundRunnerViolation(
+                "round validity authority is unsupported"
+            )
         required_methods = {
             "generate_red",
-            "prepare_validity",
             "evaluate_blue",
             "probe_learnability",
             "screen_child",
             "replay",
         }
+        if self.validity_authority != GROUNDED_ARENA_AUTHORITY:
+            required_methods.add("prepare_validity")
         missing = sorted(
             name for name in required_methods if not callable(getattr(adapter, name, None))
         )
@@ -240,6 +258,11 @@ class EvolutionRoundRunner:
                 / "configs/red/lineage_operator_space_v1.json"
             )
         self.operator_space = load_operator_space(operator_space_path)
+        self.grounded_registries = (
+            load_arena_grounded_registries(self.root, config)
+            if self.validity_authority == GROUNDED_ARENA_AUTHORITY
+            else None
+        )
         self.code_version = str(
             config.get("code_version") or detect_code_version(self.root)
         )
@@ -490,59 +513,92 @@ class EvolutionRoundRunner:
                     payload_hash = verify_poison_payload(poison)
                 except PoisonPayloadViolation as exc:
                     raise RoundRunnerViolation(str(exc)) from exc
-                prepared = self.adapter_gate.validate(
-                    "prepare_validity",
-                    self.adapter.prepare_validity(poison),
-                )
-                undeclared = set(prepared) - _VALIDITY_EVIDENCE_FIELDS
-                if undeclared:
-                    raise RoundRunnerViolation(
-                        "validity adapter returned poison payload fields: "
-                        f"{sorted(undeclared)}"
-                    )
-                if (
-                    prepared.get("poison_id") != poison.get("poison_id")
-                    or prepared.get("challenged_policy_hash")
-                    != poison.get("challenged_policy_hash")
-                    or prepared.get("poison_payload_hash") != payload_hash
-                ):
-                    raise RoundRunnerViolation(
-                        "validity adapter changed poison identity, policy binding, or payload hash"
-                    )
-                validity_input = dict(poison)
-                validity_input.update({
-                    key: value
-                    for key, value in prepared.items()
-                    if key in {
-                        "formal_status",
-                        "golden_compile_ok",
-                        "golden_oracle_ok",
-                        "buggy_compile_ok",
-                        "buggy_functional_fail",
-                        "output_complete",
-                        "revert_oracle_ok",
-                        "fresh_output",
-                        "oracle_result_hash",
-                        "counterexample_hash",
-                        "toolchain_fingerprint_hash",
-                        "command_hash",
+                if self.validity_authority == GROUNDED_ARENA_AUTHORITY:
+                    if self.grounded_registries is None:
+                        raise RoundRunnerViolation(
+                            "Grounded registries are unavailable"
+                        )
+                    try:
+                        grounded = execute_grounded_arena_validity(
+                            poison=poison,
+                            policy=parent,
+                            registries=self.grounded_registries,
+                            project_root=self.root,
+                            round_dir=self.round_dir,
+                            run_context_hash=run_context[
+                                "run_context_hash"
+                            ],
+                            timeout_seconds=float(
+                                self.config.get(
+                                    "grounded_timeout_seconds", 10.0
+                                )
+                            ),
+                        )
+                    except GroundedAuthorityIntegrationViolation as exc:
+                        raise RoundRunnerViolation(str(exc)) from exc
+                    row = {
+                        **dict(poison),
+                        "validity": grounded["validity"],
+                        "grounded_execution_bundle": grounded[
+                            "grounded_execution_bundle"
+                        ],
                     }
-                })
-                validity_input["validity_adapter_output"] = (
-                    adapter_output_metadata(prepared)
-                )
-                verify_poison_payload(validity_input)
-                result = validity_gate(validity_input)
-                row = dict(validity_input)
-                row["validity"] = {
-                    "proven_valid": result.proven_valid,
-                    "checks": result.checks,
-                    "rejection_reasons": result.rejection_reasons,
-                    "evidence": result.evidence,
-                    "result_hash": result.result_hash,
-                }
+                    verify_poison_payload(row)
+                else:
+                    prepared = self.adapter_gate.validate(
+                        "prepare_validity",
+                        self.adapter.prepare_validity(poison),
+                    )
+                    undeclared = set(prepared) - _VALIDITY_EVIDENCE_FIELDS
+                    if undeclared:
+                        raise RoundRunnerViolation(
+                            "validity adapter returned poison payload fields: "
+                            f"{sorted(undeclared)}"
+                        )
+                    if (
+                        prepared.get("poison_id") != poison.get("poison_id")
+                        or prepared.get("challenged_policy_hash")
+                        != poison.get("challenged_policy_hash")
+                        or prepared.get("poison_payload_hash") != payload_hash
+                    ):
+                        raise RoundRunnerViolation(
+                            "validity adapter changed poison identity, "
+                            "policy binding, or payload hash"
+                        )
+                    validity_input = dict(poison)
+                    validity_input.update({
+                        key: value
+                        for key, value in prepared.items()
+                        if key in {
+                            "formal_status",
+                            "golden_compile_ok",
+                            "golden_oracle_ok",
+                            "buggy_compile_ok",
+                            "buggy_functional_fail",
+                            "output_complete",
+                            "revert_oracle_ok",
+                            "fresh_output",
+                            "oracle_result_hash",
+                            "counterexample_hash",
+                            "toolchain_fingerprint_hash",
+                            "command_hash",
+                        }
+                    })
+                    validity_input["validity_adapter_output"] = (
+                        adapter_output_metadata(prepared)
+                    )
+                    verify_poison_payload(validity_input)
+                    result = validity_gate(validity_input)
+                    row = dict(validity_input)
+                    row["validity"] = {
+                        "proven_valid": result.proven_valid,
+                        "checks": result.checks,
+                        "rejection_reasons": result.rejection_reasons,
+                        "evidence": result.evidence,
+                        "result_hash": result.result_hash,
+                    }
                 validity_rows.append(row)
-                if result.proven_valid:
+                if row["validity"]["proven_valid"]:
                     valid.append(row)
             _write_jsonl(self.round_dir / "validity_results.jsonl", validity_rows)
             _write_jsonl(self.round_dir / "valid_poisons.jsonl", valid)
