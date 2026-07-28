@@ -5,6 +5,10 @@ from copy import deepcopy
 from typing import Any, Mapping
 
 from r3e.protocol.hashing import hash_payload
+from .proofs import (
+    verify_runtime_effect_receipt,
+    verify_semantic_diff_receipt,
+)
 
 
 DIFFICULTY_SCHEMA_VERSION = "r3e-red-difficulty-profile-v1"
@@ -121,3 +125,57 @@ def verify_difficulty_profile(profile: Mapping[str, Any]) -> dict[str, Any]:
     if payload["difficulty_band"] == "D4" and payload["composition_depth"] != 2:
         raise DifficultyProfileViolation("D4 requires controlled composition")
     return payload
+
+
+def difficulty_profile_from_challenge(
+    challenge: Mapping[str, Any],
+    *,
+    candidate_ambiguity: int,
+) -> dict[str, Any]:
+    authority = dict(
+        challenge.get("grounded_authority_bundle") or {}
+    )
+    execution = dict(authority.get("execution_bundle") or {})
+    evidence = dict(execution.get("evidence") or {})
+    semantic = verify_semantic_diff_receipt(
+        evidence.get("semantic_diff") or {}
+    )
+    effect = verify_runtime_effect_receipt(
+        evidence.get("runtime_effect") or {}
+    )
+    attempts = int(challenge.get("repair_attempts") or 0)
+    successes = int(challenge.get("repair_successes") or 0)
+    if attempts < 1 or not 0 <= successes <= attempts:
+        raise DifficultyProfileViolation(
+            "challenge repair counts are invalid"
+        )
+    features = dict(effect.get("observable_features") or {})
+    first_cycle = features.get("first_divergence_cycle")
+    if (
+        not isinstance(first_cycle, int)
+        or isinstance(first_cycle, bool)
+        or first_cycle < 0
+    ):
+        first_cycle = 0
+    activation_rarity = 1.0 / float(first_cycle + 1)
+    if semantic["changed_module_count"] > 1:
+        locality = "cross_module"
+    elif semantic["changed_block_count"] > 1:
+        locality = "cross_block"
+    elif semantic["ast_edit_count"] == 1:
+        locality = "expression"
+    else:
+        locality = "local_block"
+    return build_difficulty_profile(
+        current_blue_failure_rate=(
+            float(attempts - successes) / float(attempts)
+        ),
+        semantic_diff_receipt=semantic,
+        runtime_effect_receipt=effect,
+        activation_rarity=activation_rarity,
+        repair_locality=locality,
+        candidate_ambiguity=candidate_ambiguity,
+        composition_depth=int(
+            challenge.get("composition_depth") or 1
+        ),
+    )

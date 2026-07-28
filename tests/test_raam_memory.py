@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import json
 from pathlib import Path
 
@@ -7,6 +8,10 @@ import pytest
 
 from r3e.memory.activation_guard import ActivationGuard, ActivationViolation
 from r3e.memory.audit import audit_memory_system
+from r3e.memory.authority_dag import (
+    AuthorityDagViolation,
+    verify_authority_dag,
+)
 from r3e.memory.bank_store import ActiveBankStore, ActiveBankStoreViolation
 from r3e.memory.compatibility import classify_policy_compatibility
 from r3e.memory.consolidator import (
@@ -23,7 +28,10 @@ from r3e.memory.plan_compiler import MemoryAwarePlanCompiler
 from r3e.memory.promotion import build_memory_bank_policy_candidate
 from r3e.memory.qualification_gate import decide_memory_qualification
 from r3e.memory.relation_graph import MemoryGraphViolation, MemoryRelationGraph
-from r3e.memory.retriever import MemoryRetriever
+from r3e.memory.retriever import (
+    MemoryRetrievalViolation,
+    MemoryRetriever,
+)
 from r3e.memory.runtime import MemoryRuntime
 from r3e.memory.execution_trace import ExecutionTraceViolation
 from r3e.memory.evidence import memory_definition
@@ -1112,6 +1120,184 @@ def test_cross_policy_replay_requires_explicit_revalidation_binding():
         decision["qualified_under_effective_policy_hash"]
         == current.effective_policy_hash
     )
+
+
+def test_deterministic_four_round_memory_reuse_and_revalidation(tmp_path):
+    # R1: an early episode yields an active, immutable memory.
+    parent, episodes, store, memory = _active_store(tmp_path)
+    retriever = MemoryRetriever(store)
+    guard = ActivationGuard(store)
+    policy_r1, bank_r1 = build_memory_bank_policy_candidate(
+        parent=parent,
+        store=store,
+        memory_versions={memory.memory_id: 1},
+        bank_id="AMB_R1",
+        bank_version=1,
+        retriever_hash=retriever.retriever_hash,
+        activation_guard_hash=guard.guard_hash,
+        control_whitelist_hash=guard.control_whitelist_hash,
+        round_id="R1",
+        policy_id="B_R1_MEMORY",
+    )
+
+    # R2: the same early memory is retrieved on a later case.
+    descriptor = _descriptor()
+    matches_r2 = retriever.retrieve(descriptor, bank_r1)
+    assert [match.memory_id for match in matches_r2] == [
+        memory.memory_id
+    ]
+    assert store.get_version(
+        memory.memory_id, 1
+    ).memory_hash == memory.memory_hash
+
+    # R3: a relevant policy dependency changes, so execution fails closed.
+    policy_r3 = policy_r1.with_updates(
+        policy_id="B_R3_CHANGED",
+        parent_policy_id=policy_r1.policy_id,
+        parent_policy_hash=policy_r1.policy_hash,
+        configuration={
+            **policy_r1.configuration,
+            "evidence_k": 3,
+        },
+        memory_binding={},
+    )
+    transition = transition_active_bank(
+        store=store,
+        previous_policy=policy_r1,
+        current_policy=policy_r3,
+        previous_bank=bank_r1,
+        evidence={
+            "round_id": "R3",
+            "reason": "relevant_policy_dependency_changed",
+        },
+    )
+    assert transition["revalidation_required_versions"] == {
+        memory.memory_id: 1
+    }
+    assert store.current_status(
+        memory.memory_id, 1
+    ) == "revalidation_required"
+    with pytest.raises(
+        MemoryRetrievalViolation,
+        match="non-executable",
+    ):
+        retriever.retrieve(descriptor, bank_r1)
+
+    # R4: paired replay explicitly binds the old and new effective policies.
+    _advance(
+        store,
+        memory,
+        "revalidation_required",
+        "shadow_testing",
+        policy_r3.effective_policy_hash,
+    )
+    adapter = DeterministicMemoryAdapter()
+    budget = BudgetEnvelope(3, 3, 48000, 360)
+    replay_rows = [
+        run_shadow_replay(
+            case={
+                "case_id": f"R4_{index}",
+                "design": f"revalidation_design_{index}",
+                "expected_shadow_help": True,
+            },
+            policy=policy_r3,
+            memory=memory,
+            seed=41,
+            budget=budget,
+            evaluator=adapter.replay_memory,
+        )
+        for index in range(2)
+    ]
+    evidence_set = store.evidence_set(memory.memory_id, 1)
+    provenance = {
+        "manifest_hash": H("R4-manifest"),
+        "toolchain_fingerprint_hash": H("R4-toolchain"),
+        "code_commit_sha": "four-round-deterministic-test",
+        "control_whitelist_hash": guard.control_whitelist_hash,
+        "policy_instance_hash": policy_r3.policy_instance_hash,
+        "effective_policy_hash": policy_r3.effective_policy_hash,
+        "revalidation_from_effective_policy_hash": (
+            memory.created_under_effective_policy_hash
+        ),
+    }
+    decision = decide_memory_qualification(
+        memory,
+        replay_rows,
+        provenance=provenance,
+        evidence_set=evidence_set,
+    )
+    assert decision["qualified"]
+    store.store_qualification_bundle({
+        "schema_version": "r3e-memory-qualification-bundle-v1",
+        "memory_hash": memory.memory_hash,
+        "evidence_set": evidence_set,
+        "results": [row.to_dict() for row in replay_rows],
+        "decision": decision,
+    })
+    _advance(
+        store,
+        memory,
+        "shadow_testing",
+        "replay_qualified",
+        policy_r3.effective_policy_hash,
+    )
+    _advance(
+        store,
+        memory,
+        "replay_qualified",
+        "bank_candidate",
+        policy_r3.effective_policy_hash,
+    )
+    _advance(
+        store,
+        memory,
+        "bank_candidate",
+        "active_dormant",
+        policy_r3.effective_policy_hash,
+    )
+    policy_r4, bank_r4 = build_memory_bank_policy_candidate(
+        parent=policy_r3,
+        store=store,
+        memory_versions={memory.memory_id: 1},
+        bank_id="AMB_R4_REVALIDATED",
+        bank_version=1,
+        retriever_hash=retriever.retriever_hash,
+        activation_guard_hash=guard.guard_hash,
+        control_whitelist_hash=guard.control_whitelist_hash,
+        round_id="R4",
+        policy_id="B_R4_REVALIDATED",
+    )
+    banks = ActiveBankStore(tmp_path / "banks", memory_store=store)
+    banks.add_candidate(bank_r4)
+    matches_r4 = retriever.retrieve(descriptor, bank_r4)
+    assert [match.memory_hash for match in matches_r4] == [
+        memory.memory_hash
+    ]
+
+    audit = audit_memory_system(
+        episode_store=episodes,
+        memory_store=store,
+        bank_store=banks,
+        active_policy=policy_r4,
+    )
+    dag = audit["verified_authority_dag"]
+    assert dag["complete"]
+    assert dag["active_policy_node_id"].endswith(
+        policy_r4.policy_hash
+    )
+    assert any(
+        node["node_type"] == "qualification_decision"
+        and node["authority_hash"] == decision["decision_hash"]
+        for node in dag["nodes"]
+    )
+
+    tampered = deepcopy(dag)
+    tampered["nodes"][0]["authority_hash"] = H("tampered")
+    with pytest.raises(
+        AuthorityDagViolation,
+        match="envelope",
+    ):
+        verify_authority_dag(tampered)
 
 
 def test_consolidator_relations_and_active_bank_bound_are_deterministic():

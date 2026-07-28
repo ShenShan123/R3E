@@ -9,6 +9,7 @@ from r3e.protocol.hashing import hash_payload
 from r3e.protocol.ledger import read_ledger
 
 from .bank_store import ActiveBankStore
+from .authority_dag import build_authority_dag
 from .episode_store import EpisodeStore
 from .memory_store import MemoryStore
 
@@ -23,6 +24,12 @@ def audit_memory_system(
     episodes = episode_store.audit()
     memory_summary = memory_store.audit()
     bank_count = bank_store.audit()
+    authority_dag = build_authority_dag(
+        episode_store=episode_store,
+        memory_store=memory_store,
+        bank_store=bank_store,
+        active_policy=active_policy,
+    )
     active_bank_hash = ""
     nodes: list[dict[str, Any]] = []
     edges: list[dict[str, str]] = []
@@ -123,6 +130,7 @@ def audit_memory_system(
                 "edges": canonical_edges,
             }),
         },
+        "verified_authority_dag": authority_dag,
     }
     summary["audit_hash"] = hash_payload(summary)
     return summary

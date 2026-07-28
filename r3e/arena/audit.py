@@ -9,7 +9,10 @@ from pathlib import Path
 from typing import Any
 
 from r3e.arena.manifests import verify_manifest
-from r3e.memory.episode_builder import episode_from_challenge
+from r3e.memory.episode_builder import (
+    episode_from_challenge,
+    episode_from_formal_rejection,
+)
 from r3e.memory.episode_store import EpisodeStore
 from r3e.policy.promotion import (
     decide_policy_promotion,
@@ -44,6 +47,14 @@ from r3e.red.grounded.formal_rejection import (
     load_formal_rejection_archive,
     verify_formal_rejection,
     verify_formal_rejection_validity,
+)
+from r3e.red.grounded.coverage import (
+    update_coverage_state,
+    verify_coverage_plan,
+    verify_coverage_state,
+)
+from r3e.red.grounded.difficulty import (
+    difficulty_profile_from_challenge,
 )
 from .grounded_authority import (
     GROUNDED_ARENA_COMPAT_AUTHORITY,
@@ -220,6 +231,96 @@ def reconstruct_round(round_dir: str | Path) -> dict[str, Any]:
     challenge_rows = _read_jsonl(
         root / "blue_challenge_results.jsonl"
     )
+    coverage_audit: dict[str, Any] = {}
+    if validity_authority in GROUNDED_ARENA_AUTHORITIES:
+        generated = _read_jsonl(root / "red_candidates.jsonl")
+        planned = _read_jsonl(
+            root / "planned_red_candidates.jsonl"
+        )
+        coverage_before = verify_coverage_state(
+            read_json(root / "coverage_state_before.json")
+        )
+        plan = verify_coverage_plan(
+            read_json(root / "coverage_plan.json"),
+            candidates=generated,
+            coverage_state=coverage_before,
+            policy=parent,
+        )
+        generated_by_id = {
+            str(row["poison_id"]): row for row in generated
+        }
+        expected_planned = [
+            generated_by_id[poison_id]
+            for poison_id in plan["selected_poison_ids"]
+        ]
+        if planned != expected_planned or {
+            str(row["poison_id"]) for row in validity_rows
+        } != set(plan["selected_poison_ids"]):
+            raise RoundAuditViolation(
+                "coverage planner selection cannot be reconstructed"
+            )
+        difficulty_rows = _read_jsonl(
+            root / "difficulty_profiles.jsonl"
+        )
+        family_by_id = {
+            str(entry["poison_id"]): str(
+                entry["cell"]["family_id"]
+            )
+            for entry in plan["candidate_entries"]
+        }
+        expected_difficulty = []
+        for challenge in challenge_rows:
+            poison_id = str(challenge["poison_id"])
+            ambiguity = sum(
+                family == family_by_id[poison_id]
+                for family in family_by_id.values()
+            )
+            profile = difficulty_profile_from_challenge(
+                challenge,
+                candidate_ambiguity=ambiguity,
+            )
+            value = {
+                "schema_version": (
+                    "r3e-grounded-difficulty-record-v1"
+                ),
+                "round_id": context["round_id"],
+                "poison_id": poison_id,
+                "challenge_result_hash": challenge[
+                    "challenge_result_hash"
+                ],
+                "profile": profile,
+            }
+            value["record_hash"] = hash_payload(value)
+            expected_difficulty.append(value)
+        if difficulty_rows != expected_difficulty:
+            raise RoundAuditViolation(
+                "difficulty curriculum evidence cannot be reconstructed"
+            )
+        coverage_after = update_coverage_state(
+            coverage_before,
+            plan=plan,
+            validity_rows=validity_rows,
+            challenge_rows=challenge_rows,
+            round_id=context["round_id"],
+        )
+        if coverage_after != verify_coverage_state(
+            read_json(root / "coverage_state_after.json")
+        ):
+            raise RoundAuditViolation(
+                "coverage state transition cannot be reconstructed"
+            )
+        coverage_audit = {
+            "coverage_plan_hash": plan["plan_hash"],
+            "coverage_state_hash_before": coverage_before[
+                "coverage_hash"
+            ],
+            "coverage_state_hash_after": coverage_after[
+                "coverage_hash"
+            ],
+            "difficulty_profiles_hash": hash_payload(
+                difficulty_rows
+            ),
+        }
     rejected_poison_ids = {
         row["poison_payload"]["poison_id"]
         for row in formal_rejections
@@ -239,6 +340,14 @@ def reconstruct_round(round_dir: str | Path) -> dict[str, Any]:
             )
             for row in challenge_rows
         ]
+        expected_episodes.extend(
+            episode_from_formal_rejection(
+                row,
+                policy=parent,
+                round_id=context["round_id"],
+            )
+            for row in formal_rejections
+        )
     except Exception as exc:
         raise RoundAuditViolation(
             "verified episodes cannot be reconstructed"
@@ -544,6 +653,7 @@ def reconstruct_round(round_dir: str | Path) -> dict[str, Any]:
                 formal_rejections
             ),
         })
+    record.update(coverage_audit)
     record["audit_record_hash"] = hash_payload(record)
     return record
 

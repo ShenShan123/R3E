@@ -15,6 +15,7 @@ MEMORY_RED_OPERATORS = {
     "memory_bypass",
     "memory_deepening",
     "memory_conflict",
+    "memory_transfer",
 }
 _PRIVATE_FIELDS = {
     "source_episode_ids",
@@ -149,7 +150,9 @@ def make_memory_challenge_plan(
     if operator == "memory_conflict" and len(targets) < 2:
         raise MemoryChallengeViolation("memory conflict requires multiple active memories")
     if operator != "memory_conflict" and len(targets) != 1:
-        raise MemoryChallengeViolation("bypass/deepening require one target memory")
+        raise MemoryChallengeViolation(
+            "bypass/deepening/transfer require one target memory"
+        )
     plan = {
         "schema_version": "r3e-memory-red-plan-v1",
         "operator": operator,
@@ -202,6 +205,10 @@ def materialize_memory_challenge(
     elif operator == "memory_deepening":
         poison["dependency_depth"] = int(
             parent.get("dependency_depth") or 0
+        ) + 1
+    elif operator == "memory_transfer":
+        poison["transfer_depth"] = int(
+            parent.get("transfer_depth") or 0
         ) + 1
     else:
         poison["composition_depth"] = int(
@@ -269,4 +276,11 @@ def verify_memory_challenge_execution(
             parent.get("composition_depth") or 0
         ):
             raise MemoryChallengeViolation("memory conflict did not compose targets")
+    elif operator == "memory_transfer":
+        if int(poison.get("transfer_depth") or 0) <= int(
+            parent.get("transfer_depth") or 0
+        ):
+            raise MemoryChallengeViolation(
+                "memory transfer did not change design context"
+            )
     return poison

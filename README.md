@@ -148,7 +148,10 @@ cross-policy memory definitions, semantic bank deduplication, and cumulative
 memory provenance. Its later Grounded Runtime child closes runner-owned
 Icarus/Yosys-to-descriptor/episode authority binding. Its next child adds a
 bounded signal/cycle observation protocol and a separate formal-rejection
-route. Complete waveform semantics, complete language coverage, and empirical
+route. The current engineering child adds a reconstructable coverage planner
+and difficulty curriculum, parser-backed RAAM challenge operators, controlled
+two-parent composition, cross-round revalidation, and a complete authority DAG.
+Complete waveform semantics, complete language coverage, and empirical
 continual-learning claims remain open.
 
 ### Grounded Red Discovery
@@ -218,6 +221,10 @@ closure is frozen as **Grounded Runtime Authority Closure V1** in
 `configs/evolution/grounded_runtime_authority_closure_v1.json`. The bounded
 waveform and formal-rejection child is frozen as **Grounded Waveform Rejection
 V1** in `configs/evolution/grounded_waveform_rejection_v1.json`.
+The next model-free checkpoint, **Grounded Planner & RAAM Cross-Round Closure
+V1**, is frozen in
+`configs/evolution/grounded_planner_raam_cross_round_v1.json`. Its round
+interface is `configs/evolution/round_grounded_runtime_v3.json`.
 
 The current child protocol records the first divergent signal and cycle,
 cycle offset, temporal relation, assignment class, cone-depth bucket, and
@@ -227,8 +234,28 @@ Yosys emits a complete formal assessment before a triplet is accepted. A fully
 executed candidate that does not satisfy F1 clean proof, F2 poison
 counterexample, or F3 exact-revert proof is written to the append-only
 `red_rejected_archive.jsonl`; it does not reach blue challenge, residual
-selection, RAAM episodes, or promotion. Missing tools, tool failures, malformed
-receipts, and tampered evidence still fail the round closed.
+selection, memory candidate construction, or promotion. It is also represented
+as an `inconclusive` `VerifiedEpisode`, with no blue attempts, so the rejected
+trajectory remains in the authority DAG without acquiring memory or promotion
+rights. Missing tools, tool failures, malformed receipts, and tampered evidence
+still fail the round closed.
+
+For Grounded rounds, `RED_GENERATE` freezes a deterministic coverage plan
+against the current policy and persistent coverage-state hash. `ARCHIVE_UPDATE`
+derives difficulty only from admitted execution receipts and commits the next
+coverage state. Both transitions are checkpointed, evented, and reconstructed
+by offline round audit. The parser-backed RAAM execution layer supports
+`memory_bypass`, `memory_deepening`, `memory_conflict`, and `memory_transfer`.
+Adapters select bounded recipes; only the frozen AST materializers may edit RTL.
+Controlled composition binds exactly two parent authority hashes, admits each
+intermediate AST state, and proves an exact reverse restoration.
+
+`r3e.memory.authority_dag` verifies every persisted episode, evidence link,
+memory definition/object, qualification decision, lifecycle transition, bank,
+and active policy edge. The deterministic four-round conformance test proves
+that an early memory can be retrieved later, is suspended when a relevant
+policy dependency changes, and becomes executable again only after explicitly
+bound paired revalidation.
 
 The fake fixture remains model-free and is not grounded evidence. The
 operator library intentionally supports a constrained parser-backed

@@ -63,6 +63,15 @@ from r3e.red.memory_challenge import build_memory_capability_packet
 from r3e.red.grounded.formal_rejection import (
     append_formal_rejection,
 )
+from r3e.red.grounded.coverage import (
+    build_coverage_plan,
+    load_coverage_state,
+    save_coverage_state,
+    update_coverage_state,
+)
+from r3e.red.grounded.difficulty import (
+    difficulty_profile_from_challenge,
+)
 
 from .audit import append_round_ledger, freeze_round_audit
 from .grounded_authority import (
@@ -251,6 +260,10 @@ class EvolutionRoundRunner:
             "red_rejected_archive",
             "runtime/archives/red_rejected_archive.jsonl",
         )
+        self.coverage_state_path = self.root / config.get(
+            "grounded_coverage_state",
+            "runtime/red/grounded_coverage_state.json",
+        )
         self.round_ledger_path = self.root / config.get(
             "round_ledger", "runtime/rounds/round_ledger.jsonl"
         )
@@ -302,7 +315,24 @@ class EvolutionRoundRunner:
                     read_json(self.round_dir / "toolchain.json")
                 )["run_context_hash"],
             },
-            "RED_GENERATE": lambda: _read_jsonl(self.round_dir / "red_candidates.jsonl"),
+            "RED_GENERATE": lambda: (
+                {
+                    "generated": _read_jsonl(
+                        self.round_dir / "red_candidates.jsonl"
+                    ),
+                    "coverage_plan": read_json(
+                        self.round_dir / "coverage_plan.json"
+                    ),
+                    "planned": _read_jsonl(
+                        self.round_dir
+                        / "planned_red_candidates.jsonl"
+                    ),
+                }
+                if (self.round_dir / "coverage_plan.json").is_file()
+                else _read_jsonl(
+                    self.round_dir / "red_candidates.jsonl"
+                )
+            ),
             "VALIDITY_GATE": lambda: (
                 {
                     "validity": _read_jsonl(
@@ -323,7 +353,9 @@ class EvolutionRoundRunner:
                 self.round_dir / "blue_challenge_results.jsonl"
             ),
             "ARCHIVE_UPDATE": lambda: {
-                "residual": _read_jsonl(self.round_dir / "archive_updates.jsonl"),
+                "residual": _read_jsonl(
+                    self.round_dir / "archive_updates.jsonl"
+                ),
                 "covered": _read_jsonl(
                     self.round_dir / "covered_archive_updates.jsonl"
                 ),
@@ -332,6 +364,23 @@ class EvolutionRoundRunner:
                 ),
                 "excluded": _read_jsonl(
                     self.round_dir / "archive_exclusions.jsonl"
+                ),
+                **(
+                    {
+                        "difficulty": _read_jsonl(
+                            self.round_dir
+                            / "difficulty_profiles.jsonl"
+                        ),
+                        "coverage_state_after": read_json(
+                            self.round_dir
+                            / "coverage_state_after.json"
+                        ),
+                    }
+                    if (
+                        self.round_dir
+                        / "coverage_state_after.json"
+                    ).is_file()
+                    else {}
                 ),
             },
             "FREEZE_RESIDUAL_MANIFEST": lambda: read_json(
@@ -515,6 +564,76 @@ class EvolutionRoundRunner:
                 row.clear()
                 row.update(bound_poison)
             _write_jsonl(self.round_dir / "red_candidates.jsonl", candidates)
+            red_stage_output: Any = candidates
+            if self.validity_authority in GROUNDED_ARENA_AUTHORITIES:
+                coverage_before = load_coverage_state(
+                    self.coverage_state_path
+                )
+                atomic_write_json(
+                    self.round_dir / "coverage_state_before.json",
+                    coverage_before,
+                )
+                coverage_plan = build_coverage_plan(
+                    candidates,
+                    coverage_state=coverage_before,
+                    policy=parent,
+                    budget=int(
+                        self.config.get(
+                            "grounded_red_proposal_budget",
+                            max(1, len(candidates)),
+                        )
+                    ),
+                    family_quota=int(
+                        self.config.get(
+                            "grounded_family_quota",
+                            max(1, len(candidates)),
+                        )
+                    ),
+                    maximum_difficulty_band=str(
+                        self.config.get(
+                            "grounded_maximum_difficulty_band",
+                            "D3",
+                        )
+                    ),
+                )
+                selected_ids = set(
+                    coverage_plan["selected_poison_ids"]
+                )
+                planned = [
+                    row for row in candidates
+                    if row["poison_id"] in selected_ids
+                ]
+                planned.sort(
+                    key=lambda row: coverage_plan[
+                        "selected_poison_ids"
+                    ].index(row["poison_id"])
+                )
+                atomic_write_json(
+                    self.round_dir / "coverage_plan.json",
+                    coverage_plan,
+                )
+                _write_jsonl(
+                    self.round_dir / "planned_red_candidates.jsonl",
+                    planned,
+                )
+                red_stage_output = {
+                    "generated": candidates,
+                    "coverage_plan": coverage_plan,
+                    "planned": planned,
+                }
+                self.events.emit(
+                    "red",
+                    "grounded_coverage_plan_frozen",
+                    round_id=self.round_id,
+                    challenged_policy_hash=parent.policy_hash,
+                    coverage_state_hash_before=coverage_before[
+                        "coverage_hash"
+                    ],
+                    coverage_plan_hash=coverage_plan["plan_hash"],
+                    generated_count=len(candidates),
+                    selected_count=len(planned),
+                    deferred_count=len(candidates) - len(planned),
+                )
             self.events.emit(
                 "red",
                 "red_candidates_generated",
@@ -523,9 +642,20 @@ class EvolutionRoundRunner:
                 candidate_count=len(candidates),
                 candidates_hash=hash_payload(candidates),
             )
-            self._checkpoint("RED_GENERATE", red_context["context_hash"], candidates)
+            self._checkpoint(
+                "RED_GENERATE",
+                red_context["context_hash"],
+                red_stage_output,
+            )
 
-        candidates = _read_jsonl(self.round_dir / "red_candidates.jsonl")
+        candidates_path = (
+            self.round_dir / "planned_red_candidates.jsonl"
+        )
+        candidates = _read_jsonl(
+            candidates_path
+            if candidates_path.is_file()
+            else self.round_dir / "red_candidates.jsonl"
+        )
         if self.state.next_stage() == "VALIDITY_GATE":
             validity_rows = []
             valid = []
@@ -734,11 +864,21 @@ class EvolutionRoundRunner:
             / self.config.get("memory_root", "runtime/memory")
             / "episodes"
         )
+        round_formal_rejections = (
+            _read_jsonl(
+                self.round_dir / "formal_rejections.jsonl"
+            )
+            if (
+                self.round_dir / "formal_rejections.jsonl"
+            ).is_file()
+            else []
+        )
         verified_episodes = append_round_episodes(
             challenged,
             policy=parent,
             round_id=self.round_id,
             store=episode_store,
+            formal_rejections=round_formal_rejections,
         )
         episode_manifest = {
             "schema_version": "r3e-round-episode-manifest-v1",
@@ -769,6 +909,88 @@ class EvolutionRoundRunner:
                 episode_manifest_hash=episode_manifest["manifest_hash"],
             )
         if self.state.next_stage() == "ARCHIVE_UPDATE":
+            measured_challenged = list(challenged)
+            difficulty_rows = []
+            coverage_after = None
+            if self.validity_authority in GROUNDED_ARENA_AUTHORITIES:
+                plan = read_json(
+                    self.round_dir / "coverage_plan.json"
+                )
+                family_by_id = {
+                    str(entry["poison_id"]): str(
+                        entry["cell"]["family_id"]
+                    )
+                    for entry in plan["candidate_entries"]
+                }
+                measured_challenged = []
+                for challenge in challenged:
+                    poison_id = str(challenge["poison_id"])
+                    ambiguity = sum(
+                        family == family_by_id[poison_id]
+                        for family in family_by_id.values()
+                    )
+                    profile = difficulty_profile_from_challenge(
+                        challenge,
+                        candidate_ambiguity=ambiguity,
+                    )
+                    record = {
+                        "schema_version": (
+                            "r3e-grounded-difficulty-record-v1"
+                        ),
+                        "round_id": self.round_id,
+                        "poison_id": poison_id,
+                        "challenge_result_hash": challenge[
+                            "challenge_result_hash"
+                        ],
+                        "profile": profile,
+                    }
+                    record["record_hash"] = hash_payload(record)
+                    difficulty_rows.append(record)
+                    measured_challenged.append({
+                        **challenge,
+                        "grounded_difficulty_profile": profile,
+                    })
+                _write_jsonl(
+                    self.round_dir / "difficulty_profiles.jsonl",
+                    difficulty_rows,
+                )
+                coverage_before = read_json(
+                    self.round_dir / "coverage_state_before.json"
+                )
+                validity_rows = _read_jsonl(
+                    self.round_dir / "validity_results.jsonl"
+                )
+                coverage_after = update_coverage_state(
+                    coverage_before,
+                    plan=plan,
+                    validity_rows=validity_rows,
+                    challenge_rows=challenged,
+                    round_id=self.round_id,
+                )
+                atomic_write_json(
+                    self.round_dir / "coverage_state_after.json",
+                    coverage_after,
+                )
+                save_coverage_state(
+                    self.coverage_state_path,
+                    coverage_after,
+                )
+                self.events.emit(
+                    "red",
+                    "grounded_coverage_state_updated",
+                    round_id=self.round_id,
+                    challenged_policy_hash=parent.policy_hash,
+                    coverage_plan_hash=plan["plan_hash"],
+                    coverage_state_hash_before=coverage_before[
+                        "coverage_hash"
+                    ],
+                    coverage_state_hash_after=coverage_after[
+                        "coverage_hash"
+                    ],
+                    difficulty_records_hash=hash_payload(
+                        difficulty_rows
+                    ),
+                )
             residual_before = load_archive(self.archive_path)
             covered_before = load_archive(self.covered_archive_path)
             archive_before = residual_before + covered_before
@@ -776,7 +998,7 @@ class EvolutionRoundRunner:
             covered_archived = []
             learnability_rows = []
             excluded = []
-            for row in challenged:
+            for row in measured_challenged:
                 enriched = dict(row)
                 current = archive_before + archived + covered_archived
                 hardness_class = str(enriched.get("hardness_class") or "")
@@ -865,12 +1087,22 @@ class EvolutionRoundRunner:
                 excluded_count=len(excluded),
                 archive_updates_hash=hash_payload(archived),
             )
-            self._checkpoint("ARCHIVE_UPDATE", challenged, {
+            archive_stage_output = {
                 "residual": archived,
                 "covered": covered_archived,
                 "learnability": learnability_rows,
                 "excluded": excluded,
-            })
+            }
+            if coverage_after is not None:
+                archive_stage_output.update({
+                    "difficulty": difficulty_rows,
+                    "coverage_state_after": coverage_after,
+                })
+            self._checkpoint(
+                "ARCHIVE_UPDATE",
+                challenged,
+                archive_stage_output,
+            )
 
         archived = _read_jsonl(self.round_dir / "archive_updates.jsonl")
         if self.state.next_stage() == "FREEZE_RESIDUAL_MANIFEST":

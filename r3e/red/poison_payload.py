@@ -41,6 +41,7 @@ _DOWNSTREAM_FIELDS = {
     "grounded_execution_bundle",
     "grounded_authority_bundle",
     "formal_rejection",
+    "grounded_difficulty_profile",
 }
 
 

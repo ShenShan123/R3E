@@ -764,12 +764,19 @@ def test_formal_inconclusive_routes_to_rejected_archive(tmp_path):
     ).run()
     assert resumed == summary
     assert len(archive_path.read_text(encoding="utf-8").splitlines()) == 1
+    stored_episodes = EpisodeStore(
+        tmp_path / "runtime/memory/episodes"
+    ).audit()
     assert [
-        episode.poison_id
-        for episode in EpisodeStore(
-            tmp_path / "runtime/memory/episodes"
-        ).audit()
-    ] == ["grounded_arena_0"]
+        episode.poison_id for episode in stored_episodes
+    ] == ["grounded_arena_0", "grounded_arena_1"]
+    rejected_episode = stored_episodes[1]
+    assert rejected_episode.final_outcome == "inconclusive"
+    assert rejected_episode.blue_attempts == []
+    assert (
+        rejected_episode.failure_descriptor["oracle_stage"]
+        == "grounded_formal_rejected"
+    )
 
     tool_error_adapter = GroundedRoundAdapter(
         tmp_path / "tool-error-adapter",
