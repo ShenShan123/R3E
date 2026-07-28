@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any
 
 from r3e.arena.manifests import verify_manifest
+from r3e.memory.episode_builder import episode_from_challenge
+from r3e.memory.episode_store import EpisodeStore
 from r3e.policy.promotion import (
     decide_policy_promotion,
     select_single_promotable_child,
@@ -33,14 +35,16 @@ from r3e.red.validity import validity_gate
 from r3e.red.grounded.arena_validity import (
     ARENA_GROUNDED_AUTHORITY,
     verify_grounded_arena_validity,
+    verify_legacy_grounded_arena_validity,
 )
 from r3e.red.grounded.execution import (
     verify_grounded_execution_bundle,
 )
-
 from .grounded_authority import (
-    GROUNDED_ARENA_AUTHORITY,
+    GROUNDED_ARENA_COMPAT_AUTHORITY,
+    GROUNDED_ARENA_AUTHORITIES,
     load_arena_grounded_registries,
+    verify_arena_grounded_authority,
 )
 
 
@@ -70,6 +74,7 @@ def _manifest(path: Path) -> dict[str, Any]:
 
 def reconstruct_round(round_dir: str | Path) -> dict[str, Any]:
     root = Path(round_dir)
+    project_root = root.parents[2]
     context = verify_run_context(read_json(root / "toolchain.json"))
     config = read_json(root / "round_config.json")
     if context["round_config_hash"] != hash_payload(config):
@@ -84,23 +89,43 @@ def reconstruct_round(round_dir: str | Path) -> dict[str, Any]:
         )
     )
     validity_rows = _read_jsonl(root / "validity_results.jsonl")
-    if validity_authority == GROUNDED_ARENA_AUTHORITY:
-        project_root = root.parents[2]
+    if validity_authority in GROUNDED_ARENA_AUTHORITIES:
         registries = load_arena_grounded_registries(
             project_root, config
         )
         for row in validity_rows:
             try:
                 verify_poison_payload(row)
-                bundle = verify_grounded_execution_bundle(
-                    row.get("grounded_execution_bundle") or {},
-                    policy=parent,
-                    registries=registries,
-                )
-                validity = verify_grounded_arena_validity(
-                    row.get("validity") or {},
-                    execution_bundle=bundle,
-                )
+                if row.get("grounded_authority_bundle"):
+                    authority = verify_arena_grounded_authority(
+                        row["grounded_authority_bundle"],
+                        policy=parent,
+                        registries=registries,
+                    )
+                    bundle = authority["execution_bundle"]
+                    validity = verify_grounded_arena_validity(
+                        row.get("validity") or {},
+                        authority_bundle=authority,
+                    )
+                elif (
+                    validity_authority
+                    == GROUNDED_ARENA_COMPAT_AUTHORITY
+                ):
+                    bundle = verify_grounded_execution_bundle(
+                        row.get("grounded_execution_bundle") or {},
+                        policy=parent,
+                        registries=registries,
+                    )
+                    validity = (
+                        verify_legacy_grounded_arena_validity(
+                            row.get("validity") or {},
+                            execution_bundle=bundle,
+                        )
+                    )
+                else:
+                    raise RoundAuditViolation(
+                        "Grounded Runtime authority bundle is missing"
+                    )
             except Exception as exc:
                 raise RoundAuditViolation(
                     "Grounded validity row cannot be reconstructed"
@@ -130,6 +155,63 @@ def reconstruct_round(round_dir: str | Path) -> dict[str, Any]:
                 raise RoundAuditViolation(
                     "legacy validity result cannot be reconstructed"
                 )
+    challenge_rows = _read_jsonl(
+        root / "blue_challenge_results.jsonl"
+    )
+    try:
+        expected_episodes = [
+            episode_from_challenge(
+                row,
+                policy=parent,
+                round_id=context["round_id"],
+            )
+            for row in challenge_rows
+        ]
+    except Exception as exc:
+        raise RoundAuditViolation(
+            "verified episodes cannot be reconstructed"
+        ) from exc
+    episode_manifest = read_json(root / "verified_episodes.json")
+    expected_episode_manifest = {
+        "schema_version": "r3e-round-episode-manifest-v1",
+        "round_id": context["round_id"],
+        "challenged_policy_hash": parent.policy_hash,
+        "episode_ids": [
+            episode.episode_id for episode in expected_episodes
+        ],
+        "episode_hashes": [
+            episode.episode_hash for episode in expected_episodes
+        ],
+    }
+    expected_episode_manifest["manifest_hash"] = hash_payload(
+        expected_episode_manifest
+    )
+    if episode_manifest != expected_episode_manifest:
+        raise RoundAuditViolation(
+            "verified episode manifest cannot be reconstructed"
+        )
+    episode_store = EpisodeStore(
+        project_root
+        / config.get("memory_root", "runtime/memory")
+        / "episodes"
+    )
+    try:
+        for expected_episode in expected_episodes:
+            if (
+                episode_store.get(
+                    expected_episode.episode_id
+                ).to_dict()
+                != expected_episode.to_dict()
+            ):
+                raise RoundAuditViolation(
+                    "stored verified episode differs from authority"
+                )
+    except Exception as exc:
+        if isinstance(exc, RoundAuditViolation):
+            raise
+        raise RoundAuditViolation(
+            "stored verified episode cannot be audited"
+        ) from exc
     red_context = verify_red_search_context(
         read_json(root / "red_search_context.json")
     )
@@ -361,6 +443,12 @@ def reconstruct_round(round_dir: str | Path) -> dict[str, Any]:
         "residual_archive_updates_hash": hash_payload(archive_updates),
         "validity_authority": validity_authority,
         "validity_results_hash": hash_payload(validity_rows),
+        "blue_challenge_results_hash": hash_payload(
+            challenge_rows
+        ),
+        "verified_episode_manifest_hash": episode_manifest[
+            "manifest_hash"
+        ],
         "covered_archive_updates_hash": hash_payload(covered_updates),
         "archive_exclusions_hash": hash_payload(archive_exclusions),
         "learnability_results_hash": hash_payload(learnability_rows),

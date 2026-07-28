@@ -62,8 +62,8 @@ def update_archive(
         try:
             verify_grounded_arena_validity(
                 validity,
-                execution_bundle=poison.get(
-                    "grounded_execution_bundle"
+                authority_bundle=poison.get(
+                    "grounded_authority_bundle"
                 ),
             )
         except GroundedArenaValidityViolation as exc:

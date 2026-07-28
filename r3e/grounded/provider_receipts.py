@@ -32,6 +32,7 @@ def provider_implementation_hash(
     """Bind a frozen provider ID to the exact local parser implementation."""
     grounded_root = Path(__file__).resolve().parent
     red_grounded_root = grounded_root.parent / "red" / "grounded"
+    memory_root = grounded_root.parent / "memory"
     implementations = {
         ("oracle_parser", "r3e-stdout-oracle", "1"): [
             grounded_root / "icarus.py",
@@ -47,6 +48,15 @@ def provider_implementation_hash(
         ],
         ("formal_parser", "r3e-yosys-sat-formal", "1"): [
             grounded_root / "yosys_formal.py",
+        ],
+        (
+            "failure_descriptor",
+            "r3e-grounded-failure-descriptor",
+            "1",
+        ): [
+            grounded_root / "failure_descriptor.py",
+            memory_root / "descriptor.py",
+            memory_root / "schema.py",
         ],
     }
     paths = implementations.get((provider_kind, provider_id, provider_version))

@@ -6,6 +6,9 @@ from typing import Any, Iterable
 
 from r3e.policy.schema import PolicyState
 from r3e.protocol.hashing import hash_file, hash_payload
+from r3e.grounded.failure_descriptor import (
+    verify_grounded_failure_descriptor,
+)
 
 from .descriptor import build_failure_descriptor
 from .episode_store import EpisodeStore
@@ -38,21 +41,93 @@ def episode_from_challenge(
     blue_results = challenge.get("blue_results")
     if not isinstance(blue_results, list) or not blue_results:
         raise EpisodeBuildViolation("challenge blue attempts are missing")
-    descriptor = build_failure_descriptor({
-        "oracle_stage": "functional_compare",
-        "sequential_context": int(challenge.get("sequential_depth") or 0) > 0,
-        "affected_roles": [str(challenge.get("affected_role") or "unknown")],
-        "mismatch_pattern": str(challenge.get("effect") or "unknown"),
-        "first_divergence_bucket": str(
-            challenge.get("first_divergence_cycle_bucket") or "unknown"
-        ),
-        "observable_artifact_hashes": {
-            "challenge": str(challenge.get("challenge_result_hash") or ""),
-            "validity": str(
-                (challenge.get("validity") or {}).get("result_hash") or ""
+    validity_evidence = (
+        (challenge.get("validity") or {}).get("evidence") or {}
+    )
+    authority = challenge.get("grounded_authority_bundle")
+    if validity_evidence.get("authority_bundle_hash") and not isinstance(
+        authority, dict
+    ):
+        raise EpisodeBuildViolation(
+            "Grounded Runtime challenge lacks its authority bundle"
+        )
+    if authority is not None and not isinstance(authority, dict):
+        raise EpisodeBuildViolation(
+            "Grounded authority bundle must be an object"
+        )
+    grounded_authority_hash = ""
+    if isinstance(authority, dict):
+        if authority.get("authority_hash") != hash_payload({
+            key: value for key, value in authority.items()
+            if key != "authority_hash"
+        }):
+            raise EpisodeBuildViolation(
+                "Grounded authority hash mismatch"
+            )
+        try:
+            descriptor_payload, _descriptor_receipt = (
+                verify_grounded_failure_descriptor(
+                    authority.get("failure_descriptor") or {},
+                    authority.get("failure_descriptor_receipt") or {},
+                    execution_bundle=(
+                        authority.get("execution_bundle") or {}
+                    ),
+                    formal_proof_triplet=(
+                        authority.get("formal_proof_triplet") or {}
+                    ),
+                )
+            )
+        except Exception as exc:
+            raise EpisodeBuildViolation(str(exc)) from exc
+        if (
+            validity_evidence.get("authority_bundle_hash")
+            != authority["authority_hash"]
+            or validity_evidence.get("failure_descriptor_hash")
+            != descriptor_payload["descriptor_hash"]
+            or validity_evidence.get(
+                "failure_descriptor_receipt_hash"
+            )
+            != authority["failure_descriptor_receipt"]["receipt_hash"]
+        ):
+            raise EpisodeBuildViolation(
+                "Grounded descriptor is not bound to challenge validity"
+            )
+        descriptor = build_failure_descriptor({
+            key: value
+            for key, value in descriptor_payload.items()
+            if key not in {"schema_version", "descriptor_hash"}
+        })
+        grounded_authority_hash = str(authority["authority_hash"])
+    else:
+        descriptor = build_failure_descriptor({
+            "oracle_stage": "functional_compare",
+            "sequential_context": (
+                int(challenge.get("sequential_depth") or 0) > 0
             ),
-        },
-    })
+            "affected_roles": [
+                str(challenge.get("affected_role") or "unknown")
+            ],
+            "mismatch_pattern": str(
+                challenge.get("effect") or "unknown"
+            ),
+            "first_divergence_bucket": str(
+                challenge.get(
+                    "first_divergence_cycle_bucket"
+                )
+                or "unknown"
+            ),
+            "observable_artifact_hashes": {
+                "challenge": str(
+                    challenge.get("challenge_result_hash") or ""
+                ),
+                "validity": str(
+                    (challenge.get("validity") or {}).get(
+                        "result_hash"
+                    )
+                    or ""
+                ),
+            },
+        })
     successes = [row for row in blue_results if row.get("oracle_ok")]
     successful_hashes = [
         str(row.get("successful_patch_hash") or "")
@@ -85,6 +160,7 @@ def episode_from_challenge(
             resource_usage[field] += value
     oracle_evidence_hash = hash_payload({
         "validity_result_hash": (challenge.get("validity") or {}).get("result_hash"),
+        "grounded_authority_hash": grounded_authority_hash,
         "blue_result_hashes": [hash_payload(row) for row in blue_results],
     })
     identity = hash_payload({

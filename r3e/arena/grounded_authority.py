@@ -1,11 +1,21 @@
-"""Runner-owned bridge from Grounded Red execution to arena validity."""
+"""Runner-owned Grounded Red, formal, and RAAM authority bridge."""
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Mapping
 
+from r3e.grounded.failure_descriptor import (
+    build_grounded_failure_descriptor,
+    verify_grounded_failure_descriptor,
+)
+from r3e.grounded.yosys_formal import (
+    YosysFormalProvider,
+    verify_formal_proof_triplet,
+)
 from r3e.policy.schema import PolicyState
 from r3e.protocol.hashing import (
+    atomic_write_json,
     atomic_write_text,
     hash_file,
     hash_payload,
@@ -24,11 +34,25 @@ from r3e.red.grounded.registry import (
 )
 
 
-GROUNDED_ARENA_AUTHORITY = "grounded_red_execution_v1"
+GROUNDED_ARENA_AUTHORITY = "grounded_runtime_authority_v1"
+GROUNDED_ARENA_COMPAT_AUTHORITY = "grounded_red_execution_v1"
+GROUNDED_ARENA_AUTHORITIES = {
+    GROUNDED_ARENA_AUTHORITY,
+    GROUNDED_ARENA_COMPAT_AUTHORITY,
+}
 LEGACY_ARENA_AUTHORITY = "legacy_adapter_evidence_v1"
 ARENA_VALIDITY_AUTHORITIES = {
-    GROUNDED_ARENA_AUTHORITY,
+    *GROUNDED_ARENA_AUTHORITIES,
     LEGACY_ARENA_AUTHORITY,
+}
+ARENA_AUTHORITY_SCHEMA_VERSION = "r3e-arena-grounded-authority-v2"
+_AUTHORITY_FIELDS = {
+    "schema_version",
+    "execution_bundle",
+    "formal_proof_triplet",
+    "failure_descriptor",
+    "failure_descriptor_receipt",
+    "authority_hash",
 }
 
 
@@ -72,17 +96,79 @@ def _under_root(path: str | Path, root: Path, *, label: str) -> Path:
     return value
 
 
+def verify_arena_grounded_authority(
+    authority_bundle: Mapping[str, Any],
+    *,
+    policy: PolicyState,
+    registries: GroundedRegistryBundle,
+) -> dict[str, Any]:
+    payload = deepcopy(dict(authority_bundle))
+    if set(payload) != _AUTHORITY_FIELDS:
+        raise GroundedAuthorityIntegrationViolation(
+            "arena Grounded authority fields mismatch"
+        )
+    if payload["schema_version"] != ARENA_AUTHORITY_SCHEMA_VERSION:
+        raise GroundedAuthorityIntegrationViolation(
+            "arena Grounded authority schema mismatch"
+        )
+    if payload["authority_hash"] != hash_payload({
+        key: value for key, value in payload.items()
+        if key != "authority_hash"
+    }):
+        raise GroundedAuthorityIntegrationViolation(
+            "arena Grounded authority hash mismatch"
+        )
+    execution = verify_grounded_execution_bundle(
+        payload["execution_bundle"],
+        policy=policy,
+        registries=registries,
+    )
+    formal = verify_formal_proof_triplet(
+        payload["formal_proof_triplet"]
+    )
+    descriptor, descriptor_receipt = (
+        verify_grounded_failure_descriptor(
+            payload["failure_descriptor"],
+            payload["failure_descriptor_receipt"],
+            execution_bundle=execution,
+            formal_proof_triplet=formal,
+        )
+    )
+    materialization = execution["materialization_receipt"]
+    if (
+        formal["clean"]["rtl_hash"]
+        != materialization["clean_rtl_hash"]
+        or formal["poison"]["rtl_hash"]
+        != materialization["poison_rtl_hash"]
+        or formal["revert"]["rtl_hash"]
+        != materialization["clean_rtl_hash"]
+    ):
+        raise GroundedAuthorityIntegrationViolation(
+            "formal proof triplet is not bound to materialized RTL"
+        )
+    return {
+        **payload,
+        "execution_bundle": execution,
+        "formal_proof_triplet": formal,
+        "failure_descriptor": descriptor,
+        "failure_descriptor_receipt": descriptor_receipt,
+    }
+
+
 def _cross_bind(
     *,
     poison: Mapping[str, Any],
     policy: PolicyState,
-    bundle: Mapping[str, Any],
+    authority_bundle: Mapping[str, Any],
     clean_path: Path,
     poison_path: Path,
+    formal_property_path: Path,
 ) -> None:
-    plan = bundle["plan"]
-    materialization = bundle["materialization_receipt"]
-    decision = bundle["admission_decision"]
+    execution = authority_bundle["execution_bundle"]
+    formal = authority_bundle["formal_proof_triplet"]
+    plan = execution["plan"]
+    materialization = execution["materialization_receipt"]
+    decision = execution["admission_decision"]
     if (
         poison.get("grounded_plan_hash") != plan["plan_hash"]
         or (poison.get("grounded_mutation_plan") or {}).get("plan_hash")
@@ -95,12 +181,51 @@ def _cross_bind(
         != policy.effective_policy_hash
         or materialization["clean_rtl_hash"] != hash_file(clean_path)
         or materialization["poison_rtl_hash"] != hash_file(poison_path)
+        or formal["property_hash"] != hash_file(formal_property_path)
+        or formal["clean"]["top_module"]
+        != poison.get("grounded_formal_top_module")
+        or formal["clean"]["depth"]
+        != poison.get("grounded_formal_depth")
         or decision.get("authority_mode")
         != "runner_owned_grounded_execution"
     ):
         raise GroundedAuthorityIntegrationViolation(
-            "arena poison is not cross-bound to Grounded execution"
+            "arena poison is not cross-bound to Grounded authority"
         )
+
+
+def _build_authority(
+    *,
+    execution_bundle: Mapping[str, Any],
+    formal_proof_triplet: Mapping[str, Any],
+    policy: PolicyState,
+    registries: GroundedRegistryBundle,
+) -> dict[str, Any]:
+    execution = verify_grounded_execution_bundle(
+        execution_bundle,
+        policy=policy,
+        registries=registries,
+    )
+    formal = verify_formal_proof_triplet(formal_proof_triplet)
+    descriptor, descriptor_receipt = (
+        build_grounded_failure_descriptor(
+            execution_bundle=execution,
+            formal_proof_triplet=formal,
+        )
+    )
+    payload = {
+        "schema_version": ARENA_AUTHORITY_SCHEMA_VERSION,
+        "execution_bundle": execution,
+        "formal_proof_triplet": formal,
+        "failure_descriptor": descriptor,
+        "failure_descriptor_receipt": descriptor_receipt,
+    }
+    payload["authority_hash"] = hash_payload(payload)
+    return verify_arena_grounded_authority(
+        payload,
+        policy=policy,
+        registries=registries,
+    )
 
 
 def execute_grounded_arena_validity(
@@ -112,8 +237,9 @@ def execute_grounded_arena_validity(
     round_dir: str | Path,
     run_context_hash: str,
     timeout_seconds: float = 10.0,
+    formal_timeout_seconds: float = 30.0,
 ) -> dict[str, Any]:
-    """Execute or resume one exact Grounded Red authority bundle."""
+    """Execute or resume exact Icarus, Yosys, and descriptor authority."""
     root = Path(project_root).resolve()
     clean_source = _under_root(
         str(poison.get("golden_rtl") or ""),
@@ -130,6 +256,11 @@ def execute_grounded_arena_validity(
         root,
         label="grounded testbench",
     )
+    formal_property = _under_root(
+        str(poison.get("grounded_formal_property") or ""),
+        root,
+        label="grounded formal property",
+    )
     plan = poison.get("grounded_mutation_plan")
     if not isinstance(plan, Mapping):
         raise GroundedAuthorityIntegrationViolation(
@@ -140,34 +271,49 @@ def execute_grounded_arena_validity(
             "arena poison Grounded plan hash mismatch"
         )
     top_module = str(poison.get("grounded_top_module") or "")
+    formal_top_module = str(
+        poison.get("grounded_formal_top_module") or ""
+    )
+    formal_depth = poison.get("grounded_formal_depth")
+    if (
+        not isinstance(formal_depth, int)
+        or isinstance(formal_depth, bool)
+        or not 1 <= formal_depth <= 1024
+    ):
+        raise GroundedAuthorityIntegrationViolation(
+            "grounded formal depth must be between 1 and 1024"
+        )
     token = hash_payload({
         "poison_payload_hash": poison.get("poison_payload_hash"),
         "plan_hash": plan.get("plan_hash"),
     }).split(":", 1)[1]
-    authority_root = Path(round_dir).resolve() / "grounded_authority" / token
+    authority_root = (
+        Path(round_dir).resolve() / "grounded_authority" / token
+    )
     authority_root.mkdir(parents=True, exist_ok=True)
 
     existing = sorted(
         authority_root.glob(
-            "attempt-*/grounded_execution_bundle.json"
+            "attempt-*/arena_grounded_authority.json"
         )
     )
-    for bundle_path in existing:
-        bundle = verify_grounded_execution_bundle(
-            read_json(bundle_path),
+    for authority_path in existing:
+        authority = verify_arena_grounded_authority(
+            read_json(authority_path),
             policy=policy,
             registries=registries,
         )
         _cross_bind(
             poison=poison,
             policy=policy,
-            bundle=bundle,
+            authority_bundle=authority,
             clean_path=clean_source,
             poison_path=poison_source,
+            formal_property_path=formal_property,
         )
         return {
-            "validity": build_grounded_arena_validity(bundle),
-            "grounded_execution_bundle": bundle,
+            "validity": build_grounded_arena_validity(authority),
+            "grounded_authority_bundle": authority,
         }
 
     attempt_number = len(list(authority_root.glob("attempt-*"))) + 1
@@ -175,18 +321,23 @@ def execute_grounded_arena_validity(
     workspace.mkdir(parents=True, exist_ok=False)
     staged_clean = workspace / "inputs" / "clean.v"
     staged_testbench = workspace / "inputs" / "testbench.v"
+    staged_property = workspace / "inputs" / "formal_property.v"
     atomic_write_text(
         staged_clean, clean_source.read_text(encoding="utf-8")
     )
     atomic_write_text(
         staged_testbench, testbench.read_text(encoding="utf-8")
     )
+    atomic_write_text(
+        staged_property, formal_property.read_text(encoding="utf-8")
+    )
     allowed_manifest_hash = hash_payload({
         "clean_rtl_hash": hash_file(staged_clean),
         "testbench_hash": hash_file(staged_testbench),
+        "formal_property_hash": hash_file(staged_property),
         "plan_hash": plan["plan_hash"],
     })
-    bundle = execute_grounded_icarus_admission(
+    execution = execute_grounded_icarus_admission(
         plan=plan,
         policy=policy,
         registries=registries,
@@ -200,14 +351,44 @@ def execute_grounded_arena_validity(
         allowed_file_manifest_hash=allowed_manifest_hash,
         timeout_seconds=timeout_seconds,
     )
+    formal_provider = YosysFormalProvider(
+        workspace=workspace,
+        run_context_hash=run_context_hash,
+        timeout_seconds=formal_timeout_seconds,
+    )
+    formal = formal_provider.execute_triplet(
+        receipt_prefix=str(plan["plan_id"]),
+        clean_rtl_path=staged_clean,
+        poison_rtl_path=workspace / "materialized/poison.v",
+        revert_rtl_path=workspace / "materialized/reverted.v",
+        property_path=staged_property,
+        top_module=formal_top_module,
+        depth=formal_depth,
+        frozen_clean_rtl_hash=hash_file(staged_clean),
+        frozen_poison_rtl_hash=execution[
+            "materialization_receipt"
+        ]["poison_rtl_hash"],
+        frozen_revert_rtl_hash=hash_file(staged_clean),
+        frozen_property_hash=hash_file(staged_property),
+    )
+    authority = _build_authority(
+        execution_bundle=execution,
+        formal_proof_triplet=formal,
+        policy=policy,
+        registries=registries,
+    )
     _cross_bind(
         poison=poison,
         policy=policy,
-        bundle=bundle,
+        authority_bundle=authority,
         clean_path=clean_source,
         poison_path=poison_source,
+        formal_property_path=formal_property,
+    )
+    atomic_write_json(
+        workspace / "arena_grounded_authority.json", authority
     )
     return {
-        "validity": build_grounded_arena_validity(bundle),
-        "grounded_execution_bundle": bundle,
+        "validity": build_grounded_arena_validity(authority),
+        "grounded_authority_bundle": authority,
     }

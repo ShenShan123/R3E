@@ -145,8 +145,10 @@ V1** in `configs/evolution/raam_protocol_skeleton_v1.json`. Its child milestone,
 `configs/evolution/raam_authority_closure_v1.json` and binds strict episode-backed
 evidence reconstruction, instance/effective policy and bank identities, stable
 cross-policy memory definitions, semantic bank deduplication, and cumulative
-memory provenance. Runner-owned oracle/descriptor/RTL semantic grounding remains
-open and blocks a Grounded Runtime or empirical continual-learning claim.
+memory provenance. Its later Grounded Runtime child closes runner-owned
+Icarus/Yosys-to-descriptor/episode authority binding. Rich waveform-level
+features, complete language coverage, and empirical continual-learning claims
+remain open.
 
 ### Grounded Red Discovery
 
@@ -198,21 +200,30 @@ python -m r3e.red.grounded.execution \
   --allowed-file-manifest-hash sha256:...
 ```
 
-The Whole-Policy arena now supports `grounded_red_execution_v1` as a
-runner-owned validity authority. In this mode the runner executes and stores
-the exact Icarus Grounded execution bundle, reconstructs G1-G11 during offline
-audit, and never delegates validity to the model adapter. The historical
-adapter evidence path remains explicit as
-`legacy_adapter_evidence_v1`. This integration is frozen as
+The Whole-Policy arena first introduced `grounded_red_execution_v1` as a
+runner-owned Icarus validity authority. The current formal interface is
+`grounded_runtime_authority_v1`: for every admitted candidate it additionally
+requires a Yosys clean-proof/poison-counterexample/revert-proof triplet bound
+to the exact materialized RTL and frozen property. It then derives the RAAM
+`FailureDescriptor` only from verified execution/formal artifact hashes and
+stores that exact descriptor in the corresponding `VerifiedEpisode`. Offline
+audit reconstructs the authority bundle, episode manifest, and episode-store
+object. The model adapter never receives validity or descriptor authority.
+The historical adapter evidence path remains explicit as
+`legacy_adapter_evidence_v1`. The initial integration is frozen as
 **Grounded Authority Integration V1** in
-`configs/evolution/grounded_authority_integration_v1.json`.
+`configs/evolution/grounded_authority_integration_v1.json`; the formal/RAAM
+closure is frozen as **Grounded Runtime Authority Closure V1** in
+`configs/evolution/grounded_runtime_authority_closure_v1.json`.
 
 The fake fixture remains model-free and is not grounded evidence. The
 operator library intentionally supports a constrained parser-backed
 SystemVerilog subset rather than claiming complete language coverage. Formal
-triplet receipts are independently reconstructable, but are not required by
-the current Icarus-backed arena authority. No real-model discovery run,
-bug-yield result, or empirical gain is claimed. The legacy
+triplet receipts are mandatory for the Grounded Runtime authority; missing,
+inconclusive, or tampered formal evidence fails closed. Descriptors currently
+encode bounded provider-observable categories and artifact hashes, not a claim
+of complete waveform understanding. No real-model discovery run, bug-yield
+result, or empirical gain is claimed. The legacy
 `r3e.red.validity_gate` remains available for historical Whole-Policy
 compatibility, but is not Grounded Red admission authority.
 

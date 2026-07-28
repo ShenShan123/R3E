@@ -1,0 +1,53 @@
+{
+  "schema_version": "r3e-grounded-runtime-authority-closure-milestone-v1",
+  "milestone_id": "grounded-runtime-authority-closure-v1",
+  "status": "frozen",
+  "parent_milestone": {
+    "milestone_id": "grounded-authority-integration-v1",
+    "milestone_hash": "sha256:9c090596407990479db9d6fe192903f608836d67f2149320a71aa42642528917"
+  },
+  "completed_scope": [
+    "arena-required-yosys-clean-poison-revert-proof-triplet",
+    "formal-property-top-depth-and-materialized-rtl-cross-binding",
+    "formal-inconclusive-and-tool-failure-fail-closed",
+    "runner-owned-artifact-derived-raam-failure-descriptor",
+    "failure-descriptor-provider-receipt-and-authority-hash",
+    "grounded-descriptor-to-verified-episode-exact-binding",
+    "offline-episode-manifest-and-object-store-reconstruction",
+    "completed-authority-attempt-resume-reuse",
+    "legacy-adapter-evidence-compatibility"
+  ],
+  "frozen_interfaces": [
+    "grounded_runtime_authority_v1",
+    "r3e-arena-grounded-authority-v2",
+    "r3e-formal-proof-triplet-v1",
+    "r3e-grounded-failure-descriptor-v1",
+    "r3e-grounded-provider-receipt-v1",
+    "r3e-failure-descriptor-v1",
+    "r3e-verified-episode-v1",
+    "r3e-round-audit-v1"
+  ],
+  "frozen_assets": {
+    "configs/evolution/round_grounded_runtime_v1.json": "sha256:801376a166935e77a13c53c42d68043609fc62bd0cc00c60bc2ea4831f8cd9c3",
+    "configs/red/grounded_family_registry_v1.json": "sha256:a33cb70b9139b489ff2d8d7823c8220678add8bc31be320edcd30b4adfac3ed5",
+    "configs/red/grounded_operator_registry_v1.json": "sha256:c066e6dc070e6e45f8ef3bbb9453314b483d99e96dc1cccf1e52552d5483bf2b",
+    "configs/red/grounded_effect_registry_v1.json": "sha256:cafc655d3426fc0a53272f8eb998c37d87c789ee7b44fc652a7c30083237f8b2"
+  },
+  "required_validation": [
+    "pytest -q -p no:cacheprovider",
+    "pytest -q -p no:cacheprovider tests/test_grounded_authority_integration.py tests/test_grounded_red_grd2_formal.py tests/test_raam_memory.py tests/test_raam_memory_runner.py",
+    "python -m r3e.arena.fake_system --workspace /tmp/r3e-grounded-runtime-authority-v1 --rounds 3",
+    "python scripts/check_release.py",
+    "python scripts/verify_datasets.py"
+  ],
+  "deferred_scope": [
+    "richer-waveform-signal-and-cycle-descriptor-features",
+    "formal-inconclusive-candidate-rejected-archive-routing",
+    "full-systemverilog-parser-and-formal-property-coverage",
+    "parser-backed-memory-challenge-materialization",
+    "fully-verified-cross-system-authority-dag",
+    "real-model-multi-round-pilot"
+  ],
+  "claim_boundary": "Frozen runner-owned Icarus plus Yosys arena authority and artifact-derived RAAM descriptor/episode binding only; no complete waveform semantics, full-SystemVerilog proof coverage, real-model discovery, bug-yield, memory-gain, multi-round evolution, or empirical-result claim.",
+  "milestone_hash": "sha256:015d271fa7911ca132caae91971cf98180f81ea40273fb6910a7375d16e62c1b"
+}

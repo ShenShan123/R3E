@@ -64,8 +64,7 @@ from r3e.red.memory_challenge import build_memory_capability_packet
 from .audit import append_round_ledger, freeze_round_audit
 from .grounded_authority import (
     ARENA_VALIDITY_AUTHORITIES,
-    GROUNDED_ARENA_AUTHORITY,
-    GroundedAuthorityIntegrationViolation,
+    GROUNDED_ARENA_AUTHORITIES,
     execute_grounded_arena_validity,
     load_arena_grounded_registries,
 )
@@ -224,7 +223,7 @@ class EvolutionRoundRunner:
             "screen_child",
             "replay",
         }
-        if self.validity_authority != GROUNDED_ARENA_AUTHORITY:
+        if self.validity_authority not in GROUNDED_ARENA_AUTHORITIES:
             required_methods.add("prepare_validity")
         missing = sorted(
             name for name in required_methods if not callable(getattr(adapter, name, None))
@@ -260,7 +259,7 @@ class EvolutionRoundRunner:
         self.operator_space = load_operator_space(operator_space_path)
         self.grounded_registries = (
             load_arena_grounded_registries(self.root, config)
-            if self.validity_authority == GROUNDED_ARENA_AUTHORITY
+            if self.validity_authority in GROUNDED_ARENA_AUTHORITIES
             else None
         )
         self.code_version = str(
@@ -513,7 +512,7 @@ class EvolutionRoundRunner:
                     payload_hash = verify_poison_payload(poison)
                 except PoisonPayloadViolation as exc:
                     raise RoundRunnerViolation(str(exc)) from exc
-                if self.validity_authority == GROUNDED_ARENA_AUTHORITY:
+                if self.validity_authority in GROUNDED_ARENA_AUTHORITIES:
                     if self.grounded_registries is None:
                         raise RoundRunnerViolation(
                             "Grounded registries are unavailable"
@@ -533,14 +532,20 @@ class EvolutionRoundRunner:
                                     "grounded_timeout_seconds", 10.0
                                 )
                             ),
+                            formal_timeout_seconds=float(
+                                self.config.get(
+                                    "grounded_formal_timeout_seconds",
+                                    30.0,
+                                )
+                            ),
                         )
-                    except GroundedAuthorityIntegrationViolation as exc:
+                    except Exception as exc:
                         raise RoundRunnerViolation(str(exc)) from exc
                     row = {
                         **dict(poison),
                         "validity": grounded["validity"],
-                        "grounded_execution_bundle": grounded[
-                            "grounded_execution_bundle"
+                        "grounded_authority_bundle": grounded[
+                            "grounded_authority_bundle"
                         ],
                     }
                     verify_poison_payload(row)
@@ -610,6 +615,27 @@ class EvolutionRoundRunner:
                 candidate_count=len(candidates),
                 proven_valid_count=len(valid),
                 results_hash=hash_payload(validity_rows),
+                grounded_authority_hashes=[
+                    row["grounded_authority_bundle"][
+                        "authority_hash"
+                    ]
+                    for row in validity_rows
+                    if row.get("grounded_authority_bundle")
+                ],
+                formal_proof_triplet_hashes=[
+                    row["grounded_authority_bundle"][
+                        "formal_proof_triplet"
+                    ]["triplet_hash"]
+                    for row in validity_rows
+                    if row.get("grounded_authority_bundle")
+                ],
+                failure_descriptor_hashes=[
+                    row["grounded_authority_bundle"][
+                        "failure_descriptor"
+                    ]["descriptor_hash"]
+                    for row in validity_rows
+                    if row.get("grounded_authority_bundle")
+                ],
             )
             self._checkpoint("VALIDITY_GATE", candidates, validity_rows)
 

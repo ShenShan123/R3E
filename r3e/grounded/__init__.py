@@ -22,6 +22,11 @@ from .yosys_formal import (
     verify_formal_execution_receipt,
     verify_formal_proof_triplet,
 )
+from .failure_descriptor import (
+    GroundedFailureDescriptorViolation,
+    build_grounded_failure_descriptor,
+    verify_grounded_failure_descriptor,
+)
 
 __all__ = [
     "GroundedReceiptViolation",
@@ -29,13 +34,16 @@ __all__ = [
     "GroundedCommandRunner",
     "GroundedCommandViolation",
     "GroundedProviderViolation",
+    "GroundedFailureDescriptorViolation",
     "YosysFormalProvider",
     "YosysFormalProviderViolation",
     "build_command_receipt",
     "build_provider_receipt",
+    "build_grounded_failure_descriptor",
     "provider_implementation_hash",
     "verify_command_receipt",
     "verify_provider_receipt",
     "verify_formal_execution_receipt",
     "verify_formal_proof_triplet",
+    "verify_grounded_failure_descriptor",
 ]

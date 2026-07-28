@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import json
 from pathlib import Path
 import shutil
@@ -14,9 +15,22 @@ from r3e.arena.fake_adapters import (
 )
 from r3e.arena.manifests import make_manifest
 from r3e.arena.runner import EvolutionRoundRunner
+from r3e.arena.grounded_authority import (
+    GroundedAuthorityIntegrationViolation,
+    execute_grounded_arena_validity,
+)
+from r3e.memory.episode_store import EpisodeStore
+from r3e.memory.episode_builder import (
+    EpisodeBuildViolation,
+    episode_from_challenge,
+)
+from r3e.policy.schema import PolicyState
 from r3e.policy.registry_v2 import initialize_registry
 from r3e.protocol.hashing import atomic_write_json, hash_file, hash_payload
 from r3e.red.grounded.materializers import materialize_operator
+from r3e.red.grounded.arena_validity import (
+    verify_legacy_grounded_arena_validity,
+)
 from r3e.red.grounded.mutation_plan import build_mutation_plan
 from r3e.red.grounded.operator_ast import operator_nodes
 from r3e.red.grounded.registry import load_grounded_registries
@@ -29,6 +43,7 @@ from r3e.red.operators import (
 
 ROOT = Path(__file__).resolve().parents[1]
 HAS_ICARUS = bool(shutil.which("iverilog") and shutil.which("vvp"))
+HAS_YOSYS = bool(shutil.which("yosys"))
 
 
 def test_grounded_authority_milestone_is_hash_bound():
@@ -55,6 +70,71 @@ def test_grounded_authority_milestone_is_hash_bound():
     }
     for relative, expected in milestone["frozen_assets"].items():
         assert hash_file(ROOT / relative) == expected
+
+    closure = json.loads(
+        (
+            ROOT
+            / (
+                "configs/evolution/"
+                "grounded_runtime_authority_closure_v1.json"
+            )
+        ).read_text(encoding="utf-8")
+    )
+    assert closure["milestone_hash"] == hash_payload({
+        key: value
+        for key, value in closure.items()
+        if key != "milestone_hash"
+    })
+    assert closure["parent_milestone"] == {
+        "milestone_id": milestone["milestone_id"],
+        "milestone_hash": milestone["milestone_hash"],
+    }
+    for relative, expected in closure["frozen_assets"].items():
+        assert hash_file(ROOT / relative) == expected
+
+
+def test_grounded_authority_requires_formal_property(tmp_path):
+    for name in ("clean.v", "poison.v", "tb.v"):
+        (tmp_path / name).write_text(
+            "module placeholder; endmodule\n",
+            encoding="utf-8",
+        )
+    policy = PolicyState.from_dict(json.loads(
+        (
+            ROOT
+            / "configs/base_policy/frozen_base_policy_v1.json"
+        ).read_text(encoding="utf-8")
+    ))
+    registries = load_grounded_registries(
+        family_registry=(
+            ROOT / "configs/red/grounded_family_registry_v1.json"
+        ),
+        operator_registry=(
+            ROOT / "configs/red/grounded_operator_registry_v1.json"
+        ),
+        effect_registry=(
+            ROOT / "configs/red/grounded_effect_registry_v1.json"
+        ),
+    )
+    with pytest.raises(
+        GroundedAuthorityIntegrationViolation,
+        match="formal property is missing",
+    ):
+        execute_grounded_arena_validity(
+            poison={
+                "golden_rtl": str(tmp_path / "clean.v"),
+                "buggy_rtl": str(tmp_path / "poison.v"),
+                "grounded_testbench": str(tmp_path / "tb.v"),
+                "grounded_formal_property": str(
+                    tmp_path / "missing_property.v"
+                ),
+            },
+            policy=policy,
+            registries=registries,
+            project_root=tmp_path,
+            round_dir=tmp_path / "round",
+            run_context_hash=hash_payload({"test": "missing-formal"}),
+        )
 
 
 class GroundedRoundAdapter(DeterministicEvolutionAdapter):
@@ -86,6 +166,7 @@ class GroundedRoundAdapter(DeterministicEvolutionAdapter):
             clean = source_root / f"clean_{index}.v"
             poison = source_root / f"poison_{index}.v"
             testbench = source_root / f"tb_{index}.v"
+            formal_property = source_root / f"property_{index}.v"
             clean_source = f"""module counter(
   input wire [3:0] count,
   output wire done
@@ -119,6 +200,16 @@ initial begin
     $display("R3E_ORACLE pass=0 signature=boundary_{index} first=cycle_{limit} topology=done");
   $finish;
 end
+endmodule
+""",
+                encoding="utf-8",
+            )
+            formal_property.write_text(
+                f"""module formal_top;
+  (* anyconst *) reg [3:0] count;
+  wire done;
+  counter dut(.count(count), .done(done));
+  always @* assert(done == (count < {limit}));
 endmodule
 """,
                 encoding="utf-8",
@@ -182,6 +273,9 @@ endmodule
                 "grounded_plan_hash": plan["plan_hash"],
                 "grounded_testbench": str(testbench),
                 "grounded_top_module": "tb",
+                "grounded_formal_property": str(formal_property),
+                "grounded_formal_top_module": "formal_top",
+                "grounded_formal_depth": 1,
             }
             lineage = make_lineage_plan(
                 parent,
@@ -204,7 +298,10 @@ endmodule
         )
 
 
-@pytest.mark.skipif(not HAS_ICARUS, reason="Icarus is unavailable")
+@pytest.mark.skipif(
+    not (HAS_ICARUS and HAS_YOSYS),
+    reason="Icarus or Yosys is unavailable",
+)
 def test_arena_uses_runner_owned_grounded_authority(tmp_path):
     (tmp_path / "configs").mkdir()
     (tmp_path / "runtime/registry").mkdir(parents=True)
@@ -233,7 +330,7 @@ def test_arena_uses_runner_owned_grounded_authority(tmp_path):
         "policy_registry": "runtime/registry/policy_registry.json",
         "policy_search_space": "configs/search.json",
         "non_target_manifest": "non_target.json",
-        "validity_authority": "grounded_red_execution_v1",
+        "validity_authority": "grounded_runtime_authority_v1",
         "grounded_family_registry": str(
             ROOT / "configs/red/grounded_family_registry_v1.json"
         ),
@@ -276,16 +373,157 @@ def test_arena_uses_runner_owned_grounded_authority(tmp_path):
         row["validity"]["proven_valid"]
         and row["validity"]["evidence"]["authority_mode"]
         == "runner_owned_grounded_execution"
-        and row["grounded_execution_bundle"]["admission_decision"][
-            "admitted"
-        ]
+        and row["grounded_authority_bundle"]["execution_bundle"][
+            "admission_decision"
+        ]["admitted"]
+        and row["grounded_authority_bundle"][
+            "formal_proof_triplet"
+        ]["clean"]["verdict"] == "proved"
+        and row["grounded_authority_bundle"][
+            "formal_proof_triplet"
+        ]["poison"]["verdict"] == "counterexample"
+        and row["grounded_authority_bundle"][
+            "formal_proof_triplet"
+        ]["revert"]["verdict"] == "proved"
+        and row["validity"]["evidence"][
+            "failure_descriptor_hash"
+        ] == row["grounded_authority_bundle"][
+            "failure_descriptor"
+        ]["descriptor_hash"]
         for row in validity_rows
     )
+    legacy_execution = validity_rows[0][
+        "grounded_authority_bundle"
+    ]["execution_bundle"]
+    legacy_evidence = legacy_execution["evidence"]
+    legacy_materialization = legacy_execution[
+        "materialization_receipt"
+    ]
+    legacy_decision = legacy_execution["admission_decision"]
+    legacy_validity = {
+        "proven_valid": legacy_decision["admitted"],
+        "checks": legacy_decision["checks"],
+        "rejection_reasons": legacy_decision[
+            "rejection_reasons"
+        ],
+        "evidence": {
+            "authority_mode": "runner_owned_grounded_execution",
+            "execution_bundle_hash": legacy_execution["bundle_hash"],
+            "admission_decision_hash": legacy_decision[
+                "decision_hash"
+            ],
+            "plan_hash": legacy_execution["plan"]["plan_hash"],
+            "clean_rtl_hash": legacy_materialization[
+                "clean_rtl_hash"
+            ],
+            "poison_rtl_hash": legacy_materialization[
+                "poison_rtl_hash"
+            ],
+            "semantic_diff_receipt_hash": legacy_evidence[
+                "semantic_diff"
+            ]["receipt_hash"],
+            "runtime_effect_receipt_hash": legacy_evidence[
+                "runtime_effect"
+            ]["receipt_hash"],
+        },
+    }
+    legacy_validity["result_hash"] = hash_payload(legacy_validity)
+    assert verify_legacy_grounded_arena_validity(
+        legacy_validity,
+        execution_bundle=legacy_execution,
+    ) == legacy_validity
+    episodes = EpisodeStore(
+        tmp_path / "runtime/memory/episodes"
+    ).audit()
+    descriptor_by_poison = {
+        row["poison_id"]: row["grounded_authority_bundle"][
+            "failure_descriptor"
+        ]
+        for row in validity_rows
+    }
+    assert {
+        episode.poison_id: episode.failure_descriptor
+        for episode in episodes
+    } == descriptor_by_poison
+    challenge_row = json.loads(
+        (
+            tmp_path
+            / "runtime/rounds/R001/blue_challenge_results.jsonl"
+        ).read_text(encoding="utf-8").splitlines()[0]
+    )
+    challenge_without_authority = deepcopy(challenge_row)
+    challenge_without_authority.pop("grounded_authority_bundle")
+    active_parent = PolicyState.from_dict(json.loads(
+        (
+            tmp_path
+            / "runtime/rounds/R001/active_parent.json"
+        ).read_text(encoding="utf-8")
+    ))
+    with pytest.raises(
+        EpisodeBuildViolation,
+        match="lacks its authority bundle",
+    ):
+        episode_from_challenge(
+            challenge_without_authority,
+            policy=active_parent,
+            round_id="R001",
+        )
+    for descriptor in descriptor_by_poison.values():
+        assert set(descriptor) == {
+            "schema_version",
+            "oracle_stage",
+            "sequential_context",
+            "affected_roles",
+            "mismatch_pattern",
+            "first_divergence_bucket",
+            "observable_artifact_hashes",
+            "descriptor_hash",
+        }
+        assert set(descriptor["observable_artifact_hashes"]) == {
+            "grounded_execution_bundle",
+            "clean_oracle_receipt",
+            "poison_oracle_receipt_1",
+            "poison_oracle_receipt_2",
+            "revert_oracle_receipt",
+            "semantic_diff_receipt",
+            "runtime_effect_receipt",
+            "formal_proof_triplet",
+        }
+        assert not {
+            "mutation_family",
+            "mutation_operator",
+            "red_truth",
+            "poison_family",
+        } & set(descriptor)
     audit = verify_frozen_round(
         tmp_path / "runtime/rounds/R001"
     )
-    assert audit["validity_authority"] == "grounded_red_execution_v1"
+    assert audit["validity_authority"] == "grounded_runtime_authority_v1"
     assert audit["validity_results_hash"] == hash_payload(validity_rows)
+    assert audit["verified_episode_manifest_hash"]
+
+    episode_object = (
+        tmp_path
+        / "runtime/memory/episodes/objects"
+        / (
+            episodes[0].episode_hash.replace(":", "_")
+            + ".json"
+        )
+    )
+    stored_episode = json.loads(
+        episode_object.read_text(encoding="utf-8")
+    )
+    tampered_episode = deepcopy(stored_episode)
+    tampered_episode["failure_descriptor"][
+        "mismatch_pattern"
+    ] = "tampered"
+    atomic_write_json(episode_object, tampered_episode)
+    with pytest.raises(
+        RoundAuditViolation,
+        match="episode",
+    ):
+        verify_frozen_round(tmp_path / "runtime/rounds/R001")
+    atomic_write_json(episode_object, stored_episode)
 
     resumed = EvolutionRoundRunner(
         config,
@@ -301,10 +539,29 @@ def test_arena_uses_runner_owned_grounded_authority(tmp_path):
         ).glob("*/attempt-*")
     ) == attempt_dirs
 
-    validity_rows[0]["validity"]["checks"]["G11_minimization"] = False
+    original_rows = deepcopy(validity_rows)
+    validity_rows[0]["grounded_authority_bundle"][
+        "formal_proof_triplet"
+    ]["poison"]["verdict"] = "proved"
     validity_path = (
         tmp_path / "runtime/rounds/R001/validity_results.jsonl"
     )
+    validity_path.write_text(
+        "\n".join(
+            json.dumps(row, sort_keys=True)
+            for row in validity_rows
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        RoundAuditViolation,
+        match="Grounded|validity",
+    ):
+        verify_frozen_round(tmp_path / "runtime/rounds/R001")
+
+    validity_rows = original_rows
+    validity_rows[0]["validity"]["checks"]["G11_minimization"] = False
     validity_path.write_text(
         "\n".join(
             json.dumps(row, sort_keys=True)
