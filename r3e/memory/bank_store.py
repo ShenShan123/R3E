@@ -8,6 +8,7 @@ from r3e.policy.schema import PolicyState
 from r3e.protocol.hashing import atomic_write_json, read_json
 from r3e.protocol.ledger import append_ledger, read_ledger, writer_lock
 
+from .evidence import memory_definition
 from .memory_store import MemoryStore
 from .schema import ActiveMemoryBank
 
@@ -35,6 +36,13 @@ class ActiveBankStore:
             )
             if memory.memory_hash != binding["memory_hash"]:
                 raise ActiveBankStoreViolation("bank memory hash mismatch")
+            if (
+                memory_definition(memory)["definition_hash"]
+                != binding["memory_definition_hash"]
+            ):
+                raise ActiveBankStoreViolation(
+                    "bank memory definition hash mismatch"
+                )
             if self.memory_store.current_status(
                 memory_id, int(binding["memory_version"])
             ) != binding["status"]:
@@ -112,7 +120,7 @@ class ActiveBankStore:
         if not bank_hash:
             raise ActiveBankStoreViolation("policy has no active memory bank binding")
         bank = self.get_by_hash(bank_hash)
-        if bank.effective_policy_hash != policy.policy_hash:
+        if bank.effective_policy_hash != policy.effective_policy_hash:
             raise ActiveBankStoreViolation("bank effective policy hash mismatch")
         if bank.policy_binding != binding:
             raise ActiveBankStoreViolation("policy component hashes differ from bank")

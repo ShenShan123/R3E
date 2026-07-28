@@ -6,6 +6,7 @@ from typing import Any, Iterable
 
 from r3e.memory.memory_store import MemoryStore
 from r3e.memory.schema import ActiveMemoryBank
+from r3e.memory.evidence import memory_definition
 from r3e.policy.schema import PolicyState
 from r3e.protocol.hashing import hash_file, hash_payload
 
@@ -55,7 +56,7 @@ def build_memory_capability_packet(
 ) -> dict[str, Any]:
     if (policy.memory_binding or {}) != bank.policy_binding:
         raise MemoryChallengeViolation("policy does not bind active memory bank")
-    if bank.effective_policy_hash != policy.policy_hash:
+    if bank.effective_policy_hash != policy.effective_policy_hash:
         raise MemoryChallengeViolation("bank effective policy binding mismatch")
     summaries = []
     for memory_id, binding in sorted(bank.memories.items()):
@@ -66,6 +67,9 @@ def build_memory_capability_packet(
             "memory_id": memory_id,
             "memory_version": memory.memory_version,
             "memory_hash": memory.memory_hash,
+            "memory_definition_hash": memory_definition(memory)[
+                "definition_hash"
+            ],
             "trigger_hash": hash_payload(memory.trigger_predicate),
             "effective_delta_hash": memory.effective_delta_hash,
         })
@@ -81,7 +85,9 @@ def build_memory_capability_packet(
         "schema_version": "r3e-memory-red-capability-v1",
         "challenged_policy_id": policy.policy_id,
         "challenged_policy_hash": policy.policy_hash,
+        "challenged_effective_policy_hash": policy.effective_policy_hash,
         "active_memory_bank_hash": bank.bank_hash,
+        "effective_memory_bank_hash": bank.effective_memory_bank_hash,
         "active_memory_summaries": summaries,
         "public_memory_regions": sorted(
             regions, key=lambda row: str(row.get("region_id") or "")
@@ -103,7 +109,11 @@ def verify_memory_capability_packet(
         raise MemoryChallengeViolation("memory capability schema mismatch")
     if (
         packet.get("challenged_policy_hash") != policy.policy_hash
+        or packet.get("challenged_effective_policy_hash")
+        != policy.effective_policy_hash
         or packet.get("active_memory_bank_hash") != bank.bank_hash
+        or packet.get("effective_memory_bank_hash")
+        != bank.effective_memory_bank_hash
     ):
         raise MemoryChallengeViolation("memory capability policy/bank binding mismatch")
     body = {key: value for key, value in packet.items() if key != "packet_hash"}

@@ -8,6 +8,7 @@ from r3e.policy.schema import PolicyState
 from r3e.protocol.hashing import hash_payload
 
 from .schema import ControlMemory, VerifiedEpisode
+from .evidence import definition_hash_for_parts
 
 
 def _trigger(episode: VerifiedEpisode) -> dict:
@@ -70,7 +71,7 @@ def build_memory_candidates(
     for episode in episodes:
         if episode.final_outcome != "unresolved":
             continue
-        if episode.challenged_effective_policy_hash != policy.policy_hash:
+        if episode.challenged_effective_policy_hash != policy.effective_policy_hash:
             continue
         trigger = _trigger(episode)
         if not trigger:
@@ -86,19 +87,18 @@ def build_memory_candidates(
         source_hashes = {
             episode.episode_id: episode.episode_hash for episode in rows
         }
-        identity = hash_payload({
-            "trigger_hash": trigger_hash,
-            "effective_delta_hash": hash_payload(_control_delta(triggers[trigger_hash])),
-            "effective_policy_hash": policy.policy_hash,
-        }).split(":", 1)[1][:16]
+        identity = definition_hash_for_parts(
+            triggers[trigger_hash],
+            _control_delta(triggers[trigger_hash]),
+        ).split(":", 1)[1][:16]
         candidates.append(ControlMemory.create(
             memory_id=f"CM_{identity}",
             memory_version=1,
             origin_round_id=origin_round_id,
             source_episode_ids=list(source_hashes),
             source_episode_hashes=source_hashes,
-            created_under_policy_instance_hash=policy.policy_hash,
-            created_under_effective_policy_hash=policy.policy_hash,
+            created_under_policy_instance_hash=policy.policy_instance_hash,
+            created_under_effective_policy_hash=policy.effective_policy_hash,
             trigger_predicate=triggers[trigger_hash],
             control_delta=_control_delta(triggers[trigger_hash]),
             status="candidate",

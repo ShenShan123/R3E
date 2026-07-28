@@ -297,6 +297,16 @@ def build_policy_promotion_bundle(
     target = verify_manifest(target_manifest)
     non_target = verify_manifest(non_target_manifest)
     bound_provenance = dict(provenance or {})
+    if (
+        candidate.created_from_residual_manifest_hash
+        != bound_provenance.get("residual_manifest_hash")
+    ):
+        raise PromotionViolation("candidate/residual provenance hash mismatch")
+    if (
+        hash_payload(bound_provenance.get("toolchain_fingerprint") or {})
+        != bound_provenance.get("toolchain_fingerprint_hash")
+    ):
+        raise PromotionViolation("toolchain fingerprint/provenance hash mismatch")
     if target["manifest_hash"] != bound_provenance.get("target_manifest_hash"):
         raise PromotionViolation("target manifest/provenance hash mismatch")
     if non_target["manifest_hash"] != bound_provenance.get("non_target_manifest_hash"):
@@ -368,6 +378,16 @@ def verify_policy_promotion_bundle(
     target = verify_manifest(bundle["target_manifest"])
     non_target = verify_manifest(bundle["non_target_manifest"])
     provenance = dict(bundle["provenance"])
+    if (
+        candidate.created_from_residual_manifest_hash
+        != provenance.get("residual_manifest_hash")
+    ):
+        raise PromotionViolation("candidate/residual provenance hash mismatch")
+    if (
+        hash_payload(provenance.get("toolchain_fingerprint") or {})
+        != provenance.get("toolchain_fingerprint_hash")
+    ):
+        raise PromotionViolation("toolchain fingerprint/provenance hash mismatch")
     if target["manifest_hash"] != provenance.get("target_manifest_hash"):
         raise PromotionViolation("target manifest/provenance hash mismatch")
     if non_target["manifest_hash"] != provenance.get("non_target_manifest_hash"):

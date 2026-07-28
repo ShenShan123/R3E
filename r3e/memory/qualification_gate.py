@@ -6,6 +6,11 @@ from typing import Any, Iterable
 from r3e.protocol.hashing import hash_payload
 
 from .schema import ControlMemory, ShadowPairedResult
+from .evidence import (
+    evidence_link,
+    freeze_evidence_set,
+    verify_memory_evidence_set,
+)
 
 
 class MemoryQualificationViolation(RuntimeError):
@@ -37,9 +42,23 @@ def decide_memory_qualification(
     if len(replay_policy_hashes) != 1:
         raise MemoryQualificationViolation("qualification uses multiple policy hashes")
     replay_policy_hash = next(iter(replay_policy_hashes))
-    if replay_policy_hash != memory.created_under_effective_policy_hash:
+    replay_effective_policy_hash = str(
+        provenance.get("effective_policy_hash") or ""
+    )
+    if (
+        not replay_effective_policy_hash
+        and replay_policy_hash == memory.created_under_policy_instance_hash
+    ):
+        replay_effective_policy_hash = (
+            memory.created_under_effective_policy_hash
+        )
+    if not replay_effective_policy_hash:
+        raise MemoryQualificationViolation(
+            "qualification effective policy hash is missing"
+        )
+    if replay_effective_policy_hash != memory.created_under_effective_policy_hash:
         if (
-            provenance.get("revalidation_from_policy_hash")
+            provenance.get("revalidation_from_effective_policy_hash")
             != memory.created_under_effective_policy_hash
         ):
             raise MemoryQualificationViolation(
@@ -54,29 +73,26 @@ def decide_memory_qualification(
     ):
         raise MemoryQualificationViolation("qualification provenance is incomplete")
     limits = {**DEFAULT_THRESHOLDS, **(thresholds or {})}
-    frozen_evidence = dict(evidence_set or {
-        "memory_id": memory.memory_id,
-        "memory_version": memory.memory_version,
-        "memory_hash": memory.memory_hash,
-        "support_count": len(memory.source_episode_ids),
-        "links": [
-            {
-                "episode_id": episode_id,
-                "episode_hash": memory.source_episode_hashes[episode_id],
-            }
-            for episode_id in sorted(memory.source_episode_ids)
-        ],
-    })
-    if (
-        frozen_evidence.get("memory_id") != memory.memory_id
-        or int(frozen_evidence.get("memory_version") or 0) != memory.memory_version
-        or frozen_evidence.get("memory_hash") != memory.memory_hash
-    ):
-        raise MemoryQualificationViolation("qualification evidence set mismatch")
-    evidence_set_hash = str(
-        frozen_evidence.get("evidence_set_hash")
-        or hash_payload(frozen_evidence)
-    )
+    if evidence_set is None:
+        evidence_set = freeze_evidence_set(
+            memory,
+            [
+                evidence_link(
+                    memory,
+                    evidence_source=memory,
+                    episode_id=episode_id,
+                    episode_hash=memory.source_episode_hashes[episode_id],
+                )
+                for episode_id in sorted(memory.source_episode_ids)
+            ],
+        )
+    try:
+        frozen_evidence = verify_memory_evidence_set(
+            evidence_set, memory=memory
+        )
+    except RuntimeError as exc:
+        raise MemoryQualificationViolation(str(exc)) from exc
+    evidence_set_hash = frozen_evidence["evidence_set_hash"]
     helped = sum(row.outcome == "helped" for row in rows)
     harmed = sum(row.outcome == "harmed" for row in rows)
     designs = {
@@ -136,6 +152,8 @@ def decide_memory_qualification(
         "paired_result_hash": hash_payload([row.to_dict() for row in rows]),
         "provenance": dict(provenance),
         "qualified_under_policy_hash": replay_policy_hash,
+        "qualified_under_policy_instance_hash": replay_policy_hash,
+        "qualified_under_effective_policy_hash": replay_effective_policy_hash,
         "evidence_set_hash": evidence_set_hash,
         "support_count": int(frozen_evidence.get("support_count") or 0),
     }

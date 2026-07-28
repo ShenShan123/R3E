@@ -9,6 +9,8 @@ from r3e.protocol.hashing import hash_payload
 from .qualification_gate import decide_memory_qualification
 from .compatibility import classify_policy_compatibility
 from .schema import ActiveMemoryBank, ControlMemory, ShadowPairedResult
+from .schema import VerifiedEpisode
+from .evidence import memory_definition, verify_memory_evidence_set
 
 
 MEMORY_AUTHORITY_SCHEMA_VERSION = "r3e-memory-promotion-authority-v1"
@@ -23,6 +25,7 @@ def build_memory_promotion_authority(
     bank: ActiveMemoryBank,
     memories: list[ControlMemory],
     qualification_bundles: list[dict[str, Any]],
+    episodes: list[VerifiedEpisode],
     compatibility_bundles: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     payload = {
@@ -30,6 +33,7 @@ def build_memory_promotion_authority(
         "bank": bank.to_dict(),
         "memories": [memory.to_dict() for memory in memories],
         "qualification_bundles": list(qualification_bundles),
+        "episodes": [episode.to_dict() for episode in episodes],
         "compatibility_bundles": list(compatibility_bundles or []),
     }
     payload["authority_hash"] = hash_payload(payload)
@@ -47,6 +51,7 @@ def verify_memory_promotion_authority(
         "bank",
         "memories",
         "qualification_bundles",
+        "episodes",
         "compatibility_bundles",
         "authority_hash",
     }
@@ -60,9 +65,9 @@ def verify_memory_promotion_authority(
     bank = ActiveMemoryBank.from_dict(authority["bank"])
     if candidate.memory_binding != bank.policy_binding:
         raise MemoryAuthorityViolation("candidate policy/bank binding mismatch")
-    if bank.effective_policy_hash != candidate.policy_hash:
+    if bank.effective_policy_hash != candidate.effective_policy_hash:
         raise MemoryAuthorityViolation("bank effective policy hash mismatch")
-    if bank.policy_instance_hash != parent.policy_hash:
+    if bank.policy_instance_hash != parent.policy_instance_hash:
         raise MemoryAuthorityViolation("bank parent policy hash mismatch")
     memories = {
         memory.memory_id: memory
@@ -73,6 +78,12 @@ def verify_memory_promotion_authority(
     qualifications = {
         str(item.get("memory_hash") or ""): item
         for item in authority["qualification_bundles"]
+    }
+    episodes = {
+        episode.episode_id: episode
+        for episode in (
+            VerifiedEpisode.from_dict(item) for item in authority["episodes"]
+        )
     }
     compatibilities = {
         str(item.get("memory_hash") or ""): item
@@ -85,6 +96,8 @@ def verify_memory_promotion_authority(
         if (
             memory.memory_version != int(binding["memory_version"])
             or memory.memory_hash != binding["memory_hash"]
+            or memory_definition(memory)["definition_hash"]
+            != binding["memory_definition_hash"]
         ):
             raise MemoryAuthorityViolation("bank memory binding mismatch")
         bundle = qualifications.get(memory.memory_hash)
@@ -94,6 +107,14 @@ def verify_memory_promotion_authority(
             raise MemoryAuthorityViolation("bank memory lacks qualification bundle")
         if bundle.get("schema_version") != "r3e-memory-qualification-bundle-v1":
             raise MemoryAuthorityViolation("qualification bundle schema mismatch")
+        try:
+            verify_memory_evidence_set(
+                bundle["evidence_set"],
+                memory=memory,
+                episodes=episodes,
+            )
+        except RuntimeError as exc:
+            raise MemoryAuthorityViolation(str(exc)) from exc
         results = [ShadowPairedResult(**row) for row in bundle["results"]]
         decision = bundle["decision"]
         reconstructed = decide_memory_qualification(
@@ -107,8 +128,13 @@ def verify_memory_promotion_authority(
             raise MemoryAuthorityViolation(
                 "memory qualification decision is not reconstructable"
             )
-        qualified_under = reconstructed.get("qualified_under_policy_hash")
-        if qualified_under != parent.policy_hash:
+        qualified_under_instance = reconstructed.get(
+            "qualified_under_policy_instance_hash"
+        )
+        qualified_under_effective = reconstructed.get(
+            "qualified_under_effective_policy_hash"
+        )
+        if qualified_under_effective != parent.effective_policy_hash:
             compatibility = compatibilities.get(memory.memory_hash)
             if not isinstance(compatibility, dict) or set(compatibility) != {
                 "memory_hash", "source_policy", "decision", "decision_hash"
@@ -122,7 +148,7 @@ def verify_memory_promotion_authority(
             }):
                 raise MemoryAuthorityViolation("compatibility proof hash mismatch")
             source_policy = PolicyState.from_dict(compatibility["source_policy"])
-            if source_policy.policy_hash != qualified_under:
+            if source_policy.policy_instance_hash != qualified_under_instance:
                 raise MemoryAuthorityViolation(
                     "compatibility source differs from qualification policy"
                 )
@@ -136,4 +162,13 @@ def verify_memory_promotion_authority(
                 raise MemoryAuthorityViolation(
                     "cross-policy memory is not statically compatible"
                 )
+    used_episode_ids = {
+        link["episode_id"]
+        for bundle in authority["qualification_bundles"]
+        for link in bundle["evidence_set"]["links"]
+    }
+    if used_episode_ids != set(episodes):
+        raise MemoryAuthorityViolation(
+            "memory authority episode set contains missing or unused objects"
+        )
     return {"bank_hash": bank.bank_hash, "memory_count": len(memories)}

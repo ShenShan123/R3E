@@ -89,13 +89,13 @@ def _decision(parent: PolicyState, child: PolicyState):
     )
     provenance = {
         "round_id": "R001",
-        "residual_manifest_hash": "sha256:" + "1" * 64,
+        "residual_manifest_hash": child.created_from_residual_manifest_hash,
         "adaptation_manifest_hash": "sha256:" + "2" * 64,
         "target_manifest_hash": target["manifest_hash"],
         "non_target_manifest_hash": non_target["manifest_hash"],
         "paired_result_hash": hash_payload(rows),
         "code_commit_sha": "test-version",
-        "toolchain_fingerprint_hash": "sha256:" + "5" * 64,
+        "toolchain_fingerprint_hash": hash_payload({"adapter": "test"}),
         "run_context_hash": "sha256:" + "6" * 64,
         "toolchain_fingerprint": {"adapter": "test"},
     }

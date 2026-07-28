@@ -41,7 +41,7 @@ def transition_active_bank(
                     memory_hash=memory.memory_hash,
                     previous_status=current_status,
                     new_status="revalidation_required",
-                    effective_policy_hash=current_policy.policy_hash,
+                    effective_policy_hash=current_policy.effective_policy_hash,
                     reason_code="policy_transition_changed_dependency",
                     evidence_hash=evidence_hash,
                 ),

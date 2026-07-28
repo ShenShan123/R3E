@@ -1,0 +1,51 @@
+{
+  "schema_version": "r3e-raam-authority-closure-milestone-v1",
+  "milestone_id": "raam-authority-closure-v1",
+  "status": "frozen",
+  "parent_milestone": {
+    "milestone_id": "raam-protocol-skeleton-v1",
+    "milestone_hash": "sha256:45d40fbe5aa70a8e3922185274f40e1039073349afd4777d39fe77f4a57ef5f0"
+  },
+  "closed_authority_gates": [
+    "episode-backed-strict-evidence-set-reconstruction",
+    "policy-instance-effective-identity-separation",
+    "memory-bank-instance-effective-identity-separation",
+    "behavioral-noop-policy-rejection",
+    "policy-independent-memory-definition",
+    "cross-policy-evidence-accumulation",
+    "active-bank-semantic-definition-deduplication",
+    "cumulative-evidence-source-provenance",
+    "candidate-residual-provenance-cross-binding",
+    "toolchain-fingerprint-provenance-reconstruction",
+    "authority-graph-summary-claim-boundary"
+  ],
+  "frozen_interfaces": [
+    "r3e-memory-definition-v1",
+    "r3e-memory-evidence-link-v1",
+    "r3e-memory-evidence-set-v1",
+    "r3e-memory-promotion-authority-v1",
+    "r3e-active-memory-bank-v1",
+    "r3e-policy-v2",
+    "r3e-raam-audit-v2"
+  ],
+  "frozen_assets": {
+    "docs/protocols/raam-authority-closure-v1.md": "sha256:8b9c13f199dd0eeb5dcaabb471f1ec9d854c6a2bf72f84217aff4838098941fe"
+  },
+  "required_validation": [
+    "pytest -q -p no:cacheprovider",
+    "python -m r3e.arena.fake_system --workspace /tmp/r3e-raam-authority-v1 --rounds 3",
+    "python scripts/check_release.py",
+    "python scripts/verify_datasets.py"
+  ],
+  "deferred_grounded_runtime": [
+    "runner_owned_oracle_receipts",
+    "artifact_derived_failure_descriptors",
+    "parser_backed_rtl_semantic_diff",
+    "qualification_precision_and_false_activation",
+    "real_memory_aware_executor",
+    "real_model_multi_round_experiments",
+    "fully_verified_authority_dag"
+  ],
+  "claim_boundary": "Authority objects, evidence reconstruction, stable identities, and promotion no-op gates only; no grounded-runtime completion or empirical memory-gain claim.",
+  "milestone_hash": "sha256:f38e4165dc3a5c5f3262bc7bc901a8408b5d48950585f75a1cb076de5985bafb"
+}

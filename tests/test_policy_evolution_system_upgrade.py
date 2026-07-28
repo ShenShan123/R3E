@@ -141,13 +141,13 @@ def _strong_decision(parent: PolicyState, child: PolicyState) -> dict:
         validation_manifest_hash="sha256:validation",
         provenance={
             "round_id": "R900",
-            "residual_manifest_hash": "sha256:" + "1" * 64,
+            "residual_manifest_hash": child.created_from_residual_manifest_hash,
             "adaptation_manifest_hash": "sha256:" + "2" * 64,
             "target_manifest_hash": "sha256:" + "3" * 64,
             "non_target_manifest_hash": "sha256:" + "4" * 64,
             "paired_result_hash": hash_payload(rows),
             "code_commit_sha": "test-version",
-            "toolchain_fingerprint_hash": "sha256:" + "5" * 64,
+            "toolchain_fingerprint_hash": hash_payload({"adapter": "test"}),
             "run_context_hash": "sha256:" + "6" * 64,
             "toolchain_fingerprint": {"adapter": "test"},
         },
@@ -436,6 +436,7 @@ def test_registry_rejects_memory_bank_without_qualification_authority(tmp_path):
     raw = _children(parent, 1)[0].to_dict()
     raw["memory_binding"] = {
         "active_memory_bank_hash": "sha256:" + "a" * 64,
+        "effective_memory_bank_hash": "sha256:" + "e" * 64,
         "retriever_hash": "sha256:" + "b" * 64,
         "activation_guard_hash": "sha256:" + "c" * 64,
         "memory_control_whitelist_hash": "sha256:" + "d" * 64,

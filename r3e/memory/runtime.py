@@ -60,7 +60,7 @@ class MemoryRuntime:
                 "memory",
                 "memory_reactivation_decided",
                 round_id=round_id,
-                effective_policy_hash=active_policy.policy_hash,
+                effective_policy_hash=active_policy.effective_policy_hash,
                 active_memory_bank_hash=bank.bank_hash,
                 descriptor_hash=descriptor.descriptor_hash,
                 matched_memory_ids=[match.memory_id for match in matches],
@@ -108,7 +108,7 @@ class MemoryRuntime:
                 ),
             )
         )
-        if result.get("effective_policy_hash") != active_policy.policy_hash:
+        if result.get("effective_policy_hash") != active_policy.effective_policy_hash:
             raise RuntimeError("memory-aware executor returned wrong policy hash")
         if result.get("execution_plan_hash") != plan.plan_hash:
             raise RuntimeError("memory-aware executor returned wrong plan hash")

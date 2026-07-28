@@ -96,8 +96,8 @@ def episode_from_challenge(
     return VerifiedEpisode.create(
         episode_id=f"E_{round_id}_{identity}",
         round_id=round_id,
-        challenged_policy_instance_hash=policy.policy_hash,
-        challenged_effective_policy_hash=policy.policy_hash,
+        challenged_policy_instance_hash=policy.policy_instance_hash,
+        challenged_effective_policy_hash=policy.effective_policy_hash,
         poison_id=poison_id,
         poison_payload_hash=poison_payload_hash,
         buggy_rtl_hash=buggy_hash,

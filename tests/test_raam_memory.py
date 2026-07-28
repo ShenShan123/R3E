@@ -26,6 +26,7 @@ from r3e.memory.relation_graph import MemoryGraphViolation, MemoryRelationGraph
 from r3e.memory.retriever import MemoryRetriever
 from r3e.memory.runtime import MemoryRuntime
 from r3e.memory.execution_trace import ExecutionTraceViolation
+from r3e.memory.evidence import memory_definition
 from r3e.memory.transition import transition_active_bank
 from r3e.memory.schema import (
     BudgetEnvelope,
@@ -99,7 +100,7 @@ def _episode(policy: PolicyState, *, episode_id: str = "E_R001_001"):
         episode_id=episode_id,
         round_id="R001",
         challenged_policy_instance_hash=policy.policy_hash,
-        challenged_effective_policy_hash=policy.policy_hash,
+        challenged_effective_policy_hash=policy.effective_policy_hash,
         poison_id="P001",
         poison_payload_hash=H("poison"),
         buggy_rtl_hash=H("buggy"),
@@ -126,8 +127,8 @@ def _memory(policy: PolicyState, episode: VerifiedEpisode, **updates):
         "origin_round_id": "R001",
         "source_episode_ids": [episode.episode_id],
         "source_episode_hashes": {episode.episode_id: episode.episode_hash},
-        "created_under_policy_instance_hash": policy.policy_hash,
-        "created_under_effective_policy_hash": policy.policy_hash,
+        "created_under_policy_instance_hash": policy.policy_instance_hash,
+        "created_under_effective_policy_hash": policy.effective_policy_hash,
         "trigger_predicate": {
             "oracle_stage": "functional_compare",
             "sequential_context": True,
@@ -244,7 +245,7 @@ def test_episode_lifecycle_and_bank_writes_recover_after_injected_interruptions(
         memory_hash=memory.memory_hash,
         previous_status="candidate",
         new_status="shadow_testing",
-        effective_policy_hash=policy.policy_hash,
+        effective_policy_hash=policy.effective_policy_hash,
         reason_code="failure_injection",
         evidence_hash=H("failure-injection"),
     )
@@ -337,7 +338,7 @@ def test_memory_versions_and_lifecycle_are_append_only(tmp_path):
         memory_hash=memory.memory_hash,
         previous_status="candidate",
         new_status="retired",
-        effective_policy_hash=policy.policy_hash,
+        effective_policy_hash=policy.effective_policy_hash,
         reason_code="stale_writer",
         evidence_hash=H("stale"),
     )
@@ -369,6 +370,73 @@ def test_effective_delta_and_trigger_are_deduplicated(tmp_path):
     # Replaying the same episode link is idempotent.
     assert store.add_candidate(second) == first.memory_hash
     assert store.evidence_set(first.memory_id, first.memory_version) == evidence
+
+
+def test_same_memory_definition_accumulates_across_policy_transition(tmp_path):
+    first_policy = _policy()
+    second_policy = first_policy.with_updates(
+        policy_id="B0_NEW_INSTANCE",
+        parent_policy_id=first_policy.policy_id,
+        parent_policy_hash=first_policy.policy_hash,
+        created_round=first_policy.created_round + 1,
+        status="candidate",
+    )
+    assert first_policy.policy_instance_hash != second_policy.policy_instance_hash
+    assert first_policy.effective_policy_hash == second_policy.effective_policy_hash
+    episodes = EpisodeStore(tmp_path / "episodes")
+    first_episode = _episode(first_policy, episode_id="E_POLICY_1")
+    second_episode = _episode(second_policy, episode_id="E_POLICY_2")
+    episodes.append_episode(first_episode)
+    episodes.append_episode(second_episode)
+    store = MemoryStore(tmp_path / "library", episode_store=episodes)
+    first = _memory(first_policy, first_episode)
+    second = _memory(second_policy, second_episode)
+    assert store.add_candidate(first) == first.memory_hash
+    assert store.add_candidate(second) == first.memory_hash
+    evidence = store.evidence_set(first.memory_id, first.memory_version)
+    assert evidence["support_count"] == 2
+    assert {
+        link["observed_policy_instance_hash"] for link in evidence["links"]
+    } == {
+        first_policy.policy_instance_hash,
+        second_policy.policy_instance_hash,
+    }
+
+
+def test_semantic_duplicate_memories_cannot_coexist_in_active_bank():
+    from r3e.memory.schema import ActiveMemoryBank
+
+    policy = _policy()
+    first_episode = _episode(policy, episode_id="E_DUP_1")
+    second_episode = _episode(policy, episode_id="E_DUP_2")
+    first = _memory(policy, first_episode, memory_id="CM_DUP_1")
+    second = _memory(policy, second_episode, memory_id="CM_DUP_2")
+    definition_hash = memory_definition(first)["definition_hash"]
+    assert memory_definition(second)["definition_hash"] == definition_hash
+    with pytest.raises(MemoryValidationError, match="duplicate memory definitions"):
+        ActiveMemoryBank.create(
+            bank_id="AMB_DUPLICATE",
+            bank_version=1,
+            policy_instance_hash=policy.policy_instance_hash,
+            effective_policy_hash=policy.effective_policy_hash,
+            memories={
+                first.memory_id: {
+                    "memory_version": 1,
+                    "memory_hash": first.memory_hash,
+                    "memory_definition_hash": definition_hash,
+                    "status": "active_dormant",
+                },
+                second.memory_id: {
+                    "memory_version": 1,
+                    "memory_hash": second.memory_hash,
+                    "memory_definition_hash": definition_hash,
+                    "status": "active_dormant",
+                },
+            },
+            retriever_hash=H("retriever"),
+            activation_guard_hash=H("guard"),
+            control_whitelist_hash=H("whitelist"),
+        )
 
 
 def test_shadow_pair_classification_and_cost_gate_are_runner_owned(tmp_path):
@@ -511,11 +579,11 @@ def test_active_bank_requires_whole_policy_candidate_and_current_reactivation(tm
     )
     assert candidate.parent_policy_hash == parent.policy_hash
     assert candidate.memory_binding["active_memory_bank_hash"] == bank.bank_hash
-    assert bank.effective_policy_hash == candidate.policy_hash
+    assert bank.effective_policy_hash == candidate.effective_policy_hash
 
     matches = retriever.retrieve(_descriptor(), bank)
     context = RuntimeContext(
-        effective_policy_hash=candidate.policy_hash,
+        effective_policy_hash=candidate.effective_policy_hash,
         policy_instance_hash=candidate.policy_hash,
         available_analyzers=(
             "first_divergence",
@@ -559,7 +627,7 @@ def test_active_bank_requires_whole_policy_candidate_and_current_reactivation(tm
     assert default_plan.activated_memory_ids == ()
 
     tight = RuntimeContext(
-        effective_policy_hash=candidate.policy_hash,
+        effective_policy_hash=candidate.effective_policy_hash,
         policy_instance_hash=candidate.policy_hash,
         available_analyzers=(
             "first_divergence",
@@ -578,7 +646,7 @@ def test_active_bank_requires_whole_policy_candidate_and_current_reactivation(tm
     assert budget_abstention.reason_code == "no_eligible_match"
 
     expanded = RuntimeContext(
-        effective_policy_hash=candidate.policy_hash,
+        effective_policy_hash=candidate.effective_policy_hash,
         policy_instance_hash=candidate.policy_hash,
         available_analyzers=tight.available_analyzers,
         budget=BudgetEnvelope(4, 4, 48000, 360),
@@ -608,11 +676,14 @@ def test_candidate_memory_and_unpromoted_bank_cannot_enter_runtime(tmp_path):
             bank_id="bad",
             bank_version=1,
             policy_instance_hash=parent.policy_hash,
-            effective_policy_hash=parent.policy_hash,
+            effective_policy_hash=parent.effective_policy_hash,
             memories={
                 candidate_memory.memory_id: {
                     "memory_version": 1,
                     "memory_hash": candidate_memory.memory_hash,
+                    "memory_definition_hash": memory_definition(
+                        candidate_memory
+                    )["definition_hash"],
                     "status": "candidate",
                 }
             },
@@ -637,7 +708,7 @@ def test_candidate_memory_and_unpromoted_bank_cannot_enter_runtime(tmp_path):
         policy_id="B_MEMORY",
     )
     context = RuntimeContext(
-        effective_policy_hash=parent.policy_hash,
+        effective_policy_hash=parent.effective_policy_hash,
         policy_instance_hash=parent.policy_hash,
         available_analyzers=(
             "temporal_alignment",
@@ -718,7 +789,7 @@ def test_conflicting_memories_force_deterministic_abstention(tmp_path):
         active_policy=candidate,
         active_bank=bank,
         runtime_context=RuntimeContext(
-            effective_policy_hash=candidate.policy_hash,
+            effective_policy_hash=candidate.effective_policy_hash,
             policy_instance_hash=candidate.policy_hash,
             available_analyzers=(
                 "temporal_alignment",
@@ -793,7 +864,7 @@ def test_bank_store_runtime_and_audit_reconstruct_full_chain(tmp_path):
         },
         active_policy=candidate,
         runtime_context=RuntimeContext(
-            effective_policy_hash=candidate.policy_hash,
+            effective_policy_hash=candidate.effective_policy_hash,
             policy_instance_hash=candidate.policy_hash,
             available_analyzers=(
                 "first_divergence",
@@ -838,7 +909,7 @@ def test_bank_store_runtime_and_audit_reconstruct_full_chain(tmp_path):
             )
         trace_recorder.stop(execution_plan.controls["early_stop"])
         return {
-            "effective_policy_hash": policy.policy_hash,
+            "effective_policy_hash": policy.effective_policy_hash,
             "execution_plan_hash": execution_plan.plan_hash,
             "memory_prompt_tokens": 0,
             "oracle_ok": True,
@@ -850,7 +921,7 @@ def test_bank_store_runtime_and_audit_reconstruct_full_chain(tmp_path):
         observable_failure=dict(_descriptor().features),
         active_policy=candidate,
         runtime_context=RuntimeContext(
-            effective_policy_hash=candidate.policy_hash,
+            effective_policy_hash=candidate.effective_policy_hash,
             policy_instance_hash=candidate.policy_hash,
             available_analyzers=(
                 "first_divergence",
@@ -868,7 +939,7 @@ def test_bank_store_runtime_and_audit_reconstruct_full_chain(tmp_path):
 
     def echo_only(*, policy, execution_plan, **_kwargs):
         return {
-            "effective_policy_hash": policy.policy_hash,
+            "effective_policy_hash": policy.effective_policy_hash,
             "execution_plan_hash": execution_plan.plan_hash,
             "memory_prompt_tokens": 0,
             "oracle_ok": True,
@@ -881,7 +952,7 @@ def test_bank_store_runtime_and_audit_reconstruct_full_chain(tmp_path):
             observable_failure=dict(_descriptor().features),
             active_policy=candidate,
             runtime_context=RuntimeContext(
-                effective_policy_hash=candidate.policy_hash,
+                effective_policy_hash=candidate.effective_policy_hash,
                 policy_instance_hash=candidate.policy_hash,
                 available_analyzers=(
                     "first_divergence",
@@ -1020,6 +1091,8 @@ def test_cross_policy_replay_requires_explicit_revalidation_binding():
         "toolchain_fingerprint_hash": H("toolchain"),
         "code_commit_sha": "test",
         "control_whitelist_hash": H("whitelist"),
+        "effective_policy_hash": current.effective_policy_hash,
+        "policy_instance_hash": current.policy_instance_hash,
     }
     with pytest.raises(MemoryQualificationViolation, match="revalidation"):
         decide_memory_qualification(memory, rows, provenance=provenance)
@@ -1028,11 +1101,17 @@ def test_cross_policy_replay_requires_explicit_revalidation_binding():
         rows,
         provenance={
             **provenance,
-            "revalidation_from_policy_hash": previous.policy_hash,
+            "revalidation_from_effective_policy_hash": (
+                previous.effective_policy_hash
+            ),
         },
     )
     assert decision["qualified"] is True
     assert decision["qualified_under_policy_hash"] == current.policy_hash
+    assert (
+        decision["qualified_under_effective_policy_hash"]
+        == current.effective_policy_hash
+    )
 
 
 def test_consolidator_relations_and_active_bank_bound_are_deterministic():

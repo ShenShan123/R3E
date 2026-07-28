@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -17,14 +18,21 @@ from r3e.memory.conformance import (
     MemoryAdapterConformanceViolation,
 )
 from r3e.memory.memory_store import MemoryStore
+from r3e.memory.authority import (
+    MemoryAuthorityViolation,
+    verify_memory_promotion_authority,
+)
+from r3e.memory.promotion import build_memory_bank_policy_candidate
 from r3e.memory.retriever import MemoryRetriever
 from r3e.memory.runner import MemoryEvolutionRunner
 from r3e.memory.schema import BudgetEnvelope, ExecutionPlan, VerifiedEpisode
 from r3e.policy.registry_v2 import (
+    RegistryViolation,
     get_active_policy,
     initialize_registry,
     load_registry,
     rollback_policy,
+    register_candidate,
 )
 from r3e.policy.schema import PolicyState
 from r3e.protocol.hashing import hash_payload
@@ -58,7 +66,7 @@ def _episode(policy: PolicyState, episode_id: str, poison_id: str):
         episode_id=episode_id,
         round_id="R001",
         challenged_policy_instance_hash=policy.policy_hash,
-        challenged_effective_policy_hash=policy.policy_hash,
+        challenged_effective_policy_hash=policy.effective_policy_hash,
         poison_id=poison_id,
         poison_payload_hash=H(f"poison-{poison_id}"),
         buggy_rtl_hash=H(f"buggy-{poison_id}"),
@@ -170,6 +178,31 @@ def test_memory_round_qualifies_bank_and_uses_atomic_policy_promotion(tmp_path):
     ) == "active_dormant"
     assert len(episodes.audit()) == 2
 
+    duplicate_child, duplicate_bank = build_memory_bank_policy_candidate(
+        parent=active,
+        store=memories,
+        memory_versions={
+            memory_id: int(binding["memory_version"])
+            for memory_id, binding in bank.memories.items()
+        },
+        bank_id="AMB_SAME_BEHAVIOR_NEW_ID",
+        bank_version=99,
+        retriever_hash=bank.retriever_hash,
+        activation_guard_hash=bank.activation_guard_hash,
+        control_whitelist_hash=bank.control_whitelist_hash,
+        round_id="MR099",
+        policy_id=f"{active.policy_id}_NOOP",
+    )
+    assert duplicate_bank.bank_hash != bank.bank_hash
+    assert (
+        duplicate_bank.effective_memory_bank_hash
+        == bank.effective_memory_bank_hash
+    )
+    assert duplicate_child.policy_instance_hash != active.policy_instance_hash
+    assert duplicate_child.effective_policy_hash == active.effective_policy_hash
+    with pytest.raises(RegistryViolation, match="behaviorally identical"):
+        register_candidate(registry, duplicate_child)
+
     # Complete rounds are idempotent.
     assert runner.run() == summary
 
@@ -182,6 +215,71 @@ def test_memory_round_qualifies_bank_and_uses_atomic_policy_promotion(tmp_path):
     # Rollback changes execution authority, never physical memory retention.
     assert len(episodes.audit()) == 2
     assert memories.audit()["memory_version_count"] == 1
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ("forged_set_hash", "evidence set hash mismatch"),
+        ("wrong_support", "support count mismatch"),
+        ("duplicate_link", "duplicate or empty"),
+        ("unknown_episode", "episode is unknown"),
+        ("wrong_episode_hash", "source episode mismatch"),
+    ],
+)
+def test_memory_authority_rejects_forged_evidence(
+    tmp_path, mutation, message
+):
+    runner, _registry, _episodes, _memories, _banks, _parent = _runner(
+        tmp_path
+    )
+    runner.run()
+    promotion = json.loads(
+        (runner.work_dir / "promotion_bundle.json").read_text()
+    )
+    authority = deepcopy(promotion["memory_authority"])
+    qualification = authority["qualification_bundles"][0]
+    evidence_set = qualification["evidence_set"]
+    if mutation == "forged_set_hash":
+        evidence_set["evidence_set_hash"] = H("forged-evidence-set")
+    elif mutation == "wrong_support":
+        evidence_set["support_count"] += 1
+        evidence_set["evidence_set_hash"] = hash_payload({
+            key: value for key, value in evidence_set.items()
+            if key != "evidence_set_hash"
+        })
+    elif mutation == "duplicate_link":
+        evidence_set["links"].append(deepcopy(evidence_set["links"][0]))
+        evidence_set["support_count"] = len(evidence_set["links"])
+        evidence_set["evidence_set_hash"] = hash_payload({
+            key: value for key, value in evidence_set.items()
+            if key != "evidence_set_hash"
+        })
+    else:
+        link = evidence_set["links"][0]
+        if mutation == "unknown_episode":
+            link["episode_id"] = "E_UNKNOWN"
+            link["episode_hash"] = H("unknown-episode")
+        else:
+            link["episode_hash"] = H("wrong-episode")
+        link["link_hash"] = hash_payload({
+            key: value for key, value in link.items()
+            if key != "link_hash"
+        })
+        evidence_set["evidence_set_hash"] = hash_payload({
+            key: value for key, value in evidence_set.items()
+            if key != "evidence_set_hash"
+        })
+    authority["authority_hash"] = hash_payload({
+        key: value for key, value in authority.items()
+        if key != "authority_hash"
+    })
+    parent = PolicyState.from_dict(promotion["parent_policy"])
+    child = PolicyState.from_dict(promotion["candidate_policy"])
+    with pytest.raises(MemoryAuthorityViolation, match=message):
+        verify_memory_promotion_authority(
+            authority, parent=parent, candidate=child
+        )
 
 
 def test_memory_round_resumes_after_shadow_adapter_failure(tmp_path):
@@ -250,6 +348,11 @@ def test_whole_policy_arena_automatically_appends_verified_episodes(tmp_path):
             (workspace / "rounds" / round_id / "verified_episodes.json").read_text()
         )
         assert len(manifest["episode_hashes"]) == 4
+    assert all(
+        episode.challenged_policy_instance_hash
+        != episode.challenged_effective_policy_hash
+        for episode in episodes
+    )
 
 
 @pytest.mark.parametrize(
@@ -276,7 +379,7 @@ def test_memory_adapter_conformance_rejects_forged_envelope(
     }
     budget = BudgetEnvelope(3, 3, 48000, 360)
     plan = ExecutionPlan.create(
-        effective_policy_hash=policy.policy_hash,
+        effective_policy_hash=policy.effective_policy_hash,
         active_bank_hash="",
         activated_memory_ids=["CM"],
         controls={"enable_analyzers": ["first_divergence"]},

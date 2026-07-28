@@ -7,6 +7,7 @@ from r3e.policy.schema import PolicyState
 
 from .memory_store import MemoryStore
 from .schema import ActiveMemoryBank
+from .evidence import memory_definition
 
 
 class MemoryPromotionViolation(RuntimeError):
@@ -38,12 +39,15 @@ def build_memory_bank_policy_candidate(
         memories[memory_id] = {
             "memory_version": version,
             "memory_hash": memory.memory_hash,
+            "memory_definition_hash": memory_definition(memory)[
+                "definition_hash"
+            ],
             "status": status,
         }
     provisional_bank = ActiveMemoryBank.create(
         bank_id=bank_id,
         bank_version=bank_version,
-        policy_instance_hash=parent.policy_hash,
+        policy_instance_hash=parent.policy_instance_hash,
         effective_policy_hash="sha256:" + "0" * 64,
         memories=memories,
         retriever_hash=retriever_hash,
@@ -78,8 +82,8 @@ def build_memory_bank_policy_candidate(
     bank = ActiveMemoryBank.create(
         bank_id=bank_id,
         bank_version=bank_version,
-        policy_instance_hash=parent.policy_hash,
-        effective_policy_hash=candidate.policy_hash,
+        policy_instance_hash=parent.policy_instance_hash,
+        effective_policy_hash=candidate.effective_policy_hash,
         memories=memories,
         retriever_hash=retriever_hash,
         activation_guard_hash=activation_guard_hash,

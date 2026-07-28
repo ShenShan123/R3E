@@ -33,9 +33,10 @@
 `docs/checklists/raam-implementation-v1.md`。当前实现只声明确定性系统基础设施，
 不声明真实模型驱动的跨轮记忆增益。
 
-当前冻结里程碑正式更名为 **RAAM Protocol Skeleton V1**。2026-07-28
-Authority Closure 复查确认：早期实现具备 schema、store、state machine 和
-deterministic fake 闭环，但不能据此宣称完整权威闭合。已追加并冻结的硬门包括：
+确定性 Phase 1–9 基础设施保留为 **RAAM Protocol Skeleton V1**。在其上，
+2026-07-28 已冻结子里程碑 **RAAM Authority Closure V1**。该里程碑只声明
+协议对象、身份、证据与 promotion authority 已闭合，不声明 Grounded Runtime
+或真实模型实验结果。已追加并冻结的硬门包括：
 
 - Registry writer lock 内重建 `r3e-policy-promotion-bundle-v1`，不再信任
   caller 提交的 strong decision；
@@ -43,13 +44,16 @@ deterministic fake 闭环，但不能据此宣称完整权威闭合。已追加�
   qualification replay 和 compatibility proof；
 - runner 生成不可变 `poison_payload_hash`，validity adapter 只能返回 evidence；
 - `MemoryDefinition` 语义稳定，同义候选追加 append-only evidence link，
-  qualification 绑定冻结 evidence-set hash；
+  qualification 绑定冻结 evidence-set hash；authority 必须重算 evidence-set、
+  每条 link，并逐条绑定随 bundle 冻结的 `VerifiedEpisode`；
 - `bank_candidate` 与 `active_dormant` 分权，只有 registry promotion 后才授予
   runtime execution right，拒绝时恢复 `replay_qualified`；
 - `ExecutionTrace` 必须证明 analyzer、slice、candidate、revision、verifier 和
   stopping controls 实际经过 runner-owned recorder；
-- `policy_instance_hash` 与 `effective_policy_hash` 分离，behavioral no-op child
-  拒绝注册；
+- `policy_instance_hash` 与 `effective_policy_hash` 分离；memory bank 同样拆分
+  instance hash 与 `effective_memory_bank_hash`，behavioral no-op child 拒绝注册；
+- memory definition hash 不包含 policy lineage，同义 memory 跨 policy transition
+  累积 evidence，active bank 拒绝重复 semantic definition；
 - JSON/JSONL protocol artifact 执行 file fsync 和 directory fsync；无 Git
   工作树时使用 source-tree digest，不能使用 `unknown` code version。
 
@@ -62,6 +66,10 @@ deterministic fake 闭环，但不能据此宣称完整权威闭合。已追加�
 - qualification 的 activation precision、false activation、target/non-target
   membership 重建和长期跨轮统计；
 - 真实模型 adapter 和多轮实验结果。
+
+冻结记录见 `configs/evolution/raam_authority_closure_v1.json`，协议增补见
+`docs/protocols/raam-authority-closure-v1.md`。完整 authority DAG 验证仍未声明；
+当前 `r3e.memory.audit` 的输出是 `authority_graph_summary`，仅用于关系展示。
 
 ## 1. 背景与问题定义
 

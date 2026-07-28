@@ -57,7 +57,7 @@ class ActivationGuard:
             activated_memory_ids=[],
             abstained=True,
             reason_code=reason,
-            effective_policy_hash=policy.policy_hash,
+            effective_policy_hash=policy.effective_policy_hash,
             active_bank_hash=bank.bank_hash,
         )
 
@@ -91,11 +91,11 @@ class ActivationGuard:
             or active_bank.control_whitelist_hash != self.control_whitelist_hash
         ):
             raise ActivationViolation("memory control whitelist hash mismatch")
-        if runtime_context.effective_policy_hash != active_policy.policy_hash:
+        if runtime_context.effective_policy_hash != active_policy.effective_policy_hash:
             raise ActivationViolation("runtime effective policy hash mismatch")
-        if runtime_context.policy_instance_hash != active_policy.policy_hash:
+        if runtime_context.policy_instance_hash != active_policy.policy_instance_hash:
             raise ActivationViolation("runtime policy instance hash mismatch")
-        if active_bank.effective_policy_hash != active_policy.policy_hash:
+        if active_bank.effective_policy_hash != active_policy.effective_policy_hash:
             raise ActivationViolation("active bank is not bound to effective policy")
         binding = active_policy.memory_binding or {}
         if binding != active_bank.policy_binding:
@@ -154,6 +154,6 @@ class ActivationGuard:
             activated_memory_ids=[eligible[0].memory_id],
             abstained=False,
             reason_code="reactivated",
-            effective_policy_hash=active_policy.policy_hash,
+            effective_policy_hash=active_policy.effective_policy_hash,
             active_bank_hash=active_bank.bank_hash,
         )

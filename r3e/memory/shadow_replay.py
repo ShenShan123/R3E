@@ -82,7 +82,7 @@ def _shadow_plan(
     controls = MemoryAwarePlanCompiler._default_controls(policy)
     if not trigger_matched:
         return ExecutionPlan.create(
-            effective_policy_hash=policy.policy_hash,
+            effective_policy_hash=policy.effective_policy_hash,
             active_bank_hash="",
             activated_memory_ids=[],
             controls=controls,
@@ -94,7 +94,7 @@ def _shadow_plan(
     controls.update(delta)
     controls["enable_analyzers"] = sorted(enabled)
     return ExecutionPlan.create(
-        effective_policy_hash=policy.policy_hash,
+        effective_policy_hash=policy.effective_policy_hash,
         active_bank_hash="",
         activated_memory_ids=[memory.memory_id],
         controls=controls,
@@ -120,7 +120,7 @@ def run_shadow_replay(
     if not design:
         raise ShadowReplayViolation("replay case must bind design")
     control_plan = ExecutionPlan.create(
-        effective_policy_hash=policy.policy_hash,
+        effective_policy_hash=policy.effective_policy_hash,
         active_bank_hash="",
         activated_memory_ids=[],
         controls=MemoryAwarePlanCompiler._default_controls(policy),

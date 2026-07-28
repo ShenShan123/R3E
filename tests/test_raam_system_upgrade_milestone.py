@@ -51,3 +51,34 @@ def test_raam_protocol_skeleton_milestone_is_frozen_and_reconstructable():
         )
     }
     assert "real_model_adapter" in milestone["deferred_experiment_bindings"]
+
+
+def test_raam_authority_closure_milestone_is_frozen_and_reconstructable():
+    milestone = json.loads(
+        (
+            ROOT / "configs/evolution/raam_authority_closure_v1.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert (
+        milestone["schema_version"]
+        == "r3e-raam-authority-closure-milestone-v1"
+    )
+    assert milestone["status"] == "frozen"
+    assert milestone["milestone_hash"] == hash_payload({
+        key: value for key, value in milestone.items()
+        if key != "milestone_hash"
+    })
+    parent = json.loads(
+        (
+            ROOT / "configs/evolution/raam_protocol_skeleton_v1.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert (
+        milestone["parent_milestone"]["milestone_hash"]
+        == parent["milestone_hash"]
+    )
+    for relative, expected in milestone["frozen_assets"].items():
+        assert hash_file(ROOT / relative) == expected
+    assert "fully_verified_authority_dag" in milestone[
+        "deferred_grounded_runtime"
+    ]

@@ -42,6 +42,7 @@ _POLICY_FIELDS = {
 }
 _MEMORY_BINDING_FIELDS = {
     "active_memory_bank_hash",
+    "effective_memory_bank_hash",
     "retriever_hash",
     "activation_guard_hash",
     "memory_control_whitelist_hash",
@@ -290,13 +291,16 @@ class PolicyState:
     @property
     def effective_policy_hash(self) -> str:
         """Behavioral identity, excluding round/id/lineage bookkeeping."""
+        memory_binding = self.memory_binding or {}
         return hash_payload({
             "schema_version": self.schema_version,
             "base_policy_hash": self.base_policy_hash,
             "configuration": self.configuration,
             "budgets": self.budgets,
             "frozen_assets": self.frozen_assets or {},
-            "memory_binding": self.memory_binding or {},
+            "effective_memory_bank_hash": str(
+                memory_binding.get("effective_memory_bank_hash") or ""
+            ),
         })
 
     def with_updates(self, **updates: Any) -> "PolicyState":

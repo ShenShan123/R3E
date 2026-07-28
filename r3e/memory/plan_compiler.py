@@ -42,7 +42,7 @@ class MemoryAwarePlanCompiler:
         base_policy: PolicyState,
         reactivation: ReactivationDecision,
     ) -> ExecutionPlan:
-        if reactivation.effective_policy_hash != base_policy.policy_hash:
+        if reactivation.effective_policy_hash != base_policy.effective_policy_hash:
             raise PlanCompilationViolation("reactivation policy hash mismatch")
         controls = self._default_controls(base_policy)
         if reactivation.abstained:
@@ -72,7 +72,7 @@ class MemoryAwarePlanCompiler:
             controls.update(delta)
             controls["enable_analyzers"] = sorted(enabled)
         return ExecutionPlan.create(
-            effective_policy_hash=base_policy.policy_hash,
+            effective_policy_hash=base_policy.effective_policy_hash,
             active_bank_hash=reactivation.active_bank_hash,
             activated_memory_ids=reactivation.activated_memory_ids,
             controls=controls,

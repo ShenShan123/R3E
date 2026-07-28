@@ -10,7 +10,12 @@ from r3e.protocol.ledger import append_ledger, read_ledger, writer_lock
 from .episode_store import EpisodeStore
 from .lifecycle import validate_transition
 from .schema import ControlMemory, MemoryLifecycleEvent
-from .evidence import evidence_link, freeze_evidence_set, memory_definition
+from .evidence import (
+    evidence_link,
+    freeze_evidence_set,
+    memory_definition,
+    verify_memory_evidence_set,
+)
 
 
 class MemoryStoreViolation(RuntimeError):
@@ -65,8 +70,6 @@ class MemoryStore:
                         == value.effective_delta_hash
                         and existing.trigger_predicate
                         == value.trigger_predicate
-                        and existing.created_under_effective_policy_hash
-                        == value.created_under_effective_policy_hash
                     ):
                         raise MemoryStoreViolation(
                             "memory version is already bound to another definition"
@@ -90,8 +93,6 @@ class MemoryStore:
                     if row.get("effective_delta_hash") == value.effective_delta_hash
                     and row.get("trigger_hash")
                     == hash_payload(value.trigger_predicate)
-                    and row.get("effective_policy_hash")
-                    == value.created_under_effective_policy_hash
                 ),
                 None,
             )
@@ -118,6 +119,9 @@ class MemoryStore:
                         value.created_under_effective_policy_hash
                     ),
                     "definition": memory_definition(value),
+                    "definition_hash": memory_definition(value)[
+                        "definition_hash"
+                    ],
                     "object_path": str(target.relative_to(self.root)),
                 },
             )
@@ -139,14 +143,31 @@ class MemoryStore:
         ):
             if (definition.memory_hash, episode_id) in known:
                 continue
+            episode = (
+                self.episode_store.get(episode_id)
+                if self.episode_store is not None
+                else None
+            )
             append_ledger(
                 self.evidence_path,
                 {
                     "operation": "append-memory-evidence-link",
                     **evidence_link(
                         definition,
+                        evidence_source=evidence_source,
                         episode_id=episode_id,
                         episode_hash=episode_hash,
+                        observed_round_id=(
+                            episode.round_id if episode is not None else None
+                        ),
+                        observed_policy_instance_hash=(
+                            episode.challenged_policy_instance_hash
+                            if episode is not None else None
+                        ),
+                        observed_effective_policy_hash=(
+                            episode.challenged_effective_policy_hash
+                            if episode is not None else None
+                        ),
                     ),
                 },
             )
@@ -192,7 +213,16 @@ class MemoryStore:
             }):
                 raise MemoryStoreViolation("memory evidence link hash mismatch")
             links.append(link)
-        return freeze_evidence_set(memory, links)
+        frozen = freeze_evidence_set(memory, links)
+        episodes = None
+        if self.episode_store is not None:
+            episodes = {
+                link["episode_id"]: self.episode_store.get(link["episode_id"])
+                for link in links
+            }
+        return verify_memory_evidence_set(
+            frozen, memory=memory, episodes=episodes
+        )
 
     def store_qualification_bundle(self, bundle: dict[str, Any]) -> str:
         memory_hash = str(bundle.get("memory_hash") or "")

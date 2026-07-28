@@ -21,6 +21,9 @@ BANK_SCHEMA_VERSION = "r3e-active-memory-bank-v1"
 LIFECYCLE_SCHEMA_VERSION = "r3e-memory-lifecycle-event-v1"
 PLAN_SCHEMA_VERSION = "r3e-memory-execution-plan-v1"
 SHADOW_SCHEMA_VERSION = "r3e-memory-shadow-paired-v1"
+BANK_PLAN_COMPILER_VERSION = "r3e-memory-plan-compiler-v1"
+BANK_CONFLICT_POLICY_VERSION = "r3e-memory-conflict-policy-v1"
+BANK_MAXIMUM_ACTIVATION = 3
 _HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 MEMORY_STATUSES = {
@@ -581,6 +584,7 @@ class ActiveMemoryBank:
     bank_version: int
     policy_instance_hash: str
     effective_policy_hash: str
+    effective_memory_bank_hash: str
     memories: dict[str, dict[str, Any]]
     retriever_hash: str
     activation_guard_hash: str
@@ -591,6 +595,19 @@ class ActiveMemoryBank:
     @classmethod
     def create(cls, **fields: Any) -> "ActiveMemoryBank":
         payload = {"schema_version": BANK_SCHEMA_VERSION, **deepcopy(fields)}
+        memories = payload.get("memories") or {}
+        payload["effective_memory_bank_hash"] = hash_payload({
+            "memory_definition_hashes": sorted(
+                str(binding["memory_definition_hash"])
+                for binding in memories.values()
+            ),
+            "retriever_hash": payload.get("retriever_hash"),
+            "activation_guard_hash": payload.get("activation_guard_hash"),
+            "control_whitelist_hash": payload.get("control_whitelist_hash"),
+            "plan_compiler_version": BANK_PLAN_COMPILER_VERSION,
+            "conflict_policy_version": BANK_CONFLICT_POLICY_VERSION,
+            "maximum_activation": BANK_MAXIMUM_ACTIVATION,
+        })
         payload["bank_hash"] = hash_payload(
             {
                 key: value for key, value in payload.items()
@@ -604,7 +621,8 @@ class ActiveMemoryBank:
         payload = deepcopy(dict(raw))
         allowed = {
             "schema_version", "bank_id", "bank_version", "policy_instance_hash",
-            "effective_policy_hash", "memories", "retriever_hash",
+            "effective_policy_hash", "effective_memory_bank_hash",
+            "memories", "retriever_hash",
             "activation_guard_hash", "control_whitelist_hash", "bank_hash",
         }
         _exact_fields(payload, allowed, "active memory bank")
@@ -616,7 +634,7 @@ class ActiveMemoryBank:
         normalized = {}
         for memory_id, binding in memories.items():
             if not isinstance(binding, dict) or set(binding) != {
-                "memory_version", "memory_hash", "status"
+                "memory_version", "memory_hash", "memory_definition_hash", "status"
             }:
                 raise MemoryValidationError("invalid bank memory binding")
             if binding.get("status") not in {"bank_candidate", "active_dormant"}:
@@ -628,8 +646,33 @@ class ActiveMemoryBank:
                     1, _non_negative_int(binding.get("memory_version"), "memory_version")
                 ),
                 "memory_hash": _digest(binding.get("memory_hash"), "memory_hash"),
+                "memory_definition_hash": _digest(
+                    binding.get("memory_definition_hash"),
+                    "memory_definition_hash",
+                ),
                 "status": binding["status"],
             }
+        definition_hashes = [
+            binding["memory_definition_hash"] for binding in normalized.values()
+        ]
+        if len(definition_hashes) != len(set(definition_hashes)):
+            raise MemoryValidationError(
+                "active bank contains duplicate memory definitions"
+            )
+        effective_body = {
+            "memory_definition_hashes": sorted(definition_hashes),
+            "retriever_hash": payload.get("retriever_hash"),
+            "activation_guard_hash": payload.get("activation_guard_hash"),
+            "control_whitelist_hash": payload.get("control_whitelist_hash"),
+            "plan_compiler_version": BANK_PLAN_COMPILER_VERSION,
+            "conflict_policy_version": BANK_CONFLICT_POLICY_VERSION,
+            "maximum_activation": BANK_MAXIMUM_ACTIVATION,
+        }
+        if _digest(
+            payload.get("effective_memory_bank_hash"),
+            "effective_memory_bank_hash",
+        ) != hash_payload(effective_body):
+            raise MemoryValidationError("effective memory bank hash mismatch")
         # effective_policy_hash is a derived promotion binding: excluding it from
         # bank identity avoids a circular hash (PolicyState binds bank_hash,
         # while the promoted policy hash is written back here).
@@ -649,6 +692,7 @@ class ActiveMemoryBank:
             effective_policy_hash=_digest(
                 payload.get("effective_policy_hash"), "effective_policy_hash"
             ),
+            effective_memory_bank_hash=payload["effective_memory_bank_hash"],
             memories=normalized,
             retriever_hash=_digest(payload.get("retriever_hash"), "retriever_hash"),
             activation_guard_hash=_digest(
@@ -667,6 +711,7 @@ class ActiveMemoryBank:
     def policy_binding(self) -> dict[str, str]:
         return {
             "active_memory_bank_hash": self.bank_hash,
+            "effective_memory_bank_hash": self.effective_memory_bank_hash,
             "retriever_hash": self.retriever_hash,
             "activation_guard_hash": self.activation_guard_hash,
             "memory_control_whitelist_hash": self.control_whitelist_hash,

@@ -1,4 +1,4 @@
-# RAAM Protocol Skeleton V1 / Authority Closure checklist
+# RAAM Protocol Skeleton V1 / Authority Closure V1 checklist
 
 Status date: 2026-07-28
 
@@ -65,8 +65,20 @@ Status date: 2026-07-28
 - [x] Require runner-owned ExecutionTrace conformance; a plan-hash echo alone
   fails closed.
 - [x] Separate policy instance and behavioral hashes and reject no-op children.
-- [x] Build an authority DAG in RAAM audit output.
+- [x] Reconstruct evidence-set/link hashes, support, uniqueness, canonical order,
+  and the exact frozen source `VerifiedEpisode` objects.
+- [x] Propagate distinct policy instance/effective identities through episode,
+  memory, bank, runtime, replay, and qualification records.
+- [x] Separate memory-bank instance/effective identities and reject bank-ID or
+  bank-version churn that does not change executable behavior.
+- [x] Keep memory definition identity independent of policy lineage; accumulate
+  cross-policy evidence and reject semantic duplicates in an active bank.
+- [x] Bind bank-child provenance to current cumulative evidence-set and
+  qualification-decision hashes.
+- [x] Emit an `authority_graph_summary` in RAAM audit output without claiming a
+  fully verified authority DAG.
 - [x] Use durable atomic JSONL replacement and fsync append-only ledgers/events.
+- [x] Freeze `RAAM Authority Closure V1` as a child of Protocol Skeleton V1.
 
 ## Grounded Runtime still open
 
@@ -78,6 +90,8 @@ Status date: 2026-07-28
   operator.
 - [ ] Reconstruct qualification target/non-target membership and activation
   precision/false-activation gates.
+- [ ] Verify a complete authority DAG including replay rows, compatibility,
+  promotion/registry transitions, runtime plans/traces, and oracle evidence.
 - [ ] Refactor large runners into independently resumable stage components.
 - [ ] Run real-model, multi-round continual-memory experiments only after all
   Grounded Runtime gates pass.

@@ -139,11 +139,13 @@ adapter proves the protocol and state machine without model calls; it does not
 demonstrate empirical memory gain.
 
 The deterministic Phase 1–9 foundation is frozen as **RAAM Protocol Skeleton
-V1** in `configs/evolution/raam_protocol_skeleton_v1.json`. The milestone binds
-the control whitelist, protocol, threat model, test matrix, parent Whole-Policy
-milestone, validation commands, and explicit experiment exclusions.
-Authority Closure is tracked separately; runner-owned oracle/descriptor/RTL
-semantic grounding remains open and blocks a “System Upgrade Complete” claim.
+V1** in `configs/evolution/raam_protocol_skeleton_v1.json`. Its child milestone,
+**RAAM Authority Closure V1**, is frozen in
+`configs/evolution/raam_authority_closure_v1.json` and binds strict episode-backed
+evidence reconstruction, instance/effective policy and bank identities, stable
+cross-policy memory definitions, semantic bank deduplication, and cumulative
+memory provenance. Runner-owned oracle/descriptor/RTL semantic grounding remains
+open and blocks a Grounded Runtime or empirical continual-learning claim.
 
 ### Registry and migration
 

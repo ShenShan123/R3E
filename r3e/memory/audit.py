@@ -109,13 +109,13 @@ def audit_memory_system(
         edges, key=lambda row: (row["from"], row["to"], row["relation"])
     )
     summary = {
-        "schema_version": "r3e-raam-audit-v1",
+        "schema_version": "r3e-raam-audit-v2",
         "episode_count": len(episodes),
         **memory_summary,
         "active_bank_version_count": bank_count,
         "active_policy_hash": active_policy.policy_hash if active_policy else "",
         "active_memory_bank_hash": active_bank_hash,
-        "authority_dag": {
+        "authority_graph_summary": {
             "nodes": canonical_nodes,
             "edges": canonical_edges,
             "dag_hash": hash_payload({
