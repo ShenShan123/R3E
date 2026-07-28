@@ -25,6 +25,7 @@ from r3e.memory.qualification_gate import decide_memory_qualification
 from r3e.memory.relation_graph import MemoryGraphViolation, MemoryRelationGraph
 from r3e.memory.retriever import MemoryRetriever
 from r3e.memory.runtime import MemoryRuntime
+from r3e.memory.execution_trace import ExecutionTraceViolation
 from r3e.memory.transition import transition_active_bank
 from r3e.memory.schema import (
     BudgetEnvelope,
@@ -186,7 +187,8 @@ def _active_store(tmp_path: Path):
     store.add_candidate(memory)
     _advance(store, memory, "candidate", "shadow_testing", policy.policy_hash)
     _advance(store, memory, "shadow_testing", "replay_qualified", policy.policy_hash)
-    _advance(store, memory, "replay_qualified", "active_dormant", policy.policy_hash)
+    _advance(store, memory, "replay_qualified", "bank_candidate", policy.policy_hash)
+    _advance(store, memory, "bank_candidate", "active_dormant", policy.policy_hash)
     return policy, episodes, store, memory
 
 
@@ -260,7 +262,8 @@ def test_episode_lifecycle_and_bank_writes_recover_after_injected_interruptions(
     monkeypatch.setattr(memory_module, "append_ledger", real_memory_append)
     store.update_lifecycle(memory.memory_id, lifecycle_event)
     _advance(store, memory, "shadow_testing", "replay_qualified", policy.policy_hash)
-    _advance(store, memory, "replay_qualified", "active_dormant", policy.policy_hash)
+    _advance(store, memory, "replay_qualified", "bank_candidate", policy.policy_hash)
+    _advance(store, memory, "bank_candidate", "active_dormant", policy.policy_hash)
 
     retriever = MemoryRetriever(store)
     guard = ActivationGuard(store)
@@ -324,7 +327,9 @@ def test_memory_versions_and_lifecycle_are_append_only(tmp_path):
     assert store.get_version(memory.memory_id, 1).status == "candidate"
     assert store.audit() == {
         "memory_version_count": 1,
-        "lifecycle_event_count": 3,
+        "lifecycle_event_count": 4,
+        "evidence_link_count": 1,
+        "qualification_version_count": 0,
     }
     stale = MemoryLifecycleEvent.create(
         memory_id=memory.memory_id,
@@ -354,11 +359,16 @@ def test_effective_delta_and_trigger_are_deduplicated(tmp_path):
     second = _memory(
         policy,
         second_episode,
-        memory_id="CM_duplicate",
+        memory_id=first.memory_id,
     )
     store.add_candidate(first)
-    with pytest.raises(MemoryStoreViolation, match="equivalent"):
-        store.add_candidate(second)
+    assert store.add_candidate(second) == first.memory_hash
+    evidence = store.evidence_set(first.memory_id, first.memory_version)
+    assert evidence["support_count"] == 2
+    assert {row["episode_id"] for row in evidence["links"]} == {"E1", "E2"}
+    # Replaying the same episode link is idempotent.
+    assert store.add_candidate(second) == first.memory_hash
+    assert store.evidence_set(first.memory_id, first.memory_version) == evidence
 
 
 def test_shadow_pair_classification_and_cost_gate_are_runner_owned(tmp_path):
@@ -684,7 +694,8 @@ def test_conflicting_memories_force_deterministic_abstention(tmp_path):
     store.add_candidate(second)
     _advance(store, second, "candidate", "shadow_testing", parent.policy_hash)
     _advance(store, second, "shadow_testing", "replay_qualified", parent.policy_hash)
-    _advance(store, second, "replay_qualified", "active_dormant", parent.policy_hash)
+    _advance(store, second, "replay_qualified", "bank_candidate", parent.policy_hash)
+    _advance(store, second, "bank_candidate", "active_dormant", parent.policy_hash)
     retriever = MemoryRetriever(store)
     guard = ActivationGuard(store)
     whitelist = guard.control_whitelist_hash
@@ -798,10 +809,34 @@ def test_bank_store_runtime_and_audit_reconstruct_full_chain(tmp_path):
     event = read_events(tmp_path / "events/memory.jsonl")[0]
     assert event["execution_plan_hash"] == plan.plan_hash
 
-    def executor(*, case, work_dir, policy, execution_plan):
+    def executor(*, case, work_dir, policy, execution_plan, trace_recorder):
         assert case["case_id"] == "current"
         assert work_dir == tmp_path / "work"
         assert execution_plan.activated_memory_ids == (memory.memory_id,)
+        for analyzer in execution_plan.controls.get("enable_analyzers", []):
+            trace_recorder.run_analyzer(
+                analyzer, lambda analyzer=analyzer: {"analyzer": analyzer}
+            )
+        slice_mode = execution_plan.controls.get("rtl_slice_mode", "none")
+        if slice_mode != "none":
+            trace_recorder.run_slice(
+                slice_mode, lambda: {"slice": slice_mode}
+            )
+        trace_recorder.run_candidate_generation(
+            execution_plan.controls.get("initial_candidates", 0),
+            lambda: ["candidate"],
+        )
+        for index in range(
+            1, execution_plan.controls.get("revision_rounds", 0) + 1
+        ):
+            trace_recorder.run_revision(
+                index, lambda index=index: {"revision": index}
+            )
+        for verifier in execution_plan.controls.get("verifier_order", []):
+            trace_recorder.run_verifier(
+                verifier, lambda verifier=verifier: {"verifier": verifier}
+            )
+        trace_recorder.stop(execution_plan.controls["early_stop"])
         return {
             "effective_policy_hash": policy.policy_hash,
             "execution_plan_hash": execution_plan.plan_hash,
@@ -829,6 +864,35 @@ def test_bank_store_runtime_and_audit_reconstruct_full_chain(tmp_path):
         round_id="R2",
     )
     assert result["memory_token_cost"] == 0
+    assert result["execution_trace"]["execution_plan_hash"] == plan.plan_hash
+
+    def echo_only(*, policy, execution_plan, **_kwargs):
+        return {
+            "effective_policy_hash": policy.policy_hash,
+            "execution_plan_hash": execution_plan.plan_hash,
+            "memory_prompt_tokens": 0,
+            "oracle_ok": True,
+        }
+
+    with pytest.raises(ExecutionTraceViolation, match="analyzer set"):
+        runtime.repair_one(
+            case={"case_id": "echo"},
+            work_dir=tmp_path / "echo",
+            observable_failure=dict(_descriptor().features),
+            active_policy=candidate,
+            runtime_context=RuntimeContext(
+                effective_policy_hash=candidate.policy_hash,
+                policy_instance_hash=candidate.policy_hash,
+                available_analyzers=(
+                    "first_divergence",
+                    "temporal_alignment",
+                    "state_transition_slice",
+                ),
+                budget=BudgetEnvelope(3, 3, 48000, 360),
+                control_whitelist_hash=whitelist,
+            ),
+            executor=echo_only,
+        )
     with pytest.raises(PolicyRuntimeViolation, match="cannot silently ignore"):
         formal_repair_one({"case_id": "current"}, tmp_path / "bad", candidate)
 
@@ -885,7 +949,8 @@ def test_policy_transition_suspends_only_affected_memory_and_retains_objects(tmp
     store.add_candidate(static)
     _advance(store, static, "candidate", "shadow_testing", previous.policy_hash)
     _advance(store, static, "shadow_testing", "replay_qualified", previous.policy_hash)
-    _advance(store, static, "replay_qualified", "active_dormant", previous.policy_hash)
+    _advance(store, static, "replay_qualified", "bank_candidate", previous.policy_hash)
+    _advance(store, static, "bank_candidate", "active_dormant", previous.policy_hash)
     retriever = MemoryRetriever(store)
     guard = ActivationGuard(store)
     bound_policy, bank = build_memory_bank_policy_candidate(
@@ -1059,7 +1124,8 @@ def test_red_memory_bypass_deepening_and_conflict_are_policy_bank_bound(tmp_path
     store.add_candidate(second)
     _advance(store, second, "candidate", "shadow_testing", parent.policy_hash)
     _advance(store, second, "shadow_testing", "replay_qualified", parent.policy_hash)
-    _advance(store, second, "replay_qualified", "active_dormant", parent.policy_hash)
+    _advance(store, second, "replay_qualified", "bank_candidate", parent.policy_hash)
+    _advance(store, second, "bank_candidate", "active_dormant", parent.policy_hash)
     retriever = MemoryRetriever(store)
     guard = ActivationGuard(store)
     policy, bank = build_memory_bank_policy_candidate(

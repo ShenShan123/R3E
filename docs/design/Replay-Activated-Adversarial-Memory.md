@@ -8,11 +8,11 @@
 
 ---
 
-## 工程实施状态（2026-07-28）
+## 工程实施状态（2026-07-28，Authority Closure 复查后）
 
 本设计已进入系统升级阶段，当前不是实验结果阶段。
 
-- [x] Phase 0：继承并保持 Whole-Policy System Upgrade Complete V1 权威边界；
+- [x] Phase 0：继承 Whole-Policy 基础 registry/runtime 边界；
 - [x] Phase 1：`VerifiedEpisode` 与不可变、hash-chain 经验档案；
 - [x] Phase 2：`ControlMemory`、白名单、版本与 append-only lifecycle；
 - [x] Phase 3：仅使用 runtime observable 的 `FailureDescriptor`；
@@ -22,7 +22,7 @@
 - [x] Phase 6：确定性 paired shadow runner 与五类资格门基础实现；
 - [x] Phase 7：Active Memory Bank schema/store/hash，以及 bank 变化绑定
   `PolicyState` child 的 promotion candidate；
-- [x] Phase 8：policy compatibility、显式继承、增量 revalidation、关系图、
+- [ ] Phase 8（部分完成）：policy compatibility、原子继承、增量 revalidation、关系图、
   merge/split、bank compression、跨 store audit 与跨轮保留；
 - [x] Phase 9：只暴露公开摘要的 memory-aware red capability packet，以及
   policy+bank 双绑定的 bypass/deepening/conflict operator 和真实 RTL source
@@ -31,8 +31,37 @@
 协议说明见
 `docs/protocols/replay-activated-adversarial-memory-v1.md`，逐项工程状态见
 `docs/checklists/raam-implementation-v1.md`。当前实现只声明确定性系统基础设施，
-不声明真实模型驱动的跨轮记忆增益。RAAM System Upgrade Complete V1
-里程碑只冻结协议、接口和 deterministic fake 验证。
+不声明真实模型驱动的跨轮记忆增益。
+
+当前冻结里程碑正式更名为 **RAAM Protocol Skeleton V1**。2026-07-28
+Authority Closure 复查确认：早期实现具备 schema、store、state machine 和
+deterministic fake 闭环，但不能据此宣称完整权威闭合。已追加并冻结的硬门包括：
+
+- Registry writer lock 内重建 `r3e-policy-promotion-bundle-v1`，不再信任
+  caller 提交的 strong decision；
+- memory-bound child 必须携带 bank、memory object、frozen evidence set、
+  qualification replay 和 compatibility proof；
+- runner 生成不可变 `poison_payload_hash`，validity adapter 只能返回 evidence；
+- `MemoryDefinition` 语义稳定，同义候选追加 append-only evidence link，
+  qualification 绑定冻结 evidence-set hash；
+- `bank_candidate` 与 `active_dormant` 分权，只有 registry promotion 后才授予
+  runtime execution right，拒绝时恢复 `replay_qualified`；
+- `ExecutionTrace` 必须证明 analyzer、slice、candidate、revision、verifier 和
+  stopping controls 实际经过 runner-owned recorder；
+- `policy_instance_hash` 与 `effective_policy_hash` 分离，behavioral no-op child
+  拒绝注册；
+- JSON/JSONL protocol artifact 执行 file fsync 和 directory fsync；无 Git
+  工作树时使用 source-tree digest，不能使用 `unknown` code version。
+
+仍未闭合、因此仍属于后续 **Grounded Runtime** 里程碑的项目：
+
+- runner 从真实 compile/formal/oracle/provider receipt 独立复算结果，而不是只校验
+  adapter envelope；
+- `FailureDescriptor` 完全由 waveform/oracle/RTL analyzer artifacts 推导；
+- red memory operator 以 parser/semantic diff 证明真实 source semantics 变化；
+- qualification 的 activation precision、false activation、target/non-target
+  membership 重建和长期跨轮统计；
+- 真实模型 adapter 和多轮实验结果。
 
 ## 1. 背景与问题定义
 

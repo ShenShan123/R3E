@@ -12,7 +12,10 @@ from r3e.arena.conformance import (
 )
 from r3e.arena.runner import EvolutionRoundRunner
 from r3e.arena.round_state import RoundState, RoundStateViolation
-from r3e.policy.promotion import decide_policy_promotion
+from r3e.policy.promotion import (
+    build_policy_promotion_bundle,
+    decide_policy_promotion,
+)
 from r3e.policy.registry_v2 import (
     RegistryViolation,
     get_active_policy,
@@ -76,23 +79,42 @@ def _decision(parent: PolicyState, child: PolicyState):
                     "verifier_hash": "verifier",
                     "cost": 1.0,
                 })
-    return decide_policy_promotion(
+    target = make_manifest(
+        [{"case_id": "t0", "design": "d2"}, {"case_id": "t1", "design": "d3"}],
+        split="target",
+    )
+    non_target = make_manifest(
+        [{"case_id": "n0", "design": "d4"}, {"case_id": "n1", "design": "d5"}],
+        split="non_target",
+    )
+    provenance = {
+        "round_id": "R001",
+        "residual_manifest_hash": "sha256:" + "1" * 64,
+        "adaptation_manifest_hash": "sha256:" + "2" * 64,
+        "target_manifest_hash": target["manifest_hash"],
+        "non_target_manifest_hash": non_target["manifest_hash"],
+        "paired_result_hash": hash_payload(rows),
+        "code_commit_sha": "test-version",
+        "toolchain_fingerprint_hash": "sha256:" + "5" * 64,
+        "run_context_hash": "sha256:" + "6" * 64,
+        "toolchain_fingerprint": {"adapter": "test"},
+    }
+    decision = decide_policy_promotion(
         parent,
         child,
         rows,
         validation_manifest_hash="sha256:validation",
-        provenance={
-            "round_id": "R001",
-            "residual_manifest_hash": "sha256:" + "1" * 64,
-            "adaptation_manifest_hash": "sha256:" + "2" * 64,
-            "target_manifest_hash": "sha256:" + "3" * 64,
-            "non_target_manifest_hash": "sha256:" + "4" * 64,
-            "paired_result_hash": hash_payload(rows),
-            "code_commit_sha": "test-version",
-            "toolchain_fingerprint_hash": "sha256:" + "5" * 64,
-            "run_context_hash": "sha256:" + "6" * 64,
-            "toolchain_fingerprint": {"adapter": "test"},
-        },
+        provenance=provenance,
+    )
+    return build_policy_promotion_bundle(
+        parent,
+        child,
+        rows,
+        validation_manifest_hash="sha256:validation",
+        target_manifest=target,
+        non_target_manifest=non_target,
+        provenance=provenance,
+        recorded_decision=decision,
     )
 
 
@@ -226,7 +248,9 @@ def test_minimal_round_promotes_and_binds_renewed_challenge(tmp_path):
 
         def prepare_validity(self, poison):
             return bind_adapter_output({
-                **poison,
+                "poison_id": poison["poison_id"],
+                "challenged_policy_hash": poison["challenged_policy_hash"],
+                "poison_payload_hash": poison["poison_payload_hash"],
                 "golden_compile_ok": True,
                 "golden_oracle_ok": True,
                 "buggy_compile_ok": True,

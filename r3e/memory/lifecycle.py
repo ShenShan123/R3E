@@ -13,7 +13,8 @@ ALLOWED_TRANSITIONS = {
     "shadow_testing": {
         "replay_qualified", "candidate", "stale", "harmful", "retired",
     },
-    "replay_qualified": {"active_dormant", "revalidation_required", "retired"},
+    "replay_qualified": {"bank_candidate", "revalidation_required", "retired"},
+    "bank_candidate": {"active_dormant", "replay_qualified", "retired"},
     "active_dormant": {
         "revalidation_required", "stale", "harmful", "superseded", "retired",
     },

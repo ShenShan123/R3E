@@ -218,6 +218,21 @@ def test_memory_round_resumes_after_shadow_adapter_failure(tmp_path):
     assert get_active_policy(load_registry(registry)).parent_policy_hash == parent.policy_hash
 
 
+def test_rejected_bank_child_does_not_make_memory_active_dormant(tmp_path):
+    runner, registry, _episodes, memories, _banks, parent = _runner(tmp_path)
+    runner.config["promotion_thresholds"] = {
+        "min_prior_failure_recovery": 99,
+    }
+    runner.state_config["promotion_thresholds"] = {
+        "min_prior_failure_recovery": 99,
+    }
+    summary = runner.run()
+    assert summary["promoted"] is False
+    assert get_active_policy(load_registry(registry)).policy_hash == parent.policy_hash
+    memory_id = summary["qualified_memory_ids"][0]
+    assert memories.current_status(memory_id, 1) == "replay_qualified"
+
+
 def test_whole_policy_arena_automatically_appends_verified_episodes(tmp_path):
     workspace = tmp_path / "fake-system"
     summaries = run_fake_system(

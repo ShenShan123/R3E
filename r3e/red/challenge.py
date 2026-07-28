@@ -12,6 +12,7 @@ from r3e.policy.schema import PolicyState
 from r3e.protocol.hashing import canonical_json, hash_payload, read_json
 
 from .fitness import hardness, hardness_class
+from .poison_payload import verify_poison_payload
 
 
 class ChallengeViolation(RuntimeError):
@@ -29,6 +30,7 @@ def evaluate_challenge(
         raise ChallengeViolation("challenge seeds must be non-empty and unique")
     if poison.get("challenged_policy_hash") not in {None, "", policy.policy_hash}:
         raise ChallengeViolation("poison is bound to a different challenged policy")
+    poison_payload_hash = verify_poison_payload(poison)
     results = []
     for seed in seeds:
         row = dict(evaluator(policy, poison, seed))
@@ -50,6 +52,8 @@ def evaluate_challenge(
         "challenge_budget_hash": hash_payload(policy.budgets),
     })
     result["challenge_result_hash"] = hash_payload(result)
+    if result.get("poison_payload_hash") != poison_payload_hash:
+        raise ChallengeViolation("challenge changed the immutable poison payload")
     return result
 
 

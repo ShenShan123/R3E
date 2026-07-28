@@ -10,6 +10,7 @@ from r3e.protocol.hashing import hash_file, hash_payload
 from .descriptor import build_failure_descriptor
 from .episode_store import EpisodeStore
 from .schema import VerifiedEpisode
+from r3e.red.poison_payload import verify_poison_payload
 
 
 class EpisodeBuildViolation(RuntimeError):
@@ -24,6 +25,7 @@ def episode_from_challenge(
 ) -> VerifiedEpisode:
     if challenge.get("challenged_policy_hash") != policy.policy_hash:
         raise EpisodeBuildViolation("challenge is not bound to episode policy")
+    poison_payload_hash = verify_poison_payload(challenge)
     poison_id = str(challenge.get("poison_id") or "")
     if not poison_id:
         raise EpisodeBuildViolation("challenge poison_id is missing")
@@ -81,13 +83,6 @@ def episode_from_challenge(
             if not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0:
                 raise EpisodeBuildViolation("blue resource usage is invalid")
             resource_usage[field] += value
-    poison_payload = {
-        key: value for key, value in challenge.items()
-        if key not in {
-            "blue_results", "repair_attempts", "repair_successes", "hardness",
-            "hardness_class", "challenge_budget_hash", "challenge_result_hash",
-        }
-    }
     oracle_evidence_hash = hash_payload({
         "validity_result_hash": (challenge.get("validity") or {}).get("result_hash"),
         "blue_result_hashes": [hash_payload(row) for row in blue_results],
@@ -104,7 +99,7 @@ def episode_from_challenge(
         challenged_policy_instance_hash=policy.policy_hash,
         challenged_effective_policy_hash=policy.policy_hash,
         poison_id=poison_id,
-        poison_payload_hash=hash_payload(poison_payload),
+        poison_payload_hash=poison_payload_hash,
         buggy_rtl_hash=buggy_hash,
         oracle_evidence_hash=oracle_evidence_hash,
         failure_descriptor=descriptor.to_dict(),

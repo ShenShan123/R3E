@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -38,7 +39,27 @@ def detect_code_version(repo_root: str | Path | None = None) -> str:
             return value
     except (OSError, subprocess.SubprocessError):
         pass
-    return "unknown"
+    # Exported source trees may legitimately lack .git.  Bind formal events to
+    # a deterministic source/config digest rather than admitting "unknown".
+    digest = hashlib.sha256()
+    included = 0
+    for path in sorted(root.rglob("*")):
+        if (
+            path.is_file()
+            and path.suffix in {".py", ".json", ".toml", ".md"}
+            and not any(
+                part in {".git", "runtime", "__pycache__", ".pytest_cache"}
+                for part in path.parts
+            )
+        ):
+            try:
+                relative = path.relative_to(root).as_posix()
+                digest.update(relative.encode("utf-8"))
+                digest.update(path.read_bytes())
+                included += 1
+            except OSError:
+                continue
+    return f"sha256:{digest.hexdigest()}" if included else "unknown"
 
 
 def read_events(path: str | Path) -> list[dict[str, Any]]:
@@ -112,4 +133,9 @@ class EventLogger:
                 stream_handle.write(canonical_json(event) + "\n")
                 stream_handle.flush()
                 os.fsync(stream_handle.fileno())
+            directory_fd = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
             return event

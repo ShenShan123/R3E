@@ -17,6 +17,7 @@ from r3e.protocol.ledger import append_ledger, read_ledger, writer_lock
 from r3e.protocol.events import EventLogger
 
 from .schema import POLICY_SCHEMA_VERSION, PolicyState, PolicyValidationError
+from .promotion import PromotionViolation, verify_policy_promotion_bundle
 
 
 REGISTRY_SCHEMA_VERSION = "r3e-policy-registry-v2"
@@ -201,6 +202,10 @@ def register_candidate(
             raise RegistryViolation("candidate is not bound to the current active parent")
         if child.base_policy_hash != registry["base_policy"]["hash"]:
             raise RegistryViolation("candidate base policy hash mismatch")
+        if child.effective_policy_hash == parent.effective_policy_hash:
+            raise RegistryViolation(
+                "candidate is behaviorally identical to the active parent"
+            )
         if child.policy_id in registry["policies"]:
             raise RegistryViolation(f"policy already registered: {child.policy_id}")
         registry["policies"][child.policy_id] = _policy_entry(child)
@@ -267,7 +272,7 @@ def _save_snapshot(registry_path: Path, registry: dict[str, Any]) -> None:
 def promote_policy(
     registry_path: str | Path,
     candidate_policy_id: str,
-    decision: dict[str, Any],
+    promotion_bundle: dict[str, Any],
     *,
     ledger_path: str | Path | None = None,
     event_logger: EventLogger | None = None,
@@ -292,17 +297,16 @@ def promote_policy(
             raise RegistryViolation("stale candidate parent id")
         if candidate.parent_policy_hash != parent.policy_hash:
             raise RegistryViolation("stale candidate parent hash")
+        try:
+            decision = verify_policy_promotion_bundle(
+                promotion_bundle,
+                expected_parent=parent,
+                expected_candidate=candidate,
+            )
+        except (PromotionViolation, ValueError, RuntimeError) as exc:
+            raise RegistryViolation(f"promotion authority reconstruction failed: {exc}") from exc
         if not decision.get("promote") or decision.get("decision") != "strong_promotion":
-            raise RegistryViolation("only a strong promotion decision may change active policy")
-        if decision.get("candidate_policy_hash") != candidate.policy_hash:
-            raise RegistryViolation("promotion decision candidate hash mismatch")
-        if decision.get("parent_policy_hash") != parent.policy_hash:
-            raise RegistryViolation("promotion decision parent hash mismatch")
-        decision_body = {
-            key: value for key, value in decision.items() if key != "decision_hash"
-        }
-        if decision.get("decision_hash") != hash_payload(decision_body):
-            raise RegistryViolation("promotion decision hash mismatch")
+            raise RegistryViolation("only a reconstructed strong promotion may change active policy")
         _save_snapshot(path, registry)
         old_parent = parent.with_updates(status="superseded")
         promoted = candidate.with_updates(
@@ -330,6 +334,7 @@ def promote_policy(
                 "candidate_policy_id": candidate.policy_id,
                 "candidate_policy_hash": candidate.policy_hash,
                 "decision_hash": decision["decision_hash"],
+                "promotion_bundle_hash": promotion_bundle["bundle_hash"],
                 "residual_manifest_hash": candidate.created_from_residual_manifest_hash,
                 "validation_manifest_hash": promoted.validation_manifest_hash,
                 "thresholds": decision.get("thresholds") or {},
@@ -347,6 +352,7 @@ def promote_policy(
                 registry_hash_before=before,
                 registry_hash_after=after["registry_hash"],
                 decision_hash=decision["decision_hash"],
+                promotion_bundle_hash=promotion_bundle["bundle_hash"],
             )
         return after
 

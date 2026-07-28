@@ -76,6 +76,11 @@ from r3e.red.learnability import (
 )
 from r3e.red.selection import materialize_elites, pareto_frontier, select_residual_elites
 from r3e.red.validity import validity_gate
+from r3e.red.poison_payload import (
+    PoisonPayloadViolation,
+    bind_poison_payload,
+    verify_poison_payload,
+)
 from semantic_repair_bench import functional_repair
 
 
@@ -146,6 +151,64 @@ def _strong_decision(parent: PolicyState, child: PolicyState) -> dict:
             "run_context_hash": "sha256:" + "6" * 64,
             "toolchain_fingerprint": {"adapter": "test"},
         },
+    )
+
+
+def _strong_bundle(parent: PolicyState, child: PolicyState) -> dict:
+    from r3e.policy.promotion import (
+        build_policy_promotion_bundle,
+        decide_policy_promotion,
+    )
+
+    decision = _strong_decision(parent, child)
+    rows = []
+    for split, cases in (
+        ("target", [("t0", "td0"), ("t1", "td1")]),
+        ("non_target", [("n0", "nd0"), ("n1", "nd1")]),
+    ):
+        for case_id, design in cases:
+            for arm in ("parent", "candidate"):
+                rows.append({
+                    "case_id": case_id,
+                    "design": design,
+                    "seed": 1,
+                    "split": split,
+                    "arm": arm,
+                    "oracle_ok": arm == "candidate" or split == "non_target",
+                    "model_id": "fake",
+                    "budget_hash": "fake",
+                    "verifier_hash": "fake",
+                    "cost": 1.0,
+                })
+    target = make_manifest(
+        [{"case_id": "t0", "design": "td0"}, {"case_id": "t1", "design": "td1"}],
+        split="target",
+    )
+    non_target = make_manifest(
+        [{"case_id": "n0", "design": "nd0"}, {"case_id": "n1", "design": "nd1"}],
+        split="non_target",
+    )
+    provenance = dict(decision["provenance"])
+    provenance["target_manifest_hash"] = target["manifest_hash"]
+    provenance["non_target_manifest_hash"] = non_target["manifest_hash"]
+    decision = decide_policy_promotion(
+        parent,
+        child,
+        rows,
+        validation_manifest_hash=decision["validation_manifest_hash"],
+        thresholds=decision["thresholds"],
+        provenance=provenance,
+    )
+    return build_policy_promotion_bundle(
+        parent,
+        child,
+        rows,
+        validation_manifest_hash=decision["validation_manifest_hash"],
+        target_manifest=target,
+        non_target_manifest=non_target,
+        thresholds=decision["thresholds"],
+        provenance=provenance,
+        recorded_decision=decision,
     )
 
 
@@ -339,7 +402,7 @@ def test_registry_tamper_and_missing_rollback_version_fail_closed(tmp_path):
     registry, parent = _init(tmp_path)
     child = _children(parent, 1)[0]
     register_candidate(registry, child)
-    promoted = promote_policy(registry, child.policy_id, _strong_decision(parent, child))
+    promoted = promote_policy(registry, child.policy_id, _strong_bundle(parent, child))
     snapshot = (
         registry.parent
         / f".{registry.name}.versions"
@@ -350,6 +413,41 @@ def test_registry_tamper_and_missing_rollback_version_fail_closed(tmp_path):
         rollback_policy(registry)
 
 
+def test_registry_rejects_self_hashed_forged_policy_decision(tmp_path):
+    registry, parent = _init(tmp_path)
+    child = _children(parent, 1)[0]
+    register_candidate(registry, child)
+    bundle = _strong_bundle(parent, child)
+    forged = dict(bundle["recorded_decision"])
+    forged["target"] = {**forged["target"], "delta": 0.5}
+    forged["decision_hash"] = hash_payload({
+        key: value for key, value in forged.items() if key != "decision_hash"
+    })
+    bundle["recorded_decision"] = forged
+    bundle["bundle_hash"] = hash_payload({
+        key: value for key, value in bundle.items() if key != "bundle_hash"
+    })
+    with pytest.raises(RegistryViolation, match="differs from reconstruction"):
+        promote_policy(registry, child.policy_id, bundle)
+
+
+def test_registry_rejects_memory_bank_without_qualification_authority(tmp_path):
+    registry, parent = _init(tmp_path)
+    raw = _children(parent, 1)[0].to_dict()
+    raw["memory_binding"] = {
+        "active_memory_bank_hash": "sha256:" + "a" * 64,
+        "retriever_hash": "sha256:" + "b" * 64,
+        "activation_guard_hash": "sha256:" + "c" * 64,
+        "memory_control_whitelist_hash": "sha256:" + "d" * 64,
+    }
+    raw.pop("policy_hash", None)
+    raw.pop("configuration_hash", None)
+    child = PolicyState.from_dict(raw)
+    register_candidate(registry, child)
+    with pytest.raises(RegistryViolation, match="memory authority"):
+        promote_policy(registry, child.policy_id, _strong_bundle(parent, child))
+
+
 def test_registry_serializes_concurrent_writers(tmp_path):
     registry, parent = _init(tmp_path)
     children = _children(parent, 4)
@@ -358,6 +456,26 @@ def test_registry_serializes_concurrent_writers(tmp_path):
     loaded = load_registry(registry)
     assert all(child.policy_id in loaded["policies"] for child in children)
     assert get_active_policy(loaded).policy_id == "B0"
+
+
+def test_registry_rejects_behaviorally_noop_child(tmp_path):
+    registry, parent = _init(tmp_path)
+    raw = parent.to_dict()
+    raw.update({
+        "policy_id": "B0_NOOP",
+        "parent_policy_id": parent.policy_id,
+        "parent_policy_hash": parent.policy_hash,
+        "created_round": parent.created_round + 1,
+        "status": "candidate",
+        "proposal_operator": "noop",
+    })
+    raw.pop("configuration_hash", None)
+    raw.pop("policy_hash", None)
+    child = PolicyState.from_dict(raw)
+    assert child.policy_instance_hash != parent.policy_instance_hash
+    assert child.effective_policy_hash == parent.effective_policy_hash
+    with pytest.raises(RegistryViolation, match="behaviorally identical"):
+        register_candidate(registry, child)
 
 
 def test_registry_retire_preserves_active_and_protects_authority(tmp_path):
@@ -377,7 +495,7 @@ def test_registry_audit_fail_exactly_restores_and_tombstones_hash(tmp_path):
     registered = register_candidate(registry, child)
     prepromotion_hash = registered["registry_hash"]
     promoted = promote_policy(
-        registry, child.policy_id, _strong_decision(parent, child)
+        registry, child.policy_id, _strong_bundle(parent, child)
     )
     active = get_active_policy(promoted)
     restored = audit_fail_policy(
@@ -397,7 +515,7 @@ def test_registry_audit_fail_exactly_restores_and_tombstones_hash(tmp_path):
         registry, active.policy_id, _audit_failure(active)
     )["registry_hash"] == prepromotion_hash
     with pytest.raises(RegistryViolation, match="permanently barred"):
-        promote_policy(registry, child.policy_id, _strong_decision(parent, child))
+        promote_policy(registry, child.policy_id, _strong_bundle(parent, child))
 
 
 def test_registry_audit_fail_rejects_conflicting_evidence(tmp_path):
@@ -421,7 +539,7 @@ def test_registry_audit_fail_recovers_after_tombstone_before_restore(
     registry, parent = _init(tmp_path)
     child = _children(parent, 1)[0]
     registered = register_candidate(registry, child)
-    promote_policy(registry, child.policy_id, _strong_decision(parent, child))
+    promote_policy(registry, child.policy_id, _strong_bundle(parent, child))
     real_write = registry_module.atomic_write_json
     interrupted = {"done": False}
 
@@ -583,6 +701,7 @@ def test_adapter_conformance_gate_validates_all_six_method_outputs(tmp_path):
         "generate_red",
         list(adapter.generate_red(parent, {}, context))[0],
     )
+    poison = bind_poison_payload(poison)
     gate.validate("prepare_validity", adapter.prepare_validity(poison))
     gate.validate(
         "evaluate_blue",
@@ -602,6 +721,24 @@ def test_adapter_conformance_gate_validates_all_six_method_outputs(tmp_path):
         adapter.screen_child(parent, child, adaptation),
     )
     gate.validate("replay", adapter.replay(parent, poison, 11))
+
+
+def test_prepare_validity_cannot_change_poison_payload(tmp_path):
+    golden = tmp_path / "golden.v"
+    buggy = tmp_path / "buggy.v"
+    golden.write_text("module top; endmodule\n")
+    buggy.write_text("module top; wire x; endmodule\n")
+    poison = bind_poison_payload({
+        "poison_id": "P_IMMUTABLE",
+        "challenged_policy_hash": "sha256:" + "1" * 64,
+        "golden_rtl": str(golden),
+        "buggy_rtl": str(buggy),
+        "family": "test",
+    })
+    verify_poison_payload(poison)
+    changed = {**poison, "buggy_rtl": str(golden)}
+    with pytest.raises(PoisonPayloadViolation, match="hash mismatch"):
+        verify_poison_payload(changed)
 
 
 def test_adapter_conformance_rejects_identity_hash_and_schema_forgery(tmp_path):
@@ -886,7 +1023,7 @@ def test_rollback_event_records_exact_parent_restore(tmp_path):
     child = _children(parent, 1)[0]
     events = EventLogger(tmp_path / "events", code_version="test")
     register_candidate(registry, child)
-    promote_policy(registry, child.policy_id, _strong_decision(parent, child))
+    promote_policy(registry, child.policy_id, _strong_bundle(parent, child))
     restored = rollback_policy(registry, event_logger=events, round_id="R900")
     assert get_active_policy(restored).policy_hash == parent.policy_hash
     event = read_events(tmp_path / "events/rollback.jsonl")[0]

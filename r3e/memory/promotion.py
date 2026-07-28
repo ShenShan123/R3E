@@ -30,14 +30,15 @@ def build_memory_bank_policy_candidate(
     memories = {}
     for memory_id, version in sorted(memory_versions.items()):
         memory = store.get_version(memory_id, version)
-        if store.current_status(memory_id, version) != "active_dormant":
+        status = store.current_status(memory_id, version)
+        if status not in {"bank_candidate", "active_dormant"}:
             raise MemoryPromotionViolation(
-                f"memory is not active_dormant: {memory_id}@{version}"
+                f"memory lacks bank authority: {memory_id}@{version}"
             )
         memories[memory_id] = {
             "memory_version": version,
             "memory_hash": memory.memory_hash,
-            "status": "active_dormant",
+            "status": status,
         }
     provisional_bank = ActiveMemoryBank.create(
         bank_id=bank_id,

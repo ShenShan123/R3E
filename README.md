@@ -138,10 +138,12 @@ RAAM is an engineering upgrade, not a real-model result. Its deterministic
 adapter proves the protocol and state machine without model calls; it does not
 demonstrate empirical memory gain.
 
-Phase 1–9 are frozen as **RAAM System Upgrade Complete V1** in
-`configs/evolution/raam_system_upgrade_complete_v1.json`. The milestone binds
+The deterministic Phase 1–9 foundation is frozen as **RAAM Protocol Skeleton
+V1** in `configs/evolution/raam_protocol_skeleton_v1.json`. The milestone binds
 the control whitelist, protocol, threat model, test matrix, parent Whole-Policy
 milestone, validation commands, and explicit experiment exclusions.
+Authority Closure is tracked separately; runner-owned oracle/descriptor/RTL
+semantic grounding remains open and blocks a “System Upgrade Complete” claim.
 
 ### Registry and migration
 

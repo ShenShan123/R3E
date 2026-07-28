@@ -37,7 +37,7 @@ class ActiveBankStore:
                 raise ActiveBankStoreViolation("bank memory hash mismatch")
             if self.memory_store.current_status(
                 memory_id, int(binding["memory_version"])
-            ) != "active_dormant":
+            ) != binding["status"]:
                 raise ActiveBankStoreViolation("bank contains unauthorized memory")
         with writer_lock(self.root / ".active-bank-store.lock"):
             rows = read_ledger(self.index_path)

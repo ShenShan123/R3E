@@ -67,4 +67,9 @@ def append_ledger(path: str | Path, entry: dict[str, Any]) -> dict[str, Any]:
             stream.write(canonical_json(payload) + "\n")
             stream.flush()
             os.fsync(stream.fileno())
+        directory_fd = os.open(target.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
         return payload

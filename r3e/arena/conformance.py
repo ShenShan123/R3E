@@ -12,7 +12,7 @@ ADAPTER_CONFORMANCE_VERSION = "r3e-evolution-adapter-v1"
 TOOLCHAIN_FINGERPRINT_VERSION = "r3e-adapter-toolchain-v1"
 OUTPUT_SCHEMAS = {
     "generate_red": "r3e-red-candidate-v1",
-    "prepare_validity": "r3e-validity-input-v1",
+    "prepare_validity": "r3e-validity-evidence-v2",
     "evaluate_blue": "r3e-blue-evaluation-v1",
     "probe_learnability": "r3e-learnability-probe-v1",
     "screen_child": "r3e-child-screening-v1",
@@ -254,6 +254,7 @@ def _validate_operation_payload(operation: str, payload: Mapping[str, Any]) -> N
             {
                 "poison_id",
                 "challenged_policy_hash",
+                "poison_payload_hash",
                 "formal_status",
                 "golden_compile_ok",
                 "golden_oracle_ok",
@@ -269,6 +270,7 @@ def _validate_operation_payload(operation: str, payload: Mapping[str, Any]) -> N
             },
             operation=operation,
         )
+        _digest(payload.get("poison_payload_hash"), field="poison_payload_hash")
         for field in (
             "golden_compile_ok",
             "golden_oracle_ok",

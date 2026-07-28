@@ -1,6 +1,6 @@
 {
-  "schema_version": "r3e-raam-system-upgrade-milestone-v1",
-  "milestone_id": "raam-system-upgrade-complete-v1",
+  "schema_version": "r3e-raam-protocol-skeleton-milestone-v1",
+  "milestone_id": "raam-protocol-skeleton-v1",
   "status": "frozen",
   "parent_milestone": {
     "milestone_id": "system-upgrade-complete-v1",
@@ -24,13 +24,18 @@
     "MemoryAwarePlanCompiler.compile(base_policy, reactivation)",
     "run_shadow_replay(case, policy, memory, seed, budget, evaluator)",
     "MemoryEvolutionRunner.run()",
+    "r3e-policy-promotion-bundle-v1",
+    "r3e-memory-promotion-authority-v1",
+    "r3e-poison-payload-v1",
+    "r3e-memory-evidence-set-v1",
+    "r3e-memory-execution-trace-v1",
     "r3e-memory-adapter-output-v1",
     "r3e-memory-red-capability-v1",
     "r3e-memory-red-plan-v1"
   ],
   "frozen_assets": {
     "configs/memory/control_whitelist_v1.json": "sha256:a67300092fbe7b857f673db029d058a35153102c2e727654c6dbc95c14f534aa",
-    "docs/protocols/replay-activated-adversarial-memory-v1.md": "sha256:e813d039f8ecee9f0396de8a3aa42cc4a5eea91e0ba91d9f233d3610e8e2850c",
+    "docs/protocols/replay-activated-adversarial-memory-v1.md": "sha256:626bf95280be5c4d79d9a30e185f00b683d9c202de130584e39d3030f18efdaf",
     "docs/protocols/raam-threat-model-v1.md": "sha256:d6872d01d236811690bd7cb48aad2fd70336595be8a349746fc8f96324713e34",
     "docs/protocols/raam-test-matrix-v1.md": "sha256:f3e9215224a85ee6eb24775eb3952668f4044ee0df7028110c50067b37ce0876"
   },
@@ -49,8 +54,11 @@
     "promotion_thresholds",
     "experiment_manifests",
     "experiment_budget",
-    "real_model_cross_round_results"
+    "real_model_cross_round_results",
+    "runner_owned_oracle_receipts",
+    "artifact_derived_failure_descriptors",
+    "parser_backed_rtl_semantic_diff"
   ],
-  "claim_boundary": "Deterministic system infrastructure and protocol implementation only; no real-model memory effectiveness or continual-learning result.",
-  "milestone_hash": "sha256:69ece590db0255beb3ba825acde5e864fc0f341a4ef3167e3664a664f24359a7"
+  "claim_boundary": "Deterministic protocol skeleton and partial authority closure only; no grounded-runtime completion, real-model memory effectiveness, or continual-learning result.",
+  "milestone_hash": "sha256:45d40fbe5aa70a8e3922185274f40e1039073349afd4777d39fe77f4a57ef5f0"
 }

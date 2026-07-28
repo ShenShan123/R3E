@@ -7,6 +7,7 @@ import math
 from collections import defaultdict
 from typing import Any
 
+from r3e.arena.manifests import verify_manifest
 from r3e.protocol.hashing import hash_payload
 from r3e.protocol.hashing import atomic_write_json, read_json
 
@@ -33,12 +34,54 @@ REQUIRED_PROVENANCE_HASHES = {
     "toolchain_fingerprint_hash",
     "run_context_hash",
 }
+PROMOTION_BUNDLE_SCHEMA_VERSION = "r3e-policy-promotion-bundle-v1"
+
+
+def _verify_rows_against_manifests(
+    rows: list[dict[str, Any]],
+    target_manifest: dict[str, Any],
+    non_target_manifest: dict[str, Any],
+) -> None:
+    memberships = {
+        "target": {
+            (
+                str(row.get("case_id") or row.get("poison_id") or ""),
+                str(row.get("design") or row.get("design_id") or ""),
+            )
+            for row in target_manifest["rows"]
+        },
+        "non_target": {
+            (
+                str(row.get("case_id") or row.get("poison_id") or ""),
+                str(row.get("design") or row.get("design_id") or ""),
+            )
+            for row in non_target_manifest["rows"]
+        },
+    }
+    observed = {"target": set(), "non_target": set()}
+    for row in rows:
+        split = str(row.get("split") or "")
+        key = (
+            str(row.get("case_id") or ""),
+            str(row.get("design") or ""),
+        )
+        if split not in memberships or key not in memberships[split]:
+            raise PromotionViolation(
+                "paired replay row is not a member of its frozen manifest"
+            )
+        observed[split].add(key)
+    for split in ("target", "non_target"):
+        if observed[split] != memberships[split]:
+            raise PromotionViolation(
+                f"paired replay does not cover the frozen {split} manifest"
+            )
 
 
 def _provenance_complete(provenance: dict[str, Any]) -> bool:
     if not str(provenance.get("round_id") or ""):
         return False
-    if not str(provenance.get("code_commit_sha") or ""):
+    code_version = str(provenance.get("code_commit_sha") or "")
+    if not code_version or code_version.lower() == "unknown":
         return False
     for field in REQUIRED_PROVENANCE_HASHES:
         value = str(provenance.get(field) or "")
@@ -229,6 +272,140 @@ def decide_policy_promotion(
     }
     result["decision_hash"] = hash_payload(result)
     return result
+
+
+def build_policy_promotion_bundle(
+    parent: PolicyState,
+    candidate: PolicyState,
+    validation_rows: list[dict[str, Any]],
+    *,
+    validation_manifest_hash: str,
+    target_manifest: dict[str, Any],
+    non_target_manifest: dict[str, Any],
+    thresholds: dict[str, Any] | None = None,
+    provenance: dict[str, Any] | None = None,
+    recorded_decision: dict[str, Any] | None = None,
+    memory_authority: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Freeze every input needed for a registry-owned promotion replay.
+
+    A decision hash is only an integrity checksum.  This bundle is the
+    authority object: the registry can reconstruct the decision from frozen
+    policies, manifests, paired rows, thresholds and provenance without
+    trusting any caller-supplied verdict.
+    """
+    target = verify_manifest(target_manifest)
+    non_target = verify_manifest(non_target_manifest)
+    bound_provenance = dict(provenance or {})
+    if target["manifest_hash"] != bound_provenance.get("target_manifest_hash"):
+        raise PromotionViolation("target manifest/provenance hash mismatch")
+    if non_target["manifest_hash"] != bound_provenance.get("non_target_manifest_hash"):
+        raise PromotionViolation("non-target manifest/provenance hash mismatch")
+    if hash_payload(validation_rows) != bound_provenance.get("paired_result_hash"):
+        raise PromotionViolation("paired rows/provenance hash mismatch")
+    _verify_rows_against_manifests(validation_rows, target, non_target)
+    reconstructed = decide_policy_promotion(
+        parent,
+        candidate,
+        validation_rows,
+        validation_manifest_hash=validation_manifest_hash,
+        thresholds=thresholds,
+        provenance=bound_provenance,
+    )
+    if recorded_decision is not None and recorded_decision != reconstructed:
+        raise PromotionViolation("recorded promotion decision is not reconstructable")
+    payload = {
+        "schema_version": PROMOTION_BUNDLE_SCHEMA_VERSION,
+        "parent_policy": parent.to_dict(),
+        "candidate_policy": candidate.to_dict(),
+        "target_manifest": target,
+        "non_target_manifest": non_target,
+        "validation_rows": list(validation_rows),
+        "validation_manifest_hash": validation_manifest_hash,
+        "thresholds": dict(thresholds or {}),
+        "provenance": bound_provenance,
+        "recorded_decision": reconstructed,
+        "memory_authority": dict(memory_authority or {}),
+    }
+    payload["bundle_hash"] = hash_payload(payload)
+    return payload
+
+
+def verify_policy_promotion_bundle(
+    bundle: dict[str, Any],
+    *,
+    expected_parent: PolicyState | None = None,
+    expected_candidate: PolicyState | None = None,
+) -> dict[str, Any]:
+    """Reconstruct and return the exact authorized promotion decision."""
+    required = {
+        "schema_version",
+        "parent_policy",
+        "candidate_policy",
+        "target_manifest",
+        "non_target_manifest",
+        "validation_rows",
+        "validation_manifest_hash",
+        "thresholds",
+        "provenance",
+        "recorded_decision",
+        "memory_authority",
+        "bundle_hash",
+    }
+    if not isinstance(bundle, dict) or set(bundle) != required:
+        raise PromotionViolation("promotion bundle fields mismatch")
+    if bundle.get("schema_version") != PROMOTION_BUNDLE_SCHEMA_VERSION:
+        raise PromotionViolation("promotion bundle schema mismatch")
+    body = {key: value for key, value in bundle.items() if key != "bundle_hash"}
+    if bundle.get("bundle_hash") != hash_payload(body):
+        raise PromotionViolation("promotion bundle hash mismatch")
+    parent = PolicyState.from_dict(bundle["parent_policy"])
+    candidate = PolicyState.from_dict(bundle["candidate_policy"])
+    if expected_parent is not None and parent.to_dict() != expected_parent.to_dict():
+        raise PromotionViolation("promotion bundle parent differs from registry")
+    if expected_candidate is not None and candidate.to_dict() != expected_candidate.to_dict():
+        raise PromotionViolation("promotion bundle candidate differs from registry")
+    target = verify_manifest(bundle["target_manifest"])
+    non_target = verify_manifest(bundle["non_target_manifest"])
+    provenance = dict(bundle["provenance"])
+    if target["manifest_hash"] != provenance.get("target_manifest_hash"):
+        raise PromotionViolation("target manifest/provenance hash mismatch")
+    if non_target["manifest_hash"] != provenance.get("non_target_manifest_hash"):
+        raise PromotionViolation("non-target manifest/provenance hash mismatch")
+    rows = bundle["validation_rows"]
+    if not isinstance(rows, list):
+        raise PromotionViolation("promotion bundle validation_rows must be a list")
+    if hash_payload(rows) != provenance.get("paired_result_hash"):
+        raise PromotionViolation("paired rows/provenance hash mismatch")
+    _verify_rows_against_manifests(rows, target, non_target)
+    reconstructed = decide_policy_promotion(
+        parent,
+        candidate,
+        rows,
+        validation_manifest_hash=str(bundle["validation_manifest_hash"]),
+        thresholds=dict(bundle["thresholds"]),
+        provenance=provenance,
+    )
+    if bundle["recorded_decision"] != reconstructed:
+        raise PromotionViolation("recorded promotion decision differs from reconstruction")
+    memory_authority = bundle["memory_authority"]
+    if candidate.memory_binding:
+        if not memory_authority:
+            raise PromotionViolation(
+                "memory-bound policy requires a reconstructed memory authority bundle"
+            )
+        # Local import keeps the generic policy layer usable without loading
+        # the memory runtime when a policy has no memory binding.
+        from r3e.memory.authority import verify_memory_promotion_authority
+
+        verify_memory_promotion_authority(
+            memory_authority,
+            parent=parent,
+            candidate=candidate,
+        )
+    elif memory_authority:
+        raise PromotionViolation("non-memory policy may not carry memory authority")
+    return reconstructed
 
 
 def select_single_promotable_child(decisions: list[dict[str, Any]]) -> dict[str, Any] | None:

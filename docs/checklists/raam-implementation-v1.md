@@ -1,4 +1,4 @@
-# RAAM implementation checklist
+# RAAM Protocol Skeleton V1 / Authority Closure checklist
 
 Status date: 2026-07-28
 
@@ -42,6 +42,42 @@ Status date: 2026-07-28
 - [x] Implement memory bypass, deepening, and conflict red operators.
 - [x] Add failure injection for episode, lifecycle, bank, shadow, and registry
   promotion paths.
-- [x] Freeze a separate “RAAM System Upgrade Complete V1” milestone after full
-  tests, deterministic whole-policy rounds, deterministic memory promotion,
-  release audit, and dataset verification pass.
+- [x] Freeze “RAAM Protocol Skeleton V1” after full tests, deterministic
+  whole-policy rounds, deterministic memory promotion, release audit, and
+  dataset verification pass.
+
+## Authority Closure completed
+
+- [x] Registry reconstructs the exact policy decision from a frozen promotion
+  bundle while holding the writer lock.
+- [x] Memory bank promotion reconstructs memory objects, frozen evidence sets,
+  shadow results, qualification decisions, and compatibility proofs.
+- [x] Bind one immutable poison payload hash from red generation through
+  validity, challenge, and VerifiedEpisode creation.
+- [x] Make validity adapters evidence-only; reject returned poison fields.
+- [x] Append duplicate semantic-memory support as idempotent evidence links.
+- [x] Bind every qualification decision to a frozen evidence-set hash/support
+  count.
+- [x] Add `bank_candidate`; grant `active_dormant` only after policy promotion
+  and revoke the candidate right after rejection.
+- [x] Replace manual inheritance input with active-bank-derived inheritance and
+  reconstruct static compatibility proof.
+- [x] Require runner-owned ExecutionTrace conformance; a plan-hash echo alone
+  fails closed.
+- [x] Separate policy instance and behavioral hashes and reject no-op children.
+- [x] Build an authority DAG in RAAM audit output.
+- [x] Use durable atomic JSONL replacement and fsync append-only ledgers/events.
+
+## Grounded Runtime still open
+
+- [ ] Recompute compile/formal/oracle truth from tool artifacts and provider
+  receipts owned or independently parsed by the runner.
+- [ ] Derive FailureDescriptor only from observable waveform/oracle/RTL
+  analyzer artifacts.
+- [ ] Require parser-backed semantic RTL diff for every memory-aware red
+  operator.
+- [ ] Reconstruct qualification target/non-target membership and activation
+  precision/false-activation gates.
+- [ ] Refactor large runners into independently resumable stage components.
+- [ ] Run real-model, multi-round continual-memory experiments only after all
+  Grounded Runtime gates pass.

@@ -12,7 +12,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from r3e.policy.promotion import decide_policy_promotion, select_single_promotable_child
+from r3e.policy.promotion import (
+    build_policy_promotion_bundle,
+    decide_policy_promotion,
+    select_single_promotable_child,
+)
 from r3e.memory.episode_builder import append_round_episodes
 from r3e.memory.episode_store import EpisodeStore
 from r3e.memory.memory_store import MemoryStore
@@ -26,7 +30,12 @@ from r3e.policy.registry_v2 import (
 )
 from r3e.policy.search import propose_children
 from r3e.policy.schema import PolicyState
-from r3e.protocol.hashing import atomic_write_json, canonical_json, hash_payload, read_json
+from r3e.protocol.hashing import (
+    atomic_write_json,
+    atomic_write_jsonl,
+    hash_payload,
+    read_json,
+)
 from r3e.protocol.events import EventLogger, detect_code_version
 from r3e.protocol.provenance import build_run_context, verify_run_context
 from r3e.red.archive import load_archive, update_archive
@@ -45,6 +54,11 @@ from r3e.red.operators import (
 )
 from r3e.red.selection import select_residual_elites
 from r3e.red.validity import validity_gate
+from r3e.red.poison_payload import (
+    PoisonPayloadViolation,
+    bind_poison_payload,
+    verify_poison_payload,
+)
 from r3e.red.memory_challenge import build_memory_capability_packet
 
 from .audit import append_round_ledger, freeze_round_audit
@@ -61,6 +75,30 @@ from .round_state import RoundState, RoundStateViolation
 
 class RoundRunnerViolation(RuntimeError):
     """Raised when the round config or adapter violates protocol boundaries."""
+
+
+_VALIDITY_EVIDENCE_FIELDS = {
+    "poison_id",
+    "challenged_policy_hash",
+    "poison_payload_hash",
+    "formal_status",
+    "golden_compile_ok",
+    "golden_oracle_ok",
+    "buggy_compile_ok",
+    "buggy_functional_fail",
+    "output_complete",
+    "revert_oracle_ok",
+    "fresh_output",
+    "oracle_result_hash",
+    "counterexample_hash",
+    "toolchain_fingerprint_hash",
+    "command_hash",
+    "output_schema_version",
+    "model_id",
+    "budget_hash",
+    "verifier_hash",
+    "result_hash",
+}
 
 
 class _SplitEvolutionAdapter:
@@ -114,12 +152,7 @@ class _SplitEvolutionAdapter:
 
 
 def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    with temporary.open("w", encoding="utf-8") as stream:
-        for row in rows:
-            stream.write(canonical_json(row) + "\n")
-    temporary.replace(path)
+    atomic_write_jsonl(path, rows)
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -281,9 +314,14 @@ class EvolutionRoundRunner:
             "PAIRED_REPLAY": lambda: _read_jsonl(
                 self.round_dir / "paired_validation.jsonl"
             ),
-            "DECIDE": lambda: _read_jsonl(
-                self.round_dir / "promotion_decisions.jsonl"
-            ),
+            "DECIDE": lambda: {
+                "decisions": _read_jsonl(
+                    self.round_dir / "promotion_decisions.jsonl"
+                ),
+                "bundles": _read_jsonl(
+                    self.round_dir / "promotion_bundles.jsonl"
+                ),
+            },
             "ATOMIC_COMMIT": lambda: read_json(
                 self.round_dir / "registry_after.json"
             )["registry_hash"],
@@ -429,6 +467,9 @@ class EvolutionRoundRunner:
                     )
                 except LineageOperatorViolation as exc:
                     raise RoundRunnerViolation(str(exc)) from exc
+                bound_poison = bind_poison_payload(row)
+                row.clear()
+                row.update(bound_poison)
             _write_jsonl(self.round_dir / "red_candidates.jsonl", candidates)
             self.events.emit(
                 "red",
@@ -445,20 +486,54 @@ class EvolutionRoundRunner:
             validity_rows = []
             valid = []
             for poison in candidates:
+                try:
+                    payload_hash = verify_poison_payload(poison)
+                except PoisonPayloadViolation as exc:
+                    raise RoundRunnerViolation(str(exc)) from exc
                 prepared = self.adapter_gate.validate(
                     "prepare_validity",
                     self.adapter.prepare_validity(poison),
                 )
+                undeclared = set(prepared) - _VALIDITY_EVIDENCE_FIELDS
+                if undeclared:
+                    raise RoundRunnerViolation(
+                        "validity adapter returned poison payload fields: "
+                        f"{sorted(undeclared)}"
+                    )
                 if (
                     prepared.get("poison_id") != poison.get("poison_id")
                     or prepared.get("challenged_policy_hash")
                     != poison.get("challenged_policy_hash")
+                    or prepared.get("poison_payload_hash") != payload_hash
                 ):
                     raise RoundRunnerViolation(
-                        "validity adapter changed poison identity or policy binding"
+                        "validity adapter changed poison identity, policy binding, or payload hash"
                     )
-                result = validity_gate(prepared)
-                row = dict(prepared)
+                validity_input = dict(poison)
+                validity_input.update({
+                    key: value
+                    for key, value in prepared.items()
+                    if key in {
+                        "formal_status",
+                        "golden_compile_ok",
+                        "golden_oracle_ok",
+                        "buggy_compile_ok",
+                        "buggy_functional_fail",
+                        "output_complete",
+                        "revert_oracle_ok",
+                        "fresh_output",
+                        "oracle_result_hash",
+                        "counterexample_hash",
+                        "toolchain_fingerprint_hash",
+                        "command_hash",
+                    }
+                })
+                validity_input["validity_adapter_output"] = (
+                    adapter_output_metadata(prepared)
+                )
+                verify_poison_payload(validity_input)
+                result = validity_gate(validity_input)
+                row = dict(validity_input)
                 row["validity"] = {
                     "proven_valid": result.proven_valid,
                     "checks": result.checks,
@@ -869,6 +944,7 @@ class EvolutionRoundRunner:
         replay_rows = _read_jsonl(self.round_dir / "paired_validation.jsonl")
         if self.state.next_stage() == "DECIDE":
             decisions = []
+            promotion_bundles = []
             for child in children:
                 rows = [
                     row for row in replay_rows
@@ -876,38 +952,72 @@ class EvolutionRoundRunner:
                 ]
                 if not rows:
                     continue
-                decisions.append(decide_policy_promotion(
+                provenance = {
+                    "round_id": self.round_id,
+                    "residual_manifest_hash": residual_manifest["manifest_hash"],
+                    "adaptation_manifest_hash": adaptation["manifest_hash"],
+                    "target_manifest_hash": target["manifest_hash"],
+                    "non_target_manifest_hash": non_target["manifest_hash"],
+                    "paired_result_hash": hash_payload(rows),
+                    "code_commit_sha": run_context["code_version"],
+                    "run_context_hash": run_context["run_context_hash"],
+                    "toolchain_fingerprint_hash": run_context[
+                        "toolchain_fingerprint_hash"
+                    ],
+                    "toolchain_fingerprint": run_context[
+                        "toolchain_fingerprint"
+                    ],
+                }
+                decision = decide_policy_promotion(
                     parent,
                     child,
                     rows,
                     validation_manifest_hash=promotion_manifest["manifest_hash"],
                     thresholds=self.config.get("promotion_thresholds"),
-                    provenance={
-                        "round_id": self.round_id,
-                        "residual_manifest_hash": residual_manifest["manifest_hash"],
-                        "adaptation_manifest_hash": adaptation["manifest_hash"],
-                        "target_manifest_hash": target["manifest_hash"],
-                        "non_target_manifest_hash": non_target["manifest_hash"],
-                        "paired_result_hash": hash_payload(rows),
-                        "code_commit_sha": run_context["code_version"],
-                        "run_context_hash": run_context["run_context_hash"],
-                        "toolchain_fingerprint_hash": run_context[
-                            "toolchain_fingerprint_hash"
-                        ],
-                        "toolchain_fingerprint": run_context[
-                            "toolchain_fingerprint"
-                        ],
-                    },
+                    provenance=provenance,
+                )
+                decisions.append(decision)
+                promotion_bundles.append(build_policy_promotion_bundle(
+                    parent,
+                    child,
+                    rows,
+                    validation_manifest_hash=promotion_manifest["manifest_hash"],
+                    target_manifest=target,
+                    non_target_manifest=non_target,
+                    thresholds=self.config.get("promotion_thresholds"),
+                    provenance=provenance,
+                    recorded_decision=decision,
                 ))
             _write_jsonl(self.round_dir / "promotion_decisions.jsonl", decisions)
+            _write_jsonl(
+                self.round_dir / "promotion_bundles.jsonl",
+                promotion_bundles,
+            )
             winner = select_single_promotable_child(decisions)
             atomic_write_json(self.round_dir / "winner.json", winner or {})
-            self._checkpoint("DECIDE", replay_rows, decisions)
+            self._checkpoint(
+                "DECIDE",
+                replay_rows,
+                {"decisions": decisions, "bundles": promotion_bundles},
+            )
 
         decisions = _read_jsonl(self.round_dir / "promotion_decisions.jsonl")
+        promotion_bundles = _read_jsonl(
+            self.round_dir / "promotion_bundles.jsonl"
+        )
         winner = read_json(self.round_dir / "winner.json")
         if self.state.next_stage() == "ATOMIC_COMMIT":
             if winner:
+                winner_bundle = next(
+                    (
+                        item for item in promotion_bundles
+                        if item["recorded_decision"]["candidate_policy_id"]
+                        == winner["candidate_policy_id"]
+                    ),
+                    None,
+                )
+                if winner_bundle is None:
+                    raise RoundRunnerViolation("winner promotion bundle is missing")
                 current_registry = load_registry(self.registry_path)
                 current_active = get_active_policy(current_registry)
                 if current_active.policy_id == winner["candidate_policy_id"]:
@@ -921,7 +1031,7 @@ class EvolutionRoundRunner:
                     registry_after = promote_policy(
                         self.registry_path,
                         winner["candidate_policy_id"],
-                        winner,
+                        winner_bundle,
                         ledger_path=self.ledger_path,
                         event_logger=self.events,
                         round_id=self.round_id,

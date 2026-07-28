@@ -9,7 +9,10 @@ from typing import Any
 
 from r3e.arena.manifests import verify_manifest
 from r3e.arena.paired_replay import paired_replay
-from r3e.policy.promotion import decide_policy_promotion
+from r3e.policy.promotion import (
+    build_policy_promotion_bundle,
+    decide_policy_promotion,
+)
 from r3e.policy.registry_v2 import (
     get_active_policy,
     load_registry,
@@ -21,12 +24,14 @@ from r3e.policy.schema import PolicyState
 from r3e.protocol.events import EventLogger, detect_code_version
 from r3e.protocol.hashing import (
     atomic_write_json,
-    canonical_json,
+    atomic_write_jsonl,
     hash_payload,
     read_json,
 )
 
 from .bank_store import ActiveBankStore
+from .authority import build_memory_promotion_authority
+from .compatibility import classify_policy_compatibility
 from .candidate_builder import build_memory_candidates
 from .consolidator import select_bounded_active_memories
 from .conformance import MemoryAdapterConformanceGate
@@ -36,6 +41,7 @@ from .promotion import build_memory_bank_policy_candidate
 from .qualification_gate import decide_memory_qualification
 from .round_state import MemoryRoundState
 from .schema import (
+    ActiveMemoryBank,
     BudgetEnvelope,
     ControlMemory,
     MemoryLifecycleEvent,
@@ -49,13 +55,7 @@ class MemoryEvolutionViolation(RuntimeError):
 
 
 def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    with temporary.open("w", encoding="utf-8") as stream:
-        for row in rows:
-            stream.write(canonical_json(row) + "\n")
-        stream.flush()
-    temporary.replace(path)
+    atomic_write_jsonl(path, rows)
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -114,6 +114,10 @@ class MemoryEvolutionRunner:
             "inherit_memory_versions": {},
             **(config or {}),
         }
+        if self.config.get("inherit_memory_versions"):
+            raise MemoryEvolutionViolation(
+                "manual inherit_memory_versions is forbidden; inherit from the active bank"
+            )
         self.state_config = {
             **self.config,
             "target_manifest_hash": self.target["manifest_hash"],
@@ -187,7 +191,14 @@ class MemoryEvolutionRunner:
             "PAIRED_REPLAY": lambda: _read_jsonl(
                 self._artifact("policy_paired_replay.jsonl")
             ),
-            "DECIDE": lambda: read_json(self._artifact("promotion_decision.json")),
+            "DECIDE": lambda: {
+                "decision": read_json(
+                    self._artifact("promotion_decision.json")
+                ),
+                "promotion_bundle": read_json(
+                    self._artifact("promotion_bundle.json")
+                ),
+            },
             "ATOMIC_COMMIT": lambda: read_json(
                 self._artifact("registry_after.json")
             )["registry_hash"],
@@ -247,12 +258,12 @@ class MemoryEvolutionRunner:
             )
             accepted = []
             for candidate in candidates:
-                try:
-                    self.memory_store.add_candidate(candidate)
-                    accepted.append(candidate)
-                except Exception as exc:
-                    if "equivalent trigger/control delta" not in str(exc):
-                        raise
+                resolved = self.memory_store.resolve_candidate(candidate)
+                if all(
+                    existing.memory_hash != resolved.memory_hash
+                    for existing in accepted
+                ):
+                    accepted.append(resolved)
             known = {
                 (memory.memory_id, memory.memory_version)
                 for memory in accepted
@@ -344,10 +355,16 @@ class MemoryEvolutionRunner:
                     raise MemoryEvolutionViolation(
                         f"memory cannot enter shadow replay from {status}"
                     )
+                current_evidence_set = self.memory_store.evidence_set(
+                    memory.memory_id, memory.memory_version
+                )
                 qualification_path = (
                     self.work_dir
                     / "qualification"
-                    / f"{memory.memory_hash.replace(':', '_')}.json"
+                    / (
+                        f"{memory.memory_hash.replace(':', '_')}_"
+                        f"{current_evidence_set['evidence_set_hash'].replace(':', '_')}.json"
+                    )
                 )
                 if qualification_path.exists():
                     frozen = read_json(qualification_path)
@@ -392,6 +409,7 @@ class MemoryEvolutionRunner:
                         memory,
                         results,
                         thresholds=self.config.get("qualification_thresholds"),
+                        evidence_set=current_evidence_set,
                         provenance={
                             "manifest_hash": hash_payload({
                                 "target": self.target["manifest_hash"],
@@ -416,12 +434,17 @@ class MemoryEvolutionRunner:
                             ),
                         },
                     )
-                    atomic_write_json(qualification_path, {
+                    qualification_bundle = {
                         "schema_version": "r3e-memory-qualification-bundle-v1",
                         "memory_hash": memory.memory_hash,
+                        "evidence_set": current_evidence_set,
                         "results": [row.to_dict() for row in results],
                         "decision": decision,
-                    })
+                    }
+                    atomic_write_json(qualification_path, qualification_bundle)
+                    self.memory_store.store_qualification_bundle(
+                        qualification_bundle
+                    )
                 if decision["qualified"]:
                     status = self.memory_store.current_status(
                         memory.memory_id, memory.memory_version
@@ -432,12 +455,7 @@ class MemoryEvolutionRunner:
                             parent.policy_hash, decision["decision_hash"],
                         )
                         status = "replay_qualified"
-                    if status == "replay_qualified":
-                        self._transition(
-                            memory, "replay_qualified", "active_dormant",
-                            parent.policy_hash, decision["decision_hash"],
-                        )
-                    elif status != "active_dormant":
+                    if status not in {"replay_qualified", "active_dormant"}:
                         raise MemoryEvolutionViolation(
                             f"qualified memory has incompatible status: {status}"
                         )
@@ -496,12 +514,14 @@ class MemoryEvolutionRunner:
                 ],
                 maximum_active=int(self.config["maximum_active_memories"]),
             )
-            inherited = {
-                str(memory_id): int(version)
-                for memory_id, version in self.config[
-                    "inherit_memory_versions"
-                ].items()
-            }
+            inherited = {}
+            if parent.memory_binding:
+                inherited = {
+                    memory_id: int(binding["memory_version"])
+                    for memory_id, binding in self.bank_store.load_for_policy(
+                        parent
+                    ).memories.items()
+                }
             for memory_id, version in inherited.items():
                 if self.memory_store.current_status(
                     memory_id, version
@@ -523,11 +543,28 @@ class MemoryEvolutionRunner:
                 ]
             )
             if selected:
+                for memory_id, version in selected.items():
+                    memory = self.memory_store.get_version(memory_id, version)
+                    if self.memory_store.current_status(memory_id, version) == "replay_qualified":
+                        qualification = next(
+                            item for item in decisions
+                            if item["memory_id"] == memory_id
+                            and int(item["memory_version"]) == version
+                        )
+                        self._transition(
+                            memory,
+                            "replay_qualified",
+                            "bank_candidate",
+                            parent.policy_hash,
+                            qualification["decision_hash"],
+                        )
                 source_manifest_hash = hash_payload({
                     "episode_hashes": sorted(
                         episode_hash
                         for memory_id in selected
-                        for episode_hash in by_id[memory_id]
+                        for episode_hash in self.memory_store.get_version(
+                            memory_id, selected[memory_id]
+                        )
                         .source_episode_hashes.values()
                     )
                 })
@@ -613,6 +650,9 @@ class MemoryEvolutionRunner:
         if self.state.next_stage() == "DECIDE":
             if child_raw:
                 child = PolicyState.from_dict(child_raw)
+                bank = ActiveMemoryBank.from_dict(
+                    read_json(self._artifact("bank_candidate.json"))
+                )
                 provenance = {
                     "round_id": self.round_id,
                     "residual_manifest_hash": child.created_from_residual_manifest_hash,
@@ -648,6 +688,74 @@ class MemoryEvolutionRunner:
                     thresholds=self.config.get("promotion_thresholds"),
                     provenance=provenance,
                 )
+                authority_memories = [
+                    self.memory_store.get_version(
+                        memory_id, int(binding["memory_version"])
+                    )
+                    for memory_id, binding in bank.memories.items()
+                ]
+                qualification_bundles = []
+                compatibility_bundles = []
+                registry = load_registry(self.registry_path)
+                policies_by_hash = {
+                    entry["policy_hash"]: PolicyState.from_dict(entry["policy"])
+                    for entry in registry["policies"].values()
+                }
+                for memory in authority_memories:
+                    local_matches = sorted(
+                        (self.work_dir / "qualification").glob(
+                            f"{memory.memory_hash.replace(':', '_')}_*.json"
+                        )
+                    )
+                    qualification = (
+                        read_json(local_matches[-1])
+                        if local_matches
+                        else self.memory_store.get_qualification_bundle(
+                            memory.memory_hash
+                        )
+                    )
+                    qualification_bundles.append(qualification)
+                    qualified_under = qualification["decision"][
+                        "qualified_under_policy_hash"
+                    ]
+                    if qualified_under != parent.policy_hash:
+                        source_policy = policies_by_hash.get(qualified_under)
+                        if source_policy is None:
+                            raise MemoryEvolutionViolation(
+                                "inherited memory qualification policy is unavailable"
+                            )
+                        compatibility = {
+                            "memory_hash": memory.memory_hash,
+                            "source_policy": source_policy.to_dict(),
+                            "decision": classify_policy_compatibility(
+                                memory, source_policy, parent
+                            ),
+                        }
+                        compatibility["decision_hash"] = hash_payload(
+                            compatibility
+                        )
+                        compatibility_bundles.append(compatibility)
+                memory_authority = build_memory_promotion_authority(
+                    bank=bank,
+                    memories=authority_memories,
+                    qualification_bundles=qualification_bundles,
+                    compatibility_bundles=compatibility_bundles,
+                )
+                promotion_bundle = build_policy_promotion_bundle(
+                    parent,
+                    child,
+                    replay_rows,
+                    validation_manifest_hash=hash_payload({
+                        "target": self.target["manifest_hash"],
+                        "non_target": self.non_target["manifest_hash"],
+                    }),
+                    target_manifest=self.target,
+                    non_target_manifest=self.non_target,
+                    thresholds=self.config.get("promotion_thresholds"),
+                    provenance=provenance,
+                    recorded_decision=decision,
+                    memory_authority=memory_authority,
+                )
             else:
                 decision = {
                     "schema_version": "r3e-memory-no-candidate-v1",
@@ -655,11 +763,19 @@ class MemoryEvolutionRunner:
                     "decision": "no_candidate",
                 }
                 decision["decision_hash"] = hash_payload(decision)
+                promotion_bundle = {}
             atomic_write_json(
                 self._artifact("promotion_decision.json"), decision
             )
-            self.state.complete("DECIDE", decision)
+            atomic_write_json(
+                self._artifact("promotion_bundle.json"), promotion_bundle
+            )
+            self.state.complete(
+                "DECIDE",
+                {"decision": decision, "promotion_bundle": promotion_bundle},
+            )
         decision = read_json(self._artifact("promotion_decision.json"))
+        promotion_bundle = read_json(self._artifact("promotion_bundle.json"))
 
         if self.state.next_stage() == "ATOMIC_COMMIT":
             registry = load_registry(self.registry_path)
@@ -672,13 +788,29 @@ class MemoryEvolutionRunner:
                     registry_after = promote_policy(
                         self.registry_path,
                         child.policy_id,
-                        decision,
+                        promotion_bundle,
                         ledger_path=self.ledger_path,
                         event_logger=self.events,
                         round_id=self.round_id,
                     )
                 else:
                     raise MemoryEvolutionViolation("memory child became stale")
+                for memory_id, binding in ActiveMemoryBank.from_dict(
+                    read_json(self._artifact("bank_candidate.json"))
+                ).memories.items():
+                    memory = self.memory_store.get_version(
+                        memory_id, int(binding["memory_version"])
+                    )
+                    if self.memory_store.current_status(
+                        memory_id, memory.memory_version
+                    ) == "bank_candidate":
+                        self._transition(
+                            memory,
+                            "bank_candidate",
+                            "active_dormant",
+                            child.policy_hash,
+                            promotion_bundle["bundle_hash"],
+                        )
             else:
                 registry_after = registry
                 if child_raw:
@@ -696,6 +828,23 @@ class MemoryEvolutionRunner:
                             event_logger=self.events,
                             round_id=self.round_id,
                         )
+                    bank = ActiveMemoryBank.from_dict(
+                        read_json(self._artifact("bank_candidate.json"))
+                    )
+                    for memory_id, binding in bank.memories.items():
+                        memory = self.memory_store.get_version(
+                            memory_id, int(binding["memory_version"])
+                        )
+                        if self.memory_store.current_status(
+                            memory_id, memory.memory_version
+                        ) == "bank_candidate":
+                            self._transition(
+                                memory,
+                                "bank_candidate",
+                                "replay_qualified",
+                                parent.policy_hash,
+                                decision["decision_hash"],
+                            )
             atomic_write_json(
                 self._artifact("registry_after.json"), registry_after
             )

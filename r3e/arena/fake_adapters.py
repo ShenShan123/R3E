@@ -145,7 +145,9 @@ class FakeRedAdapter:
     @staticmethod
     def prepare_validity(poison: dict[str, Any]) -> dict[str, Any]:
         return bind_adapter_output({
-            **poison,
+            "poison_id": poison["poison_id"],
+            "challenged_policy_hash": poison["challenged_policy_hash"],
+            "poison_payload_hash": poison["poison_payload_hash"],
             "golden_compile_ok": True,
             "golden_oracle_ok": True,
             "buggy_compile_ok": True,

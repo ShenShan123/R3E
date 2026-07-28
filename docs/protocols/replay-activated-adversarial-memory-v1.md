@@ -121,6 +121,9 @@ semantic postconditions.
 
 ## Implementation boundary
 
-RAAM System Upgrade Complete V1 implements the deterministic Phase 1–9
-software protocol. It does not claim real-model memory effectiveness,
-cross-design empirical gain, or a completed continual-learning experiment.
+RAAM Protocol Skeleton V1 implements the deterministic Phase 1–9 software
+protocol. It does not claim complete authority closure, real-model memory
+effectiveness, cross-design empirical gain, or a completed continual-learning
+experiment. Grounded compile/formal/oracle receipts, artifact-derived failure
+descriptors, and parser-backed RTL semantic diffs remain required before a
+“System Upgrade Complete” milestone may be frozen.

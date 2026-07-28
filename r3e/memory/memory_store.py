@@ -10,6 +10,7 @@ from r3e.protocol.ledger import append_ledger, read_ledger, writer_lock
 from .episode_store import EpisodeStore
 from .lifecycle import validate_transition
 from .schema import ControlMemory, MemoryLifecycleEvent
+from .evidence import evidence_link, freeze_evidence_set, memory_definition
 
 
 class MemoryStoreViolation(RuntimeError):
@@ -27,6 +28,9 @@ class MemoryStore:
         self.objects = self.root / "objects"
         self.index_path = self.root / "memory_versions.jsonl"
         self.lifecycle_path = self.root / "lifecycle.jsonl"
+        self.evidence_path = self.root / "evidence_links.jsonl"
+        self.qualifications = self.root / "qualifications"
+        self.qualification_index_path = self.root / "qualification_versions.jsonl"
         self.episode_store = episode_store
 
     def _object_path(self, memory: ControlMemory) -> Path:
@@ -52,9 +56,25 @@ class MemoryStore:
                 and row.get("memory_version") == value.memory_version
             ]
             if same_version:
-                if same_version[0].get("memory_hash") != value.memory_hash:
-                    raise MemoryStoreViolation("memory version is already bound to another hash")
-                return value.memory_hash
+                existing = self.get_version(
+                    value.memory_id, value.memory_version
+                )
+                if existing.memory_hash != value.memory_hash:
+                    if not (
+                        existing.effective_delta_hash
+                        == value.effective_delta_hash
+                        and existing.trigger_predicate
+                        == value.trigger_predicate
+                        and existing.created_under_effective_policy_hash
+                        == value.created_under_effective_policy_hash
+                    ):
+                        raise MemoryStoreViolation(
+                            "memory version is already bound to another definition"
+                        )
+                    self._append_evidence_links(existing, value)
+                    return existing.memory_hash
+                self._append_evidence_links(existing, value)
+                return existing.memory_hash
             versions = [
                 int(row["memory_version"])
                 for row in rows if row.get("memory_id") == value.memory_id
@@ -70,14 +90,18 @@ class MemoryStore:
                     if row.get("effective_delta_hash") == value.effective_delta_hash
                     and row.get("trigger_hash")
                     == hash_payload(value.trigger_predicate)
+                    and row.get("effective_policy_hash")
+                    == value.created_under_effective_policy_hash
                 ),
                 None,
             )
             if duplicate_delta:
-                raise MemoryStoreViolation(
-                    "equivalent trigger/control delta already exists: "
-                    f"{duplicate_delta['memory_id']}"
+                existing = self.get_version(
+                    str(duplicate_delta["memory_id"]),
+                    int(duplicate_delta["memory_version"]),
                 )
+                self._append_evidence_links(existing, value)
+                return existing.memory_hash
             target = self._object_path(value)
             if not target.exists():
                 atomic_write_json(target, value.to_dict())
@@ -90,10 +114,134 @@ class MemoryStore:
                     "memory_hash": value.memory_hash,
                     "effective_delta_hash": value.effective_delta_hash,
                     "trigger_hash": hash_payload(value.trigger_predicate),
+                    "effective_policy_hash": (
+                        value.created_under_effective_policy_hash
+                    ),
+                    "definition": memory_definition(value),
                     "object_path": str(target.relative_to(self.root)),
                 },
             )
+            self._append_evidence_links(value, value)
         return value.memory_hash
+
+    def _append_evidence_links(
+        self,
+        definition: ControlMemory,
+        evidence_source: ControlMemory,
+    ) -> None:
+        rows = read_ledger(self.evidence_path)
+        known = {
+            (str(row.get("memory_hash")), str(row.get("episode_id")))
+            for row in rows
+        }
+        for episode_id, episode_hash in sorted(
+            evidence_source.source_episode_hashes.items()
+        ):
+            if (definition.memory_hash, episode_id) in known:
+                continue
+            append_ledger(
+                self.evidence_path,
+                {
+                    "operation": "append-memory-evidence-link",
+                    **evidence_link(
+                        definition,
+                        episode_id=episode_id,
+                        episode_hash=episode_hash,
+                    ),
+                },
+            )
+            known.add((definition.memory_hash, episode_id))
+
+    def resolve_candidate(
+        self, memory: ControlMemory | dict[str, Any]
+    ) -> ControlMemory:
+        value = (
+            memory
+            if isinstance(memory, ControlMemory)
+            else ControlMemory.from_dict(memory)
+        )
+        resolved_hash = self.add_candidate(value)
+        matches = [
+            row for row in read_ledger(self.index_path)
+            if row.get("memory_hash") == resolved_hash
+        ]
+        if len(matches) != 1:
+            raise MemoryStoreViolation("resolved memory definition is ambiguous")
+        return self.get_version(
+            str(matches[0]["memory_id"]), int(matches[0]["memory_version"])
+        )
+
+    def evidence_set(self, memory_id: str, version: int) -> dict[str, Any]:
+        memory = self.get_version(memory_id, version)
+        links = []
+        for row in read_ledger(self.evidence_path):
+            if row.get("memory_hash") != memory.memory_hash:
+                continue
+            link = {
+                key: value for key, value in row.items()
+                if key not in {
+                    "operation",
+                    "timestamp",
+                    "ledger_index",
+                    "previous_entry_hash",
+                    "ledger_entry_hash",
+                }
+            }
+            if link.get("link_hash") != hash_payload({
+                key: value for key, value in link.items() if key != "link_hash"
+            }):
+                raise MemoryStoreViolation("memory evidence link hash mismatch")
+            links.append(link)
+        return freeze_evidence_set(memory, links)
+
+    def store_qualification_bundle(self, bundle: dict[str, Any]) -> str:
+        memory_hash = str(bundle.get("memory_hash") or "")
+        decision_hash = str((bundle.get("decision") or {}).get("decision_hash") or "")
+        if not memory_hash or not decision_hash:
+            raise MemoryStoreViolation("qualification bundle binding is incomplete")
+        target = self.qualifications / f"{decision_hash.replace(':', '_')}.json"
+        if target.exists():
+            if read_json(target) != bundle:
+                raise MemoryStoreViolation("qualification bundle hash collision")
+        else:
+            atomic_write_json(target, bundle)
+            append_ledger(
+                self.qualification_index_path,
+                {
+                    "operation": "freeze-memory-qualification-version",
+                    "memory_hash": memory_hash,
+                    "decision_hash": decision_hash,
+                    "evidence_set_hash": str(
+                        (bundle.get("decision") or {}).get(
+                            "evidence_set_hash"
+                        )
+                        or ""
+                    ),
+                    "qualified_under_policy_hash": str(
+                        (bundle.get("decision") or {}).get(
+                            "qualified_under_policy_hash"
+                        )
+                        or ""
+                    ),
+                    "object_path": str(target.relative_to(self.root)),
+                },
+            )
+        return decision_hash
+
+    def get_qualification_bundle(
+        self, memory_hash: str, *, policy_hash: str | None = None
+    ) -> dict[str, Any]:
+        matches = [
+            row for row in read_ledger(self.qualification_index_path)
+            if row.get("memory_hash") == memory_hash
+            and (
+                not policy_hash
+                or row.get("qualified_under_policy_hash") == policy_hash
+            )
+        ]
+        if not matches:
+            raise MemoryStoreViolation("qualification bundle not found")
+        return read_json(self.root / matches[-1]["object_path"])
 
     def get_version(self, memory_id: str, version: int) -> ControlMemory:
         rows = read_ledger(self.index_path)
@@ -168,4 +316,8 @@ class MemoryStore:
         return {
             "memory_version_count": len(rows),
             "lifecycle_event_count": len(read_ledger(self.lifecycle_path)),
+            "evidence_link_count": len(read_ledger(self.evidence_path)),
+            "qualification_version_count": len(
+                read_ledger(self.qualification_index_path)
+            ),
         }

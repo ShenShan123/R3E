@@ -9,16 +9,16 @@ from r3e.protocol.hashing import hash_file, hash_payload
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_raam_system_upgrade_milestone_is_frozen_and_reconstructable():
+def test_raam_protocol_skeleton_milestone_is_frozen_and_reconstructable():
     milestone = json.loads(
         (
             ROOT
-            / "configs/evolution/raam_system_upgrade_complete_v1.json"
+            / "configs/evolution/raam_protocol_skeleton_v1.json"
         ).read_text(encoding="utf-8")
     )
     assert (
         milestone["schema_version"]
-        == "r3e-raam-system-upgrade-milestone-v1"
+        == "r3e-raam-protocol-skeleton-milestone-v1"
     )
     assert milestone["status"] == "frozen"
     assert milestone["milestone_hash"] == hash_payload({

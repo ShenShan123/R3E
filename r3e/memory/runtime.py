@@ -13,6 +13,7 @@ from .descriptor import build_failure_descriptor
 from .plan_compiler import MemoryAwarePlanCompiler
 from .retriever import MemoryRetriever
 from .schema import ExecutionPlan, RuntimeContext
+from .execution_trace import ExecutionTraceRecorder
 
 
 class MemoryRuntime:
@@ -95,11 +96,16 @@ class MemoryRuntime:
             round_id=round_id,
         )
         result = dict(
+            # The recorder owns observable operation invocation.  A returned
+            # plan hash without these calls is not execution evidence.
             executor(
                 case=dict(case),
                 work_dir=Path(work_dir),
                 policy=active_policy,
                 execution_plan=plan,
+                trace_recorder=(
+                    trace_recorder := ExecutionTraceRecorder(plan)
+                ),
             )
         )
         if result.get("effective_policy_hash") != active_policy.policy_hash:
@@ -108,6 +114,12 @@ class MemoryRuntime:
             raise RuntimeError("memory-aware executor returned wrong plan hash")
         if int(result.get("memory_prompt_tokens") or 0) != 0:
             raise RuntimeError("memory-aware executor injected memory prompt tokens")
+        trace = trace_recorder.finalize()
+        claimed_trace_hash = str(result.get("execution_trace_hash") or "")
+        if claimed_trace_hash and claimed_trace_hash != trace["trace_hash"]:
+            raise RuntimeError("memory-aware executor trace hash mismatch")
+        result["execution_trace"] = trace
+        result["execution_trace_hash"] = trace["trace_hash"]
         result["activated_memory_ids"] = list(plan.activated_memory_ids)
         result["memory_token_cost"] = plan.memory_token_cost
         return result

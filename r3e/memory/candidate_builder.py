@@ -88,8 +88,8 @@ def build_memory_candidates(
         }
         identity = hash_payload({
             "trigger_hash": trigger_hash,
-            "source_episode_hashes": source_hashes,
-            "policy_hash": policy.policy_hash,
+            "effective_delta_hash": hash_payload(_control_delta(triggers[trigger_hash])),
+            "effective_policy_hash": policy.policy_hash,
         }).split(":", 1)[1][:16]
         candidates.append(ControlMemory.create(
             memory_id=f"CM_{identity}",

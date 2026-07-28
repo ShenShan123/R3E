@@ -282,6 +282,23 @@ class PolicyState:
             immutable["memory_binding"] = self.memory_binding
         return hash_payload(immutable)
 
+    @property
+    def policy_instance_hash(self) -> str:
+        """Lineage identity of this exact policy version."""
+        return self.policy_hash
+
+    @property
+    def effective_policy_hash(self) -> str:
+        """Behavioral identity, excluding round/id/lineage bookkeeping."""
+        return hash_payload({
+            "schema_version": self.schema_version,
+            "base_policy_hash": self.base_policy_hash,
+            "configuration": self.configuration,
+            "budgets": self.budgets,
+            "frozen_assets": self.frozen_assets or {},
+            "memory_binding": self.memory_binding or {},
+        })
+
     def with_updates(self, **updates: Any) -> "PolicyState":
         payload = self.to_dict()
         payload.update(updates)

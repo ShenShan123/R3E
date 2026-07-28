@@ -26,6 +26,7 @@ def decide_memory_qualification(
     *,
     thresholds: dict[str, Any] | None = None,
     provenance: dict[str, Any],
+    evidence_set: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     rows = list(results)
     if not rows:
@@ -53,6 +54,29 @@ def decide_memory_qualification(
     ):
         raise MemoryQualificationViolation("qualification provenance is incomplete")
     limits = {**DEFAULT_THRESHOLDS, **(thresholds or {})}
+    frozen_evidence = dict(evidence_set or {
+        "memory_id": memory.memory_id,
+        "memory_version": memory.memory_version,
+        "memory_hash": memory.memory_hash,
+        "support_count": len(memory.source_episode_ids),
+        "links": [
+            {
+                "episode_id": episode_id,
+                "episode_hash": memory.source_episode_hashes[episode_id],
+            }
+            for episode_id in sorted(memory.source_episode_ids)
+        ],
+    })
+    if (
+        frozen_evidence.get("memory_id") != memory.memory_id
+        or int(frozen_evidence.get("memory_version") or 0) != memory.memory_version
+        or frozen_evidence.get("memory_hash") != memory.memory_hash
+    ):
+        raise MemoryQualificationViolation("qualification evidence set mismatch")
+    evidence_set_hash = str(
+        frozen_evidence.get("evidence_set_hash")
+        or hash_payload(frozen_evidence)
+    )
     helped = sum(row.outcome == "helped" for row in rows)
     harmed = sum(row.outcome == "harmed" for row in rows)
     designs = {
@@ -112,6 +136,8 @@ def decide_memory_qualification(
         "paired_result_hash": hash_payload([row.to_dict() for row in rows]),
         "provenance": dict(provenance),
         "qualified_under_policy_hash": replay_policy_hash,
+        "evidence_set_hash": evidence_set_hash,
+        "support_count": int(frozen_evidence.get("support_count") or 0),
     }
     decision["decision_hash"] = hash_payload(decision)
     return decision

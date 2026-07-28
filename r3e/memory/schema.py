@@ -27,6 +27,7 @@ MEMORY_STATUSES = {
     "candidate",
     "shadow_testing",
     "replay_qualified",
+    "bank_candidate",
     "active_dormant",
     "revalidation_required",
     "stale",
@@ -618,14 +619,16 @@ class ActiveMemoryBank:
                 "memory_version", "memory_hash", "status"
             }:
                 raise MemoryValidationError("invalid bank memory binding")
-            if binding.get("status") != "active_dormant":
-                raise MemoryValidationError("bank may contain only active_dormant memories")
+            if binding.get("status") not in {"bank_candidate", "active_dormant"}:
+                raise MemoryValidationError(
+                    "bank may contain only bank_candidate or active_dormant memories"
+                )
             normalized[_string(memory_id, "memory_id")] = {
                 "memory_version": max(
                     1, _non_negative_int(binding.get("memory_version"), "memory_version")
                 ),
                 "memory_hash": _digest(binding.get("memory_hash"), "memory_hash"),
-                "status": "active_dormant",
+                "status": binding["status"],
             }
         # effective_policy_hash is a derived promotion binding: excluding it from
         # bank identity avoids a circular hash (PolicyState binds bank_hash,
