@@ -10,7 +10,9 @@ from r3e.grounded.command_runner import GroundedCommandRunner
 from r3e.grounded.yosys_formal import (
     YosysFormalProvider,
     YosysFormalProviderViolation,
+    formal_triplet_from_assessment,
     verify_formal_execution_receipt,
+    verify_formal_proof_assessment,
     verify_formal_proof_triplet,
 )
 from r3e.policy.schema import PolicyState
@@ -330,7 +332,7 @@ endmodule
         workspace=workspace,
         run_context_hash=hash_payload({"formal": "triplet"}),
     )
-    triplet = provider.execute_triplet(
+    assessment = provider.execute_proof_assessment(
         receipt_prefix="MP_FORMAL_001",
         clean_rtl_path=clean,
         poison_rtl_path=poison,
@@ -343,6 +345,10 @@ endmodule
         frozen_revert_rtl_hash=hash_file(revert),
         frozen_property_hash=hash_file(property_file),
     )
+    assert assessment["proof_satisfied"]
+    assert assessment["rejection_reasons"] == []
+    assert verify_formal_proof_assessment(assessment) == assessment
+    triplet = formal_triplet_from_assessment(assessment)
     verified = verify_formal_proof_triplet(triplet)
     assert verified["clean"]["verdict"] == "proved"
     assert verified["poison"]["verdict"] == "counterexample"
@@ -399,6 +405,64 @@ def test_yosys_formal_provider_fails_closed(tmp_path):
     assert receipt["verdict"] == "inconclusive"
     assert receipt["command_receipt"]["result_kind"] == "tool_error"
     assert not receipt["counterexample"]
+
+
+@pytest.mark.skipif(not HAS_YOSYS, reason="Yosys is unavailable")
+def test_yosys_formal_assessment_preserves_inconclusive_triplet(
+    tmp_path,
+):
+    workspace = tmp_path / "formal-assessment"
+    workspace.mkdir()
+    clean = workspace / "clean.v"
+    poison = workspace / "poison.v"
+    revert = workspace / "revert.v"
+    property_file = workspace / "property.v"
+    clean.write_text(
+        "module m(input wire a, output wire y); assign y=a; endmodule\n",
+        encoding="utf-8",
+    )
+    poison.write_text(
+        "module m(input wire a, output wire y); assign y=~a; endmodule\n",
+        encoding="utf-8",
+    )
+    revert.write_text(clean.read_text(encoding="utf-8"), encoding="utf-8")
+    property_file.write_text(
+        "module formal_top; syntax is invalid; endmodule\n",
+        encoding="utf-8",
+    )
+    provider = YosysFormalProvider(
+        workspace=workspace,
+        run_context_hash=hash_payload({"formal": "assessment"}),
+    )
+    assessment = provider.execute_proof_assessment(
+        receipt_prefix="MP_FORMAL_REJECT_001",
+        clean_rtl_path=clean,
+        poison_rtl_path=poison,
+        revert_rtl_path=revert,
+        property_path=property_file,
+        top_module="formal_top",
+        depth=1,
+        frozen_clean_rtl_hash=hash_file(clean),
+        frozen_poison_rtl_hash=hash_file(poison),
+        frozen_revert_rtl_hash=hash_file(revert),
+        frozen_property_hash=hash_file(property_file),
+    )
+    assert not assessment["proof_satisfied"]
+    assert assessment["rejection_reasons"] == [
+        "F1_clean_not_proved",
+        "F2_poison_counterexample_not_proved",
+        "F3_revert_not_proved",
+    ]
+    assert all(
+        assessment[key]["verdict"] == "inconclusive"
+        for key in ("clean", "poison", "revert")
+    )
+    assert verify_formal_proof_assessment(assessment) == assessment
+    with pytest.raises(
+        YosysFormalProviderViolation,
+        match="does not satisfy",
+    ):
+        formal_triplet_from_assessment(assessment)
 
 
 def test_grd2_formal_milestone_is_reconstructable():

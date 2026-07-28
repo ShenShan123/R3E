@@ -232,6 +232,15 @@ def _verify_execution_chain(aggregate: dict[str, Any]) -> bool:
         "effect_signature",
         "first_divergence_hash",
         "mismatch_topology_hash",
+        "waveform_observation_complete",
+        "waveform_observation_hash",
+        "first_divergence_signal",
+        "first_divergence_cycle",
+        "cycle_offset",
+        "temporal_relation",
+        "assignment_type",
+        "cone_depth",
+        "mismatch_pattern",
     ):
         if field in observed and observed[field] != oracle_result.get(field):
             raise GroundedAdmissionViolation(
@@ -526,6 +535,7 @@ def decide_grounded_admission(
             row["first_divergence_hash"],
             row["mismatch_topology_hash"],
             row["effect_signature"],
+            row.get("waveform_observation_hash", ""),
         )
         for row in poison_observed
     }

@@ -60,6 +60,9 @@ from r3e.red.poison_payload import (
     verify_poison_payload,
 )
 from r3e.red.memory_challenge import build_memory_capability_packet
+from r3e.red.grounded.formal_rejection import (
+    append_formal_rejection,
+)
 
 from .audit import append_round_ledger, freeze_round_audit
 from .grounded_authority import (
@@ -244,6 +247,10 @@ class EvolutionRoundRunner:
         self.covered_archive_path = self.root / config.get(
             "covered_archive", "runtime/archives/red_covered_archive.jsonl"
         )
+        self.rejected_archive_path = self.root / config.get(
+            "red_rejected_archive",
+            "runtime/archives/red_rejected_archive.jsonl",
+        )
         self.round_ledger_path = self.root / config.get(
             "round_ledger", "runtime/rounds/round_ledger.jsonl"
         )
@@ -296,7 +303,22 @@ class EvolutionRoundRunner:
                 )["run_context_hash"],
             },
             "RED_GENERATE": lambda: _read_jsonl(self.round_dir / "red_candidates.jsonl"),
-            "VALIDITY_GATE": lambda: _read_jsonl(self.round_dir / "validity_results.jsonl"),
+            "VALIDITY_GATE": lambda: (
+                {
+                    "validity": _read_jsonl(
+                        self.round_dir / "validity_results.jsonl"
+                    ),
+                    "formal_rejections": _read_jsonl(
+                        self.round_dir / "formal_rejections.jsonl"
+                    ),
+                }
+                if (
+                    self.round_dir / "formal_rejections.jsonl"
+                ).is_file()
+                else _read_jsonl(
+                    self.round_dir / "validity_results.jsonl"
+                )
+            ),
             "BLUE_CHALLENGE": lambda: _read_jsonl(
                 self.round_dir / "blue_challenge_results.jsonl"
             ),
@@ -507,6 +529,7 @@ class EvolutionRoundRunner:
         if self.state.next_stage() == "VALIDITY_GATE":
             validity_rows = []
             valid = []
+            formal_rejections = []
             for poison in candidates:
                 try:
                     payload_hash = verify_poison_payload(poison)
@@ -541,13 +564,27 @@ class EvolutionRoundRunner:
                         )
                     except Exception as exc:
                         raise RoundRunnerViolation(str(exc)) from exc
-                    row = {
-                        **dict(poison),
-                        "validity": grounded["validity"],
-                        "grounded_authority_bundle": grounded[
-                            "grounded_authority_bundle"
-                        ],
-                    }
+                    if grounded.get("formal_rejection"):
+                        rejection = append_formal_rejection(
+                            self.rejected_archive_path,
+                            grounded["formal_rejection"],
+                            policy=parent,
+                            registries=self.grounded_registries,
+                        )
+                        row = {
+                            **dict(poison),
+                            "validity": grounded["validity"],
+                            "formal_rejection": rejection,
+                        }
+                        formal_rejections.append(rejection)
+                    else:
+                        row = {
+                            **dict(poison),
+                            "validity": grounded["validity"],
+                            "grounded_authority_bundle": grounded[
+                                "grounded_authority_bundle"
+                            ],
+                        }
                     verify_poison_payload(row)
                 else:
                     prepared = self.adapter_gate.validate(
@@ -607,6 +644,10 @@ class EvolutionRoundRunner:
                     valid.append(row)
             _write_jsonl(self.round_dir / "validity_results.jsonl", validity_rows)
             _write_jsonl(self.round_dir / "valid_poisons.jsonl", valid)
+            _write_jsonl(
+                self.round_dir / "formal_rejections.jsonl",
+                formal_rejections,
+            )
             self.events.emit(
                 "oracle",
                 "validity_gate_completed",
@@ -614,7 +655,11 @@ class EvolutionRoundRunner:
                 challenged_policy_hash=parent.policy_hash,
                 candidate_count=len(candidates),
                 proven_valid_count=len(valid),
+                formal_rejection_count=len(formal_rejections),
                 results_hash=hash_payload(validity_rows),
+                formal_rejections_hash=hash_payload(
+                    formal_rejections
+                ),
                 grounded_authority_hashes=[
                     row["grounded_authority_bundle"][
                         "authority_hash"
@@ -636,8 +681,22 @@ class EvolutionRoundRunner:
                     for row in validity_rows
                     if row.get("grounded_authority_bundle")
                 ],
+                formal_assessment_hashes=[
+                    row["formal_rejection"][
+                        "formal_proof_assessment"
+                    ]["assessment_hash"]
+                    for row in validity_rows
+                    if row.get("formal_rejection")
+                ],
             )
-            self._checkpoint("VALIDITY_GATE", candidates, validity_rows)
+            self._checkpoint(
+                "VALIDITY_GATE",
+                candidates,
+                {
+                    "validity": validity_rows,
+                    "formal_rejections": formal_rejections,
+                },
+            )
 
         valid = _read_jsonl(self.round_dir / "valid_poisons.jsonl")
         if self.state.next_stage() == "BLUE_CHALLENGE":

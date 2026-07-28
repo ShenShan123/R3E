@@ -28,21 +28,37 @@ from .materializers import (
     verify_materialization_receipt,
 )
 from .operator_ast import operator_nodes
+from .formal_rejection import (
+    GroundedFormalRejectionViolation,
+    append_formal_rejection,
+    build_formal_rejection,
+    build_formal_rejection_validity,
+    load_formal_rejection_archive,
+    verify_formal_rejection,
+    verify_formal_rejection_validity,
+)
 
 __all__ = [
     "GroundedAdmissionViolation",
     "GroundedRegistryBundle",
     "GroundedRegistryViolation",
+    "GroundedFormalRejectionViolation",
     "MutationPlanViolation",
     "AstMaterializationViolation",
     "build_mutation_plan",
+    "build_formal_rejection",
+    "build_formal_rejection_validity",
+    "append_formal_rejection",
     "decide_grounded_admission",
     "inverse_materialization",
     "load_grounded_registries",
+    "load_formal_rejection_archive",
     "materialize_comparator",
     "materialize_operator",
     "operator_nodes",
     "verify_grounded_admission_decision",
+    "verify_formal_rejection",
+    "verify_formal_rejection_validity",
     "verify_materialization_receipt",
     "verify_mutation_plan",
 ]

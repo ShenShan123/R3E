@@ -250,6 +250,22 @@ def execute_grounded_icarus_admission(
             "first_divergence_hash": poison_observed[
                 "first_divergence_hash"
             ],
+            "waveform_observation_hash": poison_observed[
+                "waveform_observation_hash"
+            ],
+            "first_divergence_signal": poison_observed[
+                "first_divergence_signal"
+            ],
+            "first_divergence_cycle": poison_observed[
+                "first_divergence_cycle"
+            ],
+            "cycle_offset": poison_observed["cycle_offset"],
+            "temporal_relation": poison_observed[
+                "temporal_relation"
+            ],
+            "assignment_type": poison_observed["assignment_type"],
+            "cone_depth": poison_observed["cone_depth"],
+            "mismatch_pattern": poison_observed["mismatch_pattern"],
         },
     )
     evidence = {

@@ -146,9 +146,10 @@ V1** in `configs/evolution/raam_protocol_skeleton_v1.json`. Its child milestone,
 evidence reconstruction, instance/effective policy and bank identities, stable
 cross-policy memory definitions, semantic bank deduplication, and cumulative
 memory provenance. Its later Grounded Runtime child closes runner-owned
-Icarus/Yosys-to-descriptor/episode authority binding. Rich waveform-level
-features, complete language coverage, and empirical continual-learning claims
-remain open.
+Icarus/Yosys-to-descriptor/episode authority binding. Its next child adds a
+bounded signal/cycle observation protocol and a separate formal-rejection
+route. Complete waveform semantics, complete language coverage, and empirical
+continual-learning claims remain open.
 
 ### Grounded Red Discovery
 
@@ -214,16 +215,30 @@ The historical adapter evidence path remains explicit as
 **Grounded Authority Integration V1** in
 `configs/evolution/grounded_authority_integration_v1.json`; the formal/RAAM
 closure is frozen as **Grounded Runtime Authority Closure V1** in
-`configs/evolution/grounded_runtime_authority_closure_v1.json`.
+`configs/evolution/grounded_runtime_authority_closure_v1.json`. The bounded
+waveform and formal-rejection child is frozen as **Grounded Waveform Rejection
+V1** in `configs/evolution/grounded_waveform_rejection_v1.json`.
+
+The current child protocol records the first divergent signal and cycle,
+cycle offset, temporal relation, assignment class, cone-depth bucket, and
+mismatch pattern from two deterministic poison simulations. The oracle parser
+binds those values to provider receipts before RAAM constructs a descriptor.
+Yosys emits a complete formal assessment before a triplet is accepted. A fully
+executed candidate that does not satisfy F1 clean proof, F2 poison
+counterexample, or F3 exact-revert proof is written to the append-only
+`red_rejected_archive.jsonl`; it does not reach blue challenge, residual
+selection, RAAM episodes, or promotion. Missing tools, tool failures, malformed
+receipts, and tampered evidence still fail the round closed.
 
 The fake fixture remains model-free and is not grounded evidence. The
 operator library intentionally supports a constrained parser-backed
 SystemVerilog subset rather than claiming complete language coverage. Formal
-triplet receipts are mandatory for the Grounded Runtime authority; missing,
-inconclusive, or tampered formal evidence fails closed. Descriptors currently
-encode bounded provider-observable categories and artifact hashes, not a claim
-of complete waveform understanding. No real-model discovery run, bug-yield
-result, or empirical gain is claimed. The legacy
+triplet receipts remain mandatory for admitted Grounded Runtime authority. A
+verified, completed but proof-unsatisfied assessment is a rejected candidate,
+while missing, tool-failed, or tampered formal evidence fails closed.
+Descriptors encode bounded provider-observable categories and artifact hashes,
+not a claim of complete waveform understanding. No real-model discovery run,
+bug-yield result, or empirical gain is claimed. The legacy
 `r3e.red.validity_gate` remains available for historical Whole-Policy
 compatibility, but is not Grounded Red admission authority.
 

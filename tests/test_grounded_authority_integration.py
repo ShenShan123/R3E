@@ -14,7 +14,7 @@ from r3e.arena.fake_adapters import (
     DeterministicEvolutionAdapter,
 )
 from r3e.arena.manifests import make_manifest
-from r3e.arena.runner import EvolutionRoundRunner
+from r3e.arena.runner import EvolutionRoundRunner, RoundRunnerViolation
 from r3e.arena.grounded_authority import (
     GroundedAuthorityIntegrationViolation,
     execute_grounded_arena_validity,
@@ -92,6 +92,27 @@ def test_grounded_authority_milestone_is_hash_bound():
     for relative, expected in closure["frozen_assets"].items():
         assert hash_file(ROOT / relative) == expected
 
+    waveform = json.loads(
+        (
+            ROOT
+            / (
+                "configs/evolution/"
+                "grounded_waveform_rejection_v1.json"
+            )
+        ).read_text(encoding="utf-8")
+    )
+    assert waveform["milestone_hash"] == hash_payload({
+        key: value
+        for key, value in waveform.items()
+        if key != "milestone_hash"
+    })
+    assert waveform["parent_milestone"] == {
+        "milestone_id": closure["milestone_id"],
+        "milestone_hash": closure["milestone_hash"],
+    }
+    for relative, expected in waveform["frozen_assets"].items():
+        assert hash_file(ROOT / relative) == expected
+
 
 def test_grounded_authority_requires_formal_property(tmp_path):
     for name in ("clean.v", "poison.v", "tb.v"):
@@ -138,9 +159,21 @@ def test_grounded_authority_requires_formal_property(tmp_path):
 
 
 class GroundedRoundAdapter(DeterministicEvolutionAdapter):
-    def __init__(self, workspace: Path):
+    def __init__(
+        self,
+        workspace: Path,
+        *,
+        formal_rejection_indices: set[int] | None = None,
+        formal_tool_error_indices: set[int] | None = None,
+    ):
         super().__init__(workspace)
         self.workspace = workspace
+        self.formal_rejection_indices = (
+            formal_rejection_indices or set()
+        )
+        self.formal_tool_error_indices = (
+            formal_tool_error_indices or set()
+        )
         self.prepare_validity_called = False
         self.registries = load_grounded_registries(
             family_registry=(
@@ -194,10 +227,13 @@ initial begin
       if (first_bad < 0) first_bad = index;
     end
   end
-  if (mismatches == 0)
+  if (mismatches == 0) begin
     $display("R3E_ORACLE pass=1 signature=none first=none topology=none");
-  else
+    $display("R3E_WAVEFORM signal=none first_cycle=none cycle_offset=none relation=none assignment=none cone_depth=none pattern=none");
+  end else begin
     $display("R3E_ORACLE pass=0 signature=boundary_{index} first=cycle_{limit} topology=done");
+    $display("R3E_WAVEFORM signal=done first_cycle={limit} cycle_offset=0 relation=same_cycle assignment=continuous cone_depth=1 pattern=boundary_value_mismatch");
+  end
   $finish;
 end
 endmodule
@@ -205,13 +241,25 @@ endmodule
                 encoding="utf-8",
             )
             formal_property.write_text(
-                f"""module formal_top;
+                (
+                    "module formal_top; syntax is invalid; endmodule\n"
+                    if index in self.formal_tool_error_indices
+                    else f"""module formal_top;
+  (* anyconst *) reg [3:0] count;
+  wire done;
+  counter dut(.count(count), .done(done));
+  always @* assert(done == (count <= {limit}));
+endmodule
+"""
+                    if index in self.formal_rejection_indices
+                    else f"""module formal_top;
   (* anyconst *) reg [3:0] count;
   wire done;
   counter dut(.count(count), .done(done));
   always @* assert(done == (count < {limit}));
 endmodule
-""",
+"""
+                ),
                 encoding="utf-8",
             )
             node = operator_nodes(
@@ -474,8 +522,13 @@ def test_arena_uses_runner_owned_grounded_authority(tmp_path):
             "oracle_stage",
             "sequential_context",
             "affected_roles",
+            "temporal_relation",
+            "cycle_offset_bucket",
+            "assignment_type",
+            "cone_depth_bucket",
             "mismatch_pattern",
             "first_divergence_bucket",
+            "first_divergence_signal",
             "observable_artifact_hashes",
             "descriptor_hash",
         }
@@ -485,10 +538,20 @@ def test_arena_uses_runner_owned_grounded_authority(tmp_path):
             "poison_oracle_receipt_1",
             "poison_oracle_receipt_2",
             "revert_oracle_receipt",
+            "waveform_observation",
             "semantic_diff_receipt",
             "runtime_effect_receipt",
             "formal_proof_triplet",
         }
+        assert descriptor["first_divergence_signal"] == "done"
+        assert descriptor["first_divergence_bucket"] == "cycle_4_7"
+        assert descriptor["cycle_offset_bucket"] == 0
+        assert descriptor["temporal_relation"] == "same_cycle"
+        assert descriptor["assignment_type"] == "continuous"
+        assert descriptor["cone_depth_bucket"] == "depth_1"
+        assert descriptor["mismatch_pattern"] == (
+            "boundary_value_mismatch"
+        )
         assert not {
             "mutation_family",
             "mutation_operator",
@@ -575,3 +638,168 @@ def test_arena_uses_runner_owned_grounded_authority(tmp_path):
         match="Grounded|validity",
     ):
         verify_frozen_round(tmp_path / "runtime/rounds/R001")
+
+
+@pytest.mark.skipif(
+    not (HAS_ICARUS and HAS_YOSYS),
+    reason="Icarus or Yosys is unavailable",
+)
+def test_formal_inconclusive_routes_to_rejected_archive(tmp_path):
+    (tmp_path / "configs").mkdir()
+    (tmp_path / "runtime/registry").mkdir(parents=True)
+    base_copy = tmp_path / "configs/base.json"
+    search_copy = tmp_path / "configs/search.json"
+    base_copy.write_text(
+        (
+            ROOT
+            / "configs/base_policy/frozen_base_policy_v1.json"
+        ).read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    search_copy.write_text(
+        (
+            ROOT
+            / "configs/base_policy/policy_search_space_v1.json"
+        ).read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    initialize_registry(
+        base_copy,
+        tmp_path / "runtime/registry/policy_registry.json",
+    )
+    atomic_write_json(
+        tmp_path / "non_target.json",
+        make_manifest(
+            [
+                {"case_id": "n0", "design": "non_target_0"},
+                {"case_id": "n1", "design": "non_target_1"},
+            ],
+            split="non_target",
+        ),
+    )
+    config = {
+        "policy_registry": "runtime/registry/policy_registry.json",
+        "policy_search_space": "configs/search.json",
+        "non_target_manifest": "non_target.json",
+        "validity_authority": "grounded_runtime_authority_v1",
+        "grounded_family_registry": str(
+            ROOT / "configs/red/grounded_family_registry_v1.json"
+        ),
+        "grounded_operator_registry": str(
+            ROOT / "configs/red/grounded_operator_registry_v1.json"
+        ),
+        "grounded_effect_registry": str(
+            ROOT / "configs/red/grounded_effect_registry_v1.json"
+        ),
+        "challenge_seeds": [1, 2, 3],
+        "promotion_seeds": [11],
+        "split_seed": 4,
+        "policy_search_seed": 5,
+        "code_version": "formal-rejection-integration-test",
+    }
+    adapter = GroundedRoundAdapter(
+        tmp_path / "adapter",
+        formal_rejection_indices={1},
+    )
+    summary = EvolutionRoundRunner(
+        config,
+        round_id="R_REJECT",
+        adapter=adapter,
+        project_root=tmp_path,
+    ).run()
+    round_dir = tmp_path / "runtime/rounds/R_REJECT"
+    validity_rows = [
+        json.loads(line)
+        for line in (
+            round_dir / "validity_results.jsonl"
+        ).read_text(encoding="utf-8").splitlines()
+    ]
+    rejected = [
+        json.loads(line)
+        for line in (
+            round_dir / "formal_rejections.jsonl"
+        ).read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(validity_rows) == 2
+    assert len(rejected) == 1
+    rejected_row = next(
+        row for row in validity_rows
+        if row.get("formal_rejection")
+    )
+    assert rejected_row["poison_id"] == "grounded_arena_1"
+    assert not rejected_row["validity"]["proven_valid"]
+    assert rejected_row["validity"]["evidence"][
+        "authority_mode"
+    ] == "runner_owned_formal_rejection"
+    assert rejected_row["formal_rejection"] == rejected[0]
+    assert rejected[0]["formal_proof_assessment"][
+        "rejection_reasons"
+    ] == [
+        "F1_clean_not_proved",
+        "F2_poison_counterexample_not_proved",
+        "F3_revert_not_proved",
+    ]
+    challenge_rows = [
+        json.loads(line)
+        for line in (
+            round_dir / "blue_challenge_results.jsonl"
+        ).read_text(encoding="utf-8").splitlines()
+    ]
+    assert [row["poison_id"] for row in challenge_rows] == [
+        "grounded_arena_0"
+    ]
+    archive_path = (
+        tmp_path / "runtime/archives/red_rejected_archive.jsonl"
+    )
+    assert len(archive_path.read_text(encoding="utf-8").splitlines()) == 1
+    audit = verify_frozen_round(round_dir)
+    assert audit["formal_rejection_count"] == 1
+    assert not summary["promotion_eligible"]
+
+    resumed = EvolutionRoundRunner(
+        config,
+        round_id="R_REJECT",
+        adapter=adapter,
+        project_root=tmp_path,
+    ).run()
+    assert resumed == summary
+    assert len(archive_path.read_text(encoding="utf-8").splitlines()) == 1
+    assert [
+        episode.poison_id
+        for episode in EpisodeStore(
+            tmp_path / "runtime/memory/episodes"
+        ).audit()
+    ] == ["grounded_arena_0"]
+
+    tool_error_adapter = GroundedRoundAdapter(
+        tmp_path / "tool-error-adapter",
+        formal_tool_error_indices={1},
+    )
+    with pytest.raises(
+        RoundRunnerViolation,
+        match="formal rejection authority objects",
+    ):
+        EvolutionRoundRunner(
+            config,
+            round_id="R_TOOL_ERROR",
+            adapter=tool_error_adapter,
+            project_root=tmp_path,
+        ).run()
+    assert len(archive_path.read_text(encoding="utf-8").splitlines()) == 1
+
+    tampered = deepcopy(rejected)
+    tampered[0]["formal_proof_assessment"]["clean"][
+        "verdict"
+    ] = "proved"
+    (round_dir / "formal_rejections.jsonl").write_text(
+        "\n".join(
+            json.dumps(row, sort_keys=True) for row in tampered
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        RoundAuditViolation,
+        match="rejection|Grounded",
+    ):
+        verify_frozen_round(round_dir)

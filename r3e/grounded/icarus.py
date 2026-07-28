@@ -23,6 +23,16 @@ _ORACLE_LINE = re.compile(
     r"first=(?P<first>[A-Za-z0-9_.:-]+) "
     r"topology=(?P<topology>[A-Za-z0-9_.:-]+)$"
 )
+_WAVEFORM_LINE = re.compile(
+    r"^R3E_WAVEFORM "
+    r"signal=(?P<signal>[A-Za-z_][A-Za-z0-9_$]*|none) "
+    r"first_cycle=(?P<first_cycle>[0-9]+|none) "
+    r"cycle_offset=(?P<cycle_offset>[0-9]+|none) "
+    r"relation=(?P<relation>[A-Za-z0-9_.:-]+|none) "
+    r"assignment=(?P<assignment>[A-Za-z0-9_.:-]+|none) "
+    r"cone_depth=(?P<cone_depth>[0-9]+|none) "
+    r"pattern=(?P<pattern>[A-Za-z0-9_.:-]+|none)$"
+)
 _VERILOG_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
 _RECEIPT_PREFIX = re.compile(r"^[A-Za-z0-9_.:-]{1,200}$")
 
@@ -115,6 +125,61 @@ def parse_oracle_output(stdout: bytes) -> dict[str, Any]:
         raise IcarusProviderViolation(
             "oracle pass bit and failure descriptors are inconsistent"
         )
+    waveform_lines = [
+        line.strip() for line in text.splitlines()
+        if line.strip().startswith("R3E_WAVEFORM")
+    ]
+    if len(waveform_lines) > 1:
+        raise IcarusProviderViolation(
+            "simulation must emit at most one R3E_WAVEFORM record"
+        )
+    waveform = {
+        "waveform_observation_complete": False,
+        "first_divergence_signal": "",
+        "first_divergence_cycle": None,
+        "cycle_offset": None,
+        "temporal_relation": "",
+        "assignment_type": "",
+        "cone_depth": None,
+        "mismatch_pattern": "",
+    }
+    if waveform_lines:
+        waveform_match = _WAVEFORM_LINE.fullmatch(waveform_lines[0])
+        if waveform_match is None:
+            raise IcarusProviderViolation(
+                "simulation emitted a malformed R3E_WAVEFORM record"
+            )
+        values = waveform_match.groupdict()
+        none_fields = {
+            name for name, value in values.items() if value == "none"
+        }
+        if (passed and len(none_fields) != len(values)) or (
+            not passed and none_fields
+        ):
+            raise IcarusProviderViolation(
+                "waveform record is inconsistent with oracle verdict"
+            )
+        if not passed:
+            first_cycle = int(values["first_cycle"])
+            cycle_offset = int(values["cycle_offset"])
+            cone_depth = int(values["cone_depth"])
+            if max(first_cycle, cycle_offset, cone_depth) > 1_000_000:
+                raise IcarusProviderViolation(
+                    "waveform numeric observation exceeds protocol limit"
+                )
+            waveform = {
+                "waveform_observation_complete": True,
+                "first_divergence_signal": values["signal"],
+                "first_divergence_cycle": first_cycle,
+                "cycle_offset": cycle_offset,
+                "temporal_relation": values["relation"],
+                "assignment_type": values["assignment"],
+                "cone_depth": cone_depth,
+                "mismatch_pattern": values["pattern"],
+            }
+        else:
+            waveform["waveform_observation_complete"] = True
+    waveform["waveform_observation_hash"] = hash_payload(waveform)
     result = {
         "oracle_pass": passed,
         "functional_mismatch": not passed,
@@ -126,6 +191,7 @@ def parse_oracle_output(stdout: bytes) -> dict[str, Any]:
             "mismatch_topology": match.group("topology"),
         }),
         "raw_record_hash": hash_payload({"record": match.group(0)}),
+        **waveform,
     }
     return result
 
@@ -285,7 +351,32 @@ class IcarusGroundedProvider:
                 "raw_record_hash": hash_payload({
                     "invalid_stdout": simulation.receipt["artifact_hashes"]["stdout"],
                 }),
+                "waveform_observation_complete": False,
+                "first_divergence_signal": "",
+                "first_divergence_cycle": None,
+                "cycle_offset": None,
+                "temporal_relation": "",
+                "assignment_type": "",
+                "cone_depth": None,
+                "mismatch_pattern": "",
             }
+            oracle_result["waveform_observation_hash"] = (
+                hash_payload({
+                    key: value
+                    for key, value in oracle_result.items()
+                    if key
+                    in {
+                        "waveform_observation_complete",
+                        "first_divergence_signal",
+                        "first_divergence_cycle",
+                        "cycle_offset",
+                        "temporal_relation",
+                        "assignment_type",
+                        "cone_depth",
+                        "mismatch_pattern",
+                    }
+                })
+            )
         oracle_provider = build_provider_receipt(
             provider_kind="oracle_parser",
             provider_id="r3e-stdout-oracle",
@@ -347,6 +438,25 @@ class IcarusGroundedProvider:
                     "mismatch_topology_hash"
                 ],
                 "effect_signature": oracle_result["effect_signature"],
+                "waveform_observation_complete": oracle_result[
+                    "waveform_observation_complete"
+                ],
+                "waveform_observation_hash": oracle_result[
+                    "waveform_observation_hash"
+                ],
+                "first_divergence_signal": oracle_result[
+                    "first_divergence_signal"
+                ],
+                "first_divergence_cycle": oracle_result[
+                    "first_divergence_cycle"
+                ],
+                "cycle_offset": oracle_result["cycle_offset"],
+                "temporal_relation": oracle_result[
+                    "temporal_relation"
+                ],
+                "assignment_type": oracle_result["assignment_type"],
+                "cone_depth": oracle_result["cone_depth"],
+                "mismatch_pattern": oracle_result["mismatch_pattern"],
             })
         elif mode == "revert_execution":
             observed["restored_semantic_hash"] = semantic_hash

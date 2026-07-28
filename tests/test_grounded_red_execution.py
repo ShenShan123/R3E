@@ -226,10 +226,21 @@ def test_oracle_parser_requires_one_exact_record():
         b"trace\n"
         b"R3E_ORACLE pass=0 signature=wrong_value "
         b"first=cycle4 topology=done\n"
+        b"R3E_WAVEFORM signal=done first_cycle=4 cycle_offset=1 "
+        b"relation=candidate_lags_golden assignment=nonblocking "
+        b"cone_depth=2 pattern=lagging_value\n"
     )
     parsed = parse_oracle_output(valid)
     assert not parsed["oracle_pass"]
     assert parsed["functional_mismatch"]
+    assert parsed["waveform_observation_complete"]
+    assert parsed["first_divergence_signal"] == "done"
+    assert parsed["first_divergence_cycle"] == 4
+    assert parsed["cycle_offset"] == 1
+    assert parsed["temporal_relation"] == "candidate_lags_golden"
+    assert parsed["assignment_type"] == "nonblocking"
+    assert parsed["cone_depth"] == 2
+    assert parsed["mismatch_pattern"] == "lagging_value"
     with pytest.raises(IcarusProviderViolation, match="exactly one"):
         parse_oracle_output(b"ordinary simulation output\n")
     with pytest.raises(IcarusProviderViolation, match="exactly one"):
@@ -242,6 +253,12 @@ def test_oracle_parser_requires_one_exact_record():
         parse_oracle_output(
             b"R3E_ORACLE pass=1 signature=wrong_value "
             b"first=cycle4 topology=done\n"
+        )
+    with pytest.raises(IcarusProviderViolation, match="malformed"):
+        parse_oracle_output(
+            b"R3E_ORACLE pass=0 signature=wrong_value "
+            b"first=cycle4 topology=done\n"
+            b"R3E_WAVEFORM malformed\n"
         )
 
 

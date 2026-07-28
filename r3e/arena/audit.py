@@ -40,6 +40,11 @@ from r3e.red.grounded.arena_validity import (
 from r3e.red.grounded.execution import (
     verify_grounded_execution_bundle,
 )
+from r3e.red.grounded.formal_rejection import (
+    load_formal_rejection_archive,
+    verify_formal_rejection,
+    verify_formal_rejection_validity,
+)
 from .grounded_authority import (
     GROUNDED_ARENA_COMPAT_AUTHORITY,
     GROUNDED_ARENA_AUTHORITIES,
@@ -89,14 +94,43 @@ def reconstruct_round(round_dir: str | Path) -> dict[str, Any]:
         )
     )
     validity_rows = _read_jsonl(root / "validity_results.jsonl")
+    formal_rejections_path = root / "formal_rejections.jsonl"
+    formal_rejections = (
+        _read_jsonl(formal_rejections_path)
+        if formal_rejections_path.is_file()
+        else []
+    )
     if validity_authority in GROUNDED_ARENA_AUTHORITIES:
         registries = load_arena_grounded_registries(
             project_root, config
         )
+        reconstructed_rejections = []
         for row in validity_rows:
             try:
                 verify_poison_payload(row)
-                if row.get("grounded_authority_bundle"):
+                if row.get("formal_rejection"):
+                    rejection = verify_formal_rejection(
+                        row["formal_rejection"],
+                        policy=parent,
+                        registries=registries,
+                    )
+                    if rejection["poison_payload"] != {
+                        key: value for key, value in row.items()
+                        if key not in {
+                            "validity",
+                            "formal_rejection",
+                        }
+                    }:
+                        raise RoundAuditViolation(
+                            "formal rejection poison payload mismatch"
+                        )
+                    validity = verify_formal_rejection_validity(
+                        row.get("validity") or {},
+                        rejection,
+                    )
+                    bundle = rejection["execution_bundle"]
+                    reconstructed_rejections.append(rejection)
+                elif row.get("grounded_authority_bundle"):
                     authority = verify_arena_grounded_authority(
                         row["grounded_authority_bundle"],
                         policy=parent,
@@ -131,15 +165,43 @@ def reconstruct_round(round_dir: str | Path) -> dict[str, Any]:
                     "Grounded validity row cannot be reconstructed"
                 ) from exc
             if (
-                validity["evidence"]["authority_mode"]
-                != ARENA_GROUNDED_AUTHORITY
-                or row.get("grounded_plan_hash")
+                row.get("grounded_plan_hash")
                 != bundle["plan"]["plan_hash"]
                 or row.get("poison_id") != bundle["plan"]["plan_id"]
             ):
                 raise RoundAuditViolation(
                     "Grounded validity row is not cross-bound"
                 )
+            if (
+                row.get("formal_rejection") is None
+                and validity["evidence"]["authority_mode"]
+                != ARENA_GROUNDED_AUTHORITY
+            ):
+                raise RoundAuditViolation(
+                    "Grounded validity authority mode mismatch"
+                )
+        if reconstructed_rejections != formal_rejections:
+            raise RoundAuditViolation(
+                "round formal rejection ledger mismatch"
+            )
+        rejected_archive = load_formal_rejection_archive(
+            project_root
+            / config.get(
+                "red_rejected_archive",
+                "runtime/archives/red_rejected_archive.jsonl",
+            ),
+            registries=registries,
+        )
+        archived_hashes = {
+            row["rejection_hash"] for row in rejected_archive
+        }
+        if any(
+            row["rejection_hash"] not in archived_hashes
+            for row in formal_rejections
+        ):
+            raise RoundAuditViolation(
+                "formal rejection is missing from rejected archive"
+            )
     else:
         for row in validity_rows:
             verify_poison_payload(row)
@@ -158,6 +220,16 @@ def reconstruct_round(round_dir: str | Path) -> dict[str, Any]:
     challenge_rows = _read_jsonl(
         root / "blue_challenge_results.jsonl"
     )
+    rejected_poison_ids = {
+        row["poison_payload"]["poison_id"]
+        for row in formal_rejections
+    }
+    if rejected_poison_ids.intersection({
+        str(row.get("poison_id") or "") for row in challenge_rows
+    }):
+        raise RoundAuditViolation(
+            "formal-rejected poison reached blue challenge"
+        )
     try:
         expected_episodes = [
             episode_from_challenge(
@@ -465,6 +537,13 @@ def reconstruct_round(round_dir: str | Path) -> dict[str, Any]:
             "" if target["row_count"] > 0 else "insufficient_residual_designs"
         ),
     }
+    if formal_rejections_path.is_file():
+        record.update({
+            "formal_rejection_count": len(formal_rejections),
+            "formal_rejections_hash": hash_payload(
+                formal_rejections
+            ),
+        })
     record["audit_record_hash"] = hash_payload(record)
     return record
 

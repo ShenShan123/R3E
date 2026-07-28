@@ -25,6 +25,7 @@ def _trigger(episode: VerifiedEpisode) -> dict:
             "cone_depth_bucket",
             "mismatch_pattern",
             "first_divergence_bucket",
+            "first_divergence_signal",
         )
         if key in descriptor
     }

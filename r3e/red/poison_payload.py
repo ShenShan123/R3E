@@ -40,6 +40,7 @@ _DOWNSTREAM_FIELDS = {
     "validity_adapter_output",
     "grounded_execution_bundle",
     "grounded_authority_bundle",
+    "formal_rejection",
 }
 
 

@@ -1,0 +1,56 @@
+{
+  "schema_version": "r3e-grounded-waveform-rejection-milestone-v1",
+  "milestone_id": "grounded-waveform-rejection-v1",
+  "status": "frozen",
+  "parent_milestone": {
+    "milestone_id": "grounded-runtime-authority-closure-v1",
+    "milestone_hash": "sha256:015d271fa7911ca132caae91971cf98180f81ea40273fb6910a7375d16e62c1b"
+  },
+  "completed_scope": [
+    "bounded-first-divergent-signal-and-cycle-oracle-protocol",
+    "cycle-offset-temporal-relation-assignment-cone-and-pattern-receipts",
+    "two-run-waveform-observation-determinism",
+    "artifact-derived-raam-waveform-descriptor",
+    "complete-yosys-formal-proof-assessment",
+    "completed-proof-unsatisfied-candidate-rejected-archive-routing",
+    "rejected-candidate-blue-residual-raam-promotion-isolation",
+    "formal-rejection-resume-audit-and-idempotent-archive",
+    "tool-receipt-schema-and-hash-failure-fail-closed"
+  ],
+  "frozen_interfaces": [
+    "r3e-icarus-oracle-waveform-v1",
+    "r3e-formal-proof-assessment-v1",
+    "r3e-formal-proof-triplet-v1",
+    "r3e-grounded-formal-rejection-v1",
+    "r3e-grounded-failure-descriptor-v1",
+    "grounded_runtime_authority_v1",
+    "r3e-round-audit-v1"
+  ],
+  "frozen_assets": {
+    "configs/evolution/round_grounded_runtime_v2.json": "sha256:c216677d95296daf205f3e705bc9bc397bdbf96f8eabc9025b34d4e23f60d1f4",
+    "configs/red/grounded_family_registry_v1.json": "sha256:a33cb70b9139b489ff2d8d7823c8220678add8bc31be320edcd30b4adfac3ed5",
+    "configs/red/grounded_operator_registry_v1.json": "sha256:c066e6dc070e6e45f8ef3bbb9453314b483d99e96dc1cccf1e52552d5483bf2b",
+    "configs/red/grounded_effect_registry_v1.json": "sha256:cafc655d3426fc0a53272f8eb998c37d87c789ee7b44fc652a7c30083237f8b2",
+    "r3e/grounded/icarus.py": "sha256:3176c4cc80743d6137e6487f642ec60a18e527f4fef14c8ddff22641143fb282",
+    "r3e/grounded/failure_descriptor.py": "sha256:7b88385b822bd1588b4a886034947b40bb4b525ddd172038465c2b36df600273",
+    "r3e/grounded/yosys_formal.py": "sha256:9d5f7982538462e54d45e94160975826d57325941f3060fd1df92361c81731b7",
+    "r3e/red/grounded/formal_rejection.py": "sha256:71a61e65d2e4e73338463b1838d9c7b36b476daadff6a98ec5a645eb210b068a",
+    "r3e/arena/grounded_authority.py": "sha256:a1ff580fc3cd435260ba579d9031defba41a6c4288cf2e5b97e10dedd9d8cab5"
+  },
+  "required_validation": [
+    "pytest -q -p no:cacheprovider",
+    "pytest -q -p no:cacheprovider tests/test_grounded_authority_integration.py tests/test_grounded_red_grd2_formal.py tests/test_grounded_red_execution.py",
+    "python -m r3e.arena.fake_system --workspace /tmp/r3e-grounded-waveform-rejection-v1 --rounds 3",
+    "python scripts/check_release.py",
+    "python scripts/verify_datasets.py"
+  ],
+  "deferred_scope": [
+    "full-vcd-waveform-database-semantics",
+    "multi-clock-domain-and-long-horizon-cycle-descriptors",
+    "full-systemverilog-parser-and-formal-property-coverage",
+    "fully-verified-cross-system-authority-dag",
+    "real-model-multi-round-pilot"
+  ],
+  "claim_boundary": "Frozen bounded provider-observable waveform descriptors and completed formal proof-unsatisfied rejection routing only; no complete waveform semantics, real-model discovery, bug-yield, memory-gain, multi-round evolution, or empirical-result claim.",
+  "milestone_hash": "sha256:7ebea1b0e4df731e801a2ec99cb8e0e285124c98c88a75e1e80955c97b91f226"
+}

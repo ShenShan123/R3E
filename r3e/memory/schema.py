@@ -52,6 +52,7 @@ TRIGGER_FIELDS = {
     "cone_depth_bucket",
     "mismatch_pattern",
     "first_divergence_bucket",
+    "first_divergence_signal",
 }
 DESCRIPTOR_FIELDS = TRIGGER_FIELDS | {"observable_artifact_hashes"}
 FORBIDDEN_FEATURE_FIELDS = {
@@ -181,6 +182,7 @@ def _validate_runtime_features(raw: Mapping[str, Any], *, descriptor: bool) -> d
         "cone_depth_bucket",
         "mismatch_pattern",
         "first_divergence_bucket",
+        "first_divergence_signal",
     ):
         if key in payload:
             _string(payload[key], key)

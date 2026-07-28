@@ -11,6 +11,7 @@ from r3e.grounded.failure_descriptor import (
 )
 from r3e.grounded.yosys_formal import (
     YosysFormalProvider,
+    formal_triplet_from_assessment,
     verify_formal_proof_triplet,
 )
 from r3e.policy.schema import PolicyState
@@ -27,6 +28,11 @@ from r3e.red.grounded.arena_validity import (
 from r3e.red.grounded.execution import (
     execute_grounded_icarus_admission,
     verify_grounded_execution_bundle,
+)
+from r3e.red.grounded.formal_rejection import (
+    build_formal_rejection,
+    build_formal_rejection_validity,
+    verify_formal_rejection,
 )
 from r3e.red.grounded.registry import (
     GroundedRegistryBundle,
@@ -194,6 +200,32 @@ def _cross_bind(
         )
 
 
+def _cross_bind_rejection(
+    *,
+    poison: Mapping[str, Any],
+    policy: PolicyState,
+    rejection: Mapping[str, Any],
+    clean_path: Path,
+    poison_path: Path,
+    formal_property_path: Path,
+) -> None:
+    execution = rejection["execution_bundle"]
+    assessment = rejection["formal_proof_assessment"]
+    materialization = execution["materialization_receipt"]
+    if (
+        rejection["poison_payload"] != dict(poison)
+        or poison.get("challenged_policy_hash") != policy.policy_hash
+        or materialization["clean_rtl_hash"] != hash_file(clean_path)
+        or materialization["poison_rtl_hash"] != hash_file(poison_path)
+        or assessment["property_hash"] != hash_file(
+            formal_property_path
+        )
+    ):
+        raise GroundedAuthorityIntegrationViolation(
+            "arena poison is not cross-bound to formal rejection"
+        )
+
+
 def _build_authority(
     *,
     execution_bundle: Mapping[str, Any],
@@ -315,6 +347,29 @@ def execute_grounded_arena_validity(
             "validity": build_grounded_arena_validity(authority),
             "grounded_authority_bundle": authority,
         }
+    rejected = sorted(
+        authority_root.glob("attempt-*/formal_rejection.json")
+    )
+    for rejection_path in rejected:
+        rejection = verify_formal_rejection(
+            read_json(rejection_path),
+            policy=policy,
+            registries=registries,
+        )
+        _cross_bind_rejection(
+            poison=poison,
+            policy=policy,
+            rejection=rejection,
+            clean_path=clean_source,
+            poison_path=poison_source,
+            formal_property_path=formal_property,
+        )
+        return {
+            "validity": build_formal_rejection_validity(
+                rejection
+            ),
+            "formal_rejection": rejection,
+        }
 
     attempt_number = len(list(authority_root.glob("attempt-*"))) + 1
     workspace = authority_root / f"attempt-{attempt_number:04d}"
@@ -356,7 +411,7 @@ def execute_grounded_arena_validity(
         run_context_hash=run_context_hash,
         timeout_seconds=formal_timeout_seconds,
     )
-    formal = formal_provider.execute_triplet(
+    assessment = formal_provider.execute_proof_assessment(
         receipt_prefix=str(plan["plan_id"]),
         clean_rtl_path=staged_clean,
         poison_rtl_path=workspace / "materialized/poison.v",
@@ -371,6 +426,36 @@ def execute_grounded_arena_validity(
         frozen_revert_rtl_hash=hash_file(staged_clean),
         frozen_property_hash=hash_file(staged_property),
     )
+    atomic_write_json(
+        workspace / "formal_proof_assessment.json", assessment
+    )
+    if not assessment["proof_satisfied"]:
+        rejection = build_formal_rejection(
+            round_id=Path(round_dir).resolve().name,
+            poison=poison,
+            execution_bundle=execution,
+            formal_proof_assessment=assessment,
+            policy=policy,
+            registries=registries,
+        )
+        _cross_bind_rejection(
+            poison=poison,
+            policy=policy,
+            rejection=rejection,
+            clean_path=clean_source,
+            poison_path=poison_source,
+            formal_property_path=formal_property,
+        )
+        atomic_write_json(
+            workspace / "formal_rejection.json", rejection
+        )
+        return {
+            "validity": build_formal_rejection_validity(
+                rejection
+            ),
+            "formal_rejection": rejection,
+        }
+    formal = formal_triplet_from_assessment(assessment)
     authority = _build_authority(
         execution_bundle=execution,
         formal_proof_triplet=formal,

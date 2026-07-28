@@ -25,6 +25,9 @@ from .receipts import verify_command_receipt
 YOSYS_FORMAL_PROVIDER_VERSION = "r3e-yosys-formal-provider-v1"
 FORMAL_EXECUTION_SCHEMA_VERSION = "r3e-formal-execution-receipt-v1"
 FORMAL_TRIPLET_SCHEMA_VERSION = "r3e-formal-proof-triplet-v1"
+FORMAL_ASSESSMENT_SCHEMA_VERSION = (
+    "r3e-formal-proof-assessment-v1"
+)
 FORMAL_MODES = {
     "clean_proof",
     "poison_counterexample",
@@ -58,6 +61,17 @@ _TRIPLET_FIELDS = {
     "property_hash",
     "toolchain_fingerprint",
     "triplet_hash",
+}
+_ASSESSMENT_FIELDS = {
+    "schema_version",
+    "clean",
+    "poison",
+    "revert",
+    "property_hash",
+    "toolchain_fingerprint",
+    "proof_satisfied",
+    "rejection_reasons",
+    "assessment_hash",
 }
 
 
@@ -320,6 +334,98 @@ def verify_formal_proof_triplet(
     }
 
 
+def verify_formal_proof_assessment(
+    assessment: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Verify a complete triplet attempt, including inconclusive results."""
+    payload = deepcopy(dict(assessment))
+    if set(payload) != _ASSESSMENT_FIELDS:
+        raise YosysFormalProviderViolation(
+            "formal proof assessment fields mismatch"
+        )
+    if payload["schema_version"] != FORMAL_ASSESSMENT_SCHEMA_VERSION:
+        raise YosysFormalProviderViolation(
+            "formal proof assessment schema mismatch"
+        )
+    clean = verify_formal_execution_receipt(payload["clean"])
+    poison = verify_formal_execution_receipt(payload["poison"])
+    revert = verify_formal_execution_receipt(payload["revert"])
+    toolchain = verify_yosys_toolchain_fingerprint(
+        payload["toolchain_fingerprint"]
+    )
+    if (
+        clean["mode"] != "clean_proof"
+        or poison["mode"] != "poison_counterexample"
+        or revert["mode"] != "revert_proof"
+        or clean["rtl_hash"] != revert["rtl_hash"]
+        or poison["rtl_hash"] == clean["rtl_hash"]
+        or payload["property_hash"] != clean["property_hash"]
+        or any(
+            row["property_hash"] != payload["property_hash"]
+            or row["toolchain_fingerprint"] != toolchain
+            or row["top_module"] != clean["top_module"]
+            or row["depth"] != clean["depth"]
+            for row in (clean, poison, revert)
+        )
+    ):
+        raise YosysFormalProviderViolation(
+            "formal proof assessment binding mismatch"
+        )
+    expected_reasons = []
+    if clean["verdict"] != "proved":
+        expected_reasons.append("F1_clean_not_proved")
+    if poison["verdict"] != "counterexample":
+        expected_reasons.append(
+            "F2_poison_counterexample_not_proved"
+        )
+    if revert["verdict"] != "proved":
+        expected_reasons.append("F3_revert_not_proved")
+    if (
+        not isinstance(payload["proof_satisfied"], bool)
+        or payload["proof_satisfied"] != (not expected_reasons)
+        or payload["rejection_reasons"] != expected_reasons
+    ):
+        raise YosysFormalProviderViolation(
+            "formal proof assessment decision mismatch"
+        )
+    if payload["assessment_hash"] != hash_payload({
+        key: value for key, value in payload.items()
+        if key != "assessment_hash"
+    }):
+        raise YosysFormalProviderViolation(
+            "formal proof assessment hash mismatch"
+        )
+    return {
+        **payload,
+        "clean": clean,
+        "poison": poison,
+        "revert": revert,
+        "toolchain_fingerprint": toolchain,
+    }
+
+
+def formal_triplet_from_assessment(
+    assessment: Mapping[str, Any],
+) -> dict[str, Any]:
+    verified = verify_formal_proof_assessment(assessment)
+    if not verified["proof_satisfied"]:
+        raise YosysFormalProviderViolation(
+            "formal assessment does not satisfy proof triplet"
+        )
+    payload = {
+        "schema_version": FORMAL_TRIPLET_SCHEMA_VERSION,
+        "clean": verified["clean"],
+        "poison": verified["poison"],
+        "revert": verified["revert"],
+        "property_hash": verified["property_hash"],
+        "toolchain_fingerprint": verified[
+            "toolchain_fingerprint"
+        ],
+    }
+    payload["triplet_hash"] = hash_payload(payload)
+    return verify_formal_proof_triplet(payload)
+
+
 class YosysFormalProvider:
     """Execute one bounded SAT proof without shell or ambient credentials."""
 
@@ -511,7 +617,7 @@ class YosysFormalProvider:
         payload["execution_hash"] = hash_payload(payload)
         return verify_formal_execution_receipt(payload)
 
-    def execute_triplet(
+    def execute_proof_assessment(
         self,
         *,
         receipt_prefix: str,
@@ -556,13 +662,54 @@ class YosysFormalProvider:
             frozen_rtl_hash=frozen_revert_rtl_hash,
             frozen_property_hash=frozen_property_hash,
         )
+        rejection_reasons = []
+        if clean["verdict"] != "proved":
+            rejection_reasons.append("F1_clean_not_proved")
+        if poison["verdict"] != "counterexample":
+            rejection_reasons.append(
+                "F2_poison_counterexample_not_proved"
+            )
+        if revert["verdict"] != "proved":
+            rejection_reasons.append("F3_revert_not_proved")
         payload = {
-            "schema_version": FORMAL_TRIPLET_SCHEMA_VERSION,
+            "schema_version": FORMAL_ASSESSMENT_SCHEMA_VERSION,
             "clean": clean,
             "poison": poison,
             "revert": revert,
             "property_hash": frozen_property_hash,
             "toolchain_fingerprint": deepcopy(self.toolchain),
+            "proof_satisfied": not rejection_reasons,
+            "rejection_reasons": rejection_reasons,
         }
-        payload["triplet_hash"] = hash_payload(payload)
-        return verify_formal_proof_triplet(payload)
+        payload["assessment_hash"] = hash_payload(payload)
+        return verify_formal_proof_assessment(payload)
+
+    def execute_triplet(
+        self,
+        *,
+        receipt_prefix: str,
+        clean_rtl_path: str | Path,
+        poison_rtl_path: str | Path,
+        revert_rtl_path: str | Path,
+        property_path: str | Path,
+        top_module: str,
+        depth: int,
+        frozen_clean_rtl_hash: str,
+        frozen_poison_rtl_hash: str,
+        frozen_revert_rtl_hash: str,
+        frozen_property_hash: str,
+    ) -> dict[str, Any]:
+        assessment = self.execute_proof_assessment(
+            receipt_prefix=receipt_prefix,
+            clean_rtl_path=clean_rtl_path,
+            poison_rtl_path=poison_rtl_path,
+            revert_rtl_path=revert_rtl_path,
+            property_path=property_path,
+            top_module=top_module,
+            depth=depth,
+            frozen_clean_rtl_hash=frozen_clean_rtl_hash,
+            frozen_poison_rtl_hash=frozen_poison_rtl_hash,
+            frozen_revert_rtl_hash=frozen_revert_rtl_hash,
+            frozen_property_hash=frozen_property_hash,
+        )
+        return formal_triplet_from_assessment(assessment)

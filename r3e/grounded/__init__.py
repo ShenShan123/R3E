@@ -19,7 +19,9 @@ from .provider_receipts import (
 from .yosys_formal import (
     YosysFormalProvider,
     YosysFormalProviderViolation,
+    formal_triplet_from_assessment,
     verify_formal_execution_receipt,
+    verify_formal_proof_assessment,
     verify_formal_proof_triplet,
 )
 from .failure_descriptor import (
@@ -40,10 +42,12 @@ __all__ = [
     "build_command_receipt",
     "build_provider_receipt",
     "build_grounded_failure_descriptor",
+    "formal_triplet_from_assessment",
     "provider_implementation_hash",
     "verify_command_receipt",
     "verify_provider_receipt",
     "verify_formal_execution_receipt",
+    "verify_formal_proof_assessment",
     "verify_formal_proof_triplet",
     "verify_grounded_failure_descriptor",
 ]
