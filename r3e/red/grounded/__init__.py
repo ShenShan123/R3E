@@ -24,8 +24,10 @@ from .materializers import (
     AstMaterializationViolation,
     inverse_materialization,
     materialize_comparator,
+    materialize_operator,
     verify_materialization_receipt,
 )
+from .operator_ast import operator_nodes
 
 __all__ = [
     "GroundedAdmissionViolation",
@@ -38,6 +40,8 @@ __all__ = [
     "inverse_materialization",
     "load_grounded_registries",
     "materialize_comparator",
+    "materialize_operator",
+    "operator_nodes",
     "verify_grounded_admission_decision",
     "verify_materialization_receipt",
     "verify_mutation_plan",

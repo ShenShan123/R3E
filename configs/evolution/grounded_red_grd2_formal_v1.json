@@ -1,0 +1,50 @@
+{
+  "schema_version": "r3e-grounded-red-grd2-formal-milestone-v1",
+  "milestone_id": "grounded-red-grd2-formal-v1",
+  "status": "frozen",
+  "parent_milestone": {
+    "milestone_id": "grounded-red-execution-v1",
+    "milestone_hash": "sha256:6346deb2ce937c2641a3887878ab1c0363c585b625465b1638e0620fce6f78bb"
+  },
+  "completed_scope": [
+    "ten-operator-unified-parser-backed-dispatch",
+    "exact-v1-and-v2-materialization-inverse",
+    "operator-family-and-stale-target-fail-closed-gates",
+    "all-operator-icarus-syntax-conformance",
+    "restricted-yosys-sat-formal-provider",
+    "formal-property-and-artifact-provider-receipts",
+    "clean-poison-revert-formal-proof-triplet",
+    "formal-tool-failure-is-inconclusive"
+  ],
+  "frozen_interfaces": [
+    "r3e-verilog-operator-ast-v2",
+    "r3e-red-ast-materialization-v2",
+    "r3e-yosys-formal-provider-v1",
+    "r3e-formal-execution-receipt-v1",
+    "r3e-formal-proof-triplet-v1",
+    "r3e-yosys-sat-formal-v1"
+  ],
+  "frozen_assets": {
+    "docs/protocols/grounded-red-grd2-formal-v1.md": "sha256:58b85f9e527a7f9e65d95703f76e84f7a469cd7b3c1ef2f63f494b1e44e9489b"
+  },
+  "required_validation": [
+    "pytest -q -p no:cacheprovider",
+    "pytest -q tests/test_grounded_red_grd2_formal.py tests/test_grounded_red_execution.py",
+    "python -m r3e.red.grounded.fake_system --workspace /tmp/r3e-grounded-red-grd2-formal-v1-fake --rounds 3",
+    "python -m r3e.arena.fake_system --workspace /tmp/r3e-whole-policy-after-grounded-red-grd2-formal-v1 --rounds 3",
+    "python scripts/check_release.py",
+    "python scripts/verify_datasets.py"
+  ],
+  "deferred_scope": [
+    "full-systemverilog-parser-coverage",
+    "real-delta-debugging",
+    "formal-arena-validity-integration",
+    "real-coverage-curriculum",
+    "grounded-memory-adversary",
+    "red-population",
+    "controlled-composition-execution",
+    "real-model-multi-round-pilot"
+  ],
+  "claim_boundary": "Frozen constrained parser-backed GRD-2 ten-operator portfolio and local Yosys SAT formal proof provider only; no full-SystemVerilog-AST, formal-arena-authority, real-model, multi-round discovery, bug-yield, or empirical-result claim.",
+  "milestone_hash": "sha256:316a268c29a35366659fcb011325c68d940163b57a1142d208540b2de39a4c1f"
+}

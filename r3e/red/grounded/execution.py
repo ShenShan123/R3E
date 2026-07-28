@@ -28,7 +28,7 @@ from .admission import (
 )
 from .materializers import (
     inverse_materialization,
-    materialize_comparator,
+    materialize_operator,
     verify_materialization_receipt,
 )
 from .mutation_plan import verify_mutation_plan
@@ -179,7 +179,7 @@ def execute_grounded_icarus_admission(
         raise GroundedRedExecutionViolation(
             "testbench differs from the frozen source manifest"
         )
-    materialization = materialize_comparator(
+    materialization = materialize_operator(
         verified_plan,
         clean_source=clean_source,
     )

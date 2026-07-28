@@ -164,6 +164,13 @@ V2 evidence/decision bundle; compile errors, timeouts, crashes, resource limits,
 invalid oracle output, or frozen-input mismatch cannot count as functional
 bugs.
 
+The next checkpoint, **Grounded Red GRD-2 Formal Provider V1**, completes the
+ten frozen parser-backed operator materializers behind one dispatch and exact
+inverse interface. It also adds a restricted Yosys SAT provider whose receipts
+bind the property, RTL, generated script, stdout/stderr, counterexample trace,
+toolchain, and parser implementation. Its formal triplet requires clean proof,
+poison counterexample, and exact-revert proof.
+
 Run the model-free protocol fixture with:
 
 ```bash
@@ -189,12 +196,14 @@ python -m r3e.red.grounded.execution \
   --allowed-file-manifest-hash sha256:...
 ```
 
-The fake fixture remains model-free and is not grounded evidence. The real
-slice requires Icarus and currently supports only the frozen comparator subset;
-it does not yet provide a formal-engine provider, the remaining nine core AST
-operators, a real-model discovery run, or empirical results. The legacy
-`r3e.red.validity_gate` remains available for historical Whole-Policy
-compatibility, but is not Grounded Red admission authority.
+The fake fixture remains model-free and is not grounded evidence. The
+operator library intentionally supports a constrained parser-backed
+SystemVerilog subset rather than claiming complete language coverage. Formal
+triplet receipts are independently reconstructable, but are not yet wired into
+arena admission authority. No real-model discovery run, bug-yield result, or
+empirical gain is claimed. The legacy `r3e.red.validity_gate` remains available
+for historical Whole-Policy compatibility, but is not Grounded Red admission
+authority.
 
 ### Registry and migration
 

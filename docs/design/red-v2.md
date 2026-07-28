@@ -8,7 +8,7 @@
 
 ---
 
-## 工程实施状态（2026-07-28，GRD-1 Executable Slice）
+## 工程实施状态（2026-07-28，GRD-2 + Formal Provider）
 
 当前处于红方系统升级阶段，不是模型实验阶段。第一批冻结范围为
 **Grounded Red Protocol Foundation V1**：
@@ -28,10 +28,14 @@
   parse/elaboration/compile/simulation、stdout oracle parser、底层工具链哈希、
   output artifact/provider receipts、clean/poison/revert V2 bundle 与失败类型
   硬门；
-- [x] GRD-2 首个 executable operator：`replace_comparator` 使用受约束
-  Verilog token AST 定位目标、执行单 token 语义修改并验证精确 inverse；
-- [ ] GRD-1 formal provider：formal property engine 和 formal receipt 尚未接入；
-- [ ] GRD-2 其余 9 类 operator 尚未接入 parser-backed materializer；
+- [x] GRD-2 完整 executable portfolio：10 类 frozen operator 均通过统一
+  Verilog operator-AST dispatch 定位目标、执行有界语义修改并验证精确
+  inverse，同时保留 comparator V1 receipt 兼容；
+- [x] GRD-1 formal provider：受限 Yosys SAT engine、formal property
+  receipt、clean-proof / poison-counterexample / revert-proof 三联证据和
+  inconclusive fail-closed 语义；
+- [ ] formal evidence 尚未接入 arena admission authority；当前只作为独立、
+  可重建的 provider evidence；
 - [ ] GRD-3 至 GRD-8：真实 coverage search、difficulty curriculum、memory
   adversary、red population、controlled composition 和 multi-round pilot。
 
@@ -42,9 +46,10 @@ proof objects 重建的 decision 才能进入新的 formal archives。
 
 基础协议说明见 `docs/protocols/grounded-red-discovery-foundation-v1.md`；
 GRD-1 执行切片见 `docs/protocols/grounded-red-execution-v1.md`；逐项清单见
-`docs/checklists/grounded-red-discovery-v1.md`，冻结记录见
+`docs/checklists/grounded-red-discovery-v1.md`；GRD-2 与 formal provider
+见 `docs/protocols/grounded-red-grd2-formal-v1.md`，冻结记录见
 `configs/evolution/grounded_red_protocol_foundation_v1.json` 与
-`configs/evolution/grounded_red_execution_v1.json`。
+`configs/evolution/grounded_red_execution_v1.json`，以及其后继 milestone。
 
 ## 1. 升级背景
 

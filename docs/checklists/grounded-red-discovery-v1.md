@@ -31,7 +31,7 @@ Status date: 2026-07-28
 - [x] Add deterministic fake evidence and multi-round fake-system validation.
 - [x] Keep legacy `r3e.red.validity_gate` outside Grounded Red authority.
 
-## GRD-1 executable Icarus slice
+## GRD-1 executable providers
 
 - [x] Execute real Icarus parse/elaboration/compile/simulation commands.
 - [x] Parse a frozen stdout oracle record through a hash-bound provider.
@@ -45,17 +45,20 @@ Status date: 2026-07-28
 - [x] Reject frozen RTL/testbench mismatch before execution.
 - [x] Distinguish timeout, crash, resource limit, and tool error from a
   functional mismatch.
-- [x] Add one parser-backed comparator materializer with exact inverse and
-  source/AST/provider receipt binding.
+- [x] Add parser-backed materializers for all ten frozen GRD-2 operators with
+  exact inverse and source/AST/provider receipt binding.
 - [x] Reconstruct a V2 execution bundle and G1-G11 decision independently.
-- [ ] Add a formal-engine provider and formal property receipts.
+- [x] Add a restricted Yosys SAT formal-engine provider, formal property
+  receipts, and a clean-proof/poison-counterexample/revert-proof triplet.
+- [x] Treat malformed output, timeout, crash, resource limit, and tool error as
+  inconclusive formal evidence.
 - [ ] Integrate Grounded Red admission as the formal arena validity path.
 
 ## GRD-2 through GRD-8 still open
 
 - [x] Implement and test `replace_comparator`.
-- [ ] Implement and test parser-backed materializers/inverses for the remaining
-  nine core operators.
+- [x] Implement and test parser-backed materializers/inverses for the remaining
+  nine core operators through one unified dispatch.
 - [ ] Implement real delta-debugging minimization.
 - [ ] Persist and resume real coverage-guided planning.
 - [ ] Derive difficulty from real temporal/dependency artifacts.

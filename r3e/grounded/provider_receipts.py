@@ -14,6 +14,7 @@ PROVIDER_KINDS = {
     "oracle_parser",
     "semantic_parser",
     "failure_descriptor",
+    "formal_parser",
 }
 _HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 
@@ -38,6 +39,14 @@ def provider_implementation_hash(
         ("semantic_parser", "r3e-verilog-token-ast", "1"): [
             red_grounded_root / "verilog_ast.py",
             red_grounded_root / "materializers.py",
+        ],
+        ("semantic_parser", "r3e-verilog-operator-ast", "2"): [
+            red_grounded_root / "verilog_ast.py",
+            red_grounded_root / "operator_ast.py",
+            red_grounded_root / "materializers.py",
+        ],
+        ("formal_parser", "r3e-yosys-sat-formal", "1"): [
+            grounded_root / "yosys_formal.py",
         ],
     }
     paths = implementations.get((provider_kind, provider_id, provider_version))
