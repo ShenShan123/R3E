@@ -9,7 +9,10 @@ from r3e.policy.schema import PolicyState
 from r3e.protocol.hashing import hash_payload
 from r3e.protocol.ledger import append_ledger, read_ledger, writer_lock
 
-from .admission import verify_grounded_admission_decision
+from .admission import (
+    ADMISSION_DECISION_GROUNDED_SCHEMA_VERSION,
+    verify_grounded_admission_decision,
+)
 from .difficulty import verify_difficulty_profile
 from .lineage import validate_lineage_graph, verify_lineage
 from .mutation_plan import verify_mutation_plan
@@ -25,9 +28,17 @@ class GroundedArchiveViolation(RuntimeError):
 
 
 class GroundedRedArchive:
-    def __init__(self, root: str | Path):
+    def __init__(
+        self,
+        root: str | Path,
+        *,
+        require_grounded_execution: bool = True,
+    ):
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
+        self.require_grounded_execution = bool(
+            require_grounded_execution
+        )
 
     def _path(self, kind: str) -> Path:
         if kind not in ARCHIVE_KINDS:
@@ -101,6 +112,14 @@ class GroundedRedArchive:
             registries=registries,
             evidence=evidence,
         )
+        if (
+            self.require_grounded_execution
+            and decision["schema_version"]
+            != ADMISSION_DECISION_GROUNDED_SCHEMA_VERSION
+        ):
+            raise GroundedArchiveViolation(
+                "formal archive requires runner-owned grounded execution"
+            )
         if kind == "rejected" and decision["admitted"]:
             raise GroundedArchiveViolation(
                 "admitted poison cannot enter rejected archive"

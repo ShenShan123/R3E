@@ -31,19 +31,31 @@ Status date: 2026-07-28
 - [x] Add deterministic fake evidence and multi-round fake-system validation.
 - [x] Keep legacy `r3e.red.validity_gate` outside Grounded Red authority.
 
-## GRD-1 execution still open
+## GRD-1 executable Icarus slice
 
-- [ ] Execute real parser/elaboration/compile/simulation/formal/oracle commands.
-- [ ] Persist and independently parse provider receipts and output artifacts.
-- [ ] Enforce wall-time, output-size, process-tree, and resource budgets in the
-  real command runner.
-- [ ] Derive runtime observations without adapter-supplied truth.
+- [x] Execute real Icarus parse/elaboration/compile/simulation commands.
+- [x] Parse a frozen stdout oracle record through a hash-bound provider.
+- [x] Persist command stdout/stderr and bind provider receipts to exact output
+  artifact hashes.
+- [x] Enforce argv-only execution, executable/path allowlists, clean
+  environment, wall-time, output-size, address-space, CPU, and process-tree
+  limits in the real command runner.
+- [x] Derive parse/elaboration/compile/simulation/oracle observations from
+  runner-owned results rather than adapter-supplied truth.
+- [x] Reject frozen RTL/testbench mismatch before execution.
+- [x] Distinguish timeout, crash, resource limit, and tool error from a
+  functional mismatch.
+- [x] Add one parser-backed comparator materializer with exact inverse and
+  source/AST/provider receipt binding.
+- [x] Reconstruct a V2 execution bundle and G1-G11 decision independently.
+- [ ] Add a formal-engine provider and formal property receipts.
 - [ ] Integrate Grounded Red admission as the formal arena validity path.
 
 ## GRD-2 through GRD-8 still open
 
-- [ ] Implement and test parser-backed materializers/inverses for ten core
-  operators.
+- [x] Implement and test `replace_comparator`.
+- [ ] Implement and test parser-backed materializers/inverses for the remaining
+  nine core operators.
 - [ ] Implement real delta-debugging minimization.
 - [ ] Persist and resume real coverage-guided planning.
 - [ ] Derive difficulty from real temporal/dependency artifacts.

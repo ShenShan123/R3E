@@ -13,6 +13,8 @@ RECEIPT_ISSUER = "r3e-grounded-command-runner-v1"
 COMMAND_PHASES = {
     "parse",
     "elaborate",
+    "compile",
+    "simulation",
     "clean_baseline",
     "poison_execution",
     "revert_execution",
@@ -25,6 +27,7 @@ RESULT_KINDS = {
     "timeout",
     "crash",
     "tool_error",
+    "resource_limit",
     "inconclusive",
 }
 _HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")

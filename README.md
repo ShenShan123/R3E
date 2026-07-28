@@ -156,6 +156,14 @@ policy-bound MutationPlan objects, reconstructable G1-G11 admission,
 semantic/effect receipts, separate formal archives, coverage state, and a
 sanitized active-blue capability packet.
 
+Its child checkpoint, **Grounded Red Execution V1**, adds a restricted real
+command runner, an Icarus Verilog provider for parse/elaboration/compile/
+simulation, a receipt-backed stdout oracle, and the first parser-backed
+`replace_comparator` materializer with exact inverse. A real execution emits a
+V2 evidence/decision bundle; compile errors, timeouts, crashes, resource limits,
+invalid oracle output, or frozen-input mismatch cannot count as functional
+bugs.
+
 Run the model-free protocol fixture with:
 
 ```bash
@@ -164,11 +172,29 @@ python -m r3e.red.grounded.fake_system \
   --rounds 3
 ```
 
-The fixture does not execute a real parser, EDA tool, oracle, or model. The
-legacy `r3e.red.validity_gate` remains available for historical Whole-Policy
-compatibility, but is not Grounded Red admission authority. Real command
-receipts, parser-backed AST operators, and empirical red discovery remain
-explicit follow-up work.
+Run the real Icarus slice with a frozen MutationPlan, policy, RTL, testbench,
+and their exact hashes:
+
+```bash
+python -m r3e.red.grounded.execution \
+  --plan mutation_plan.json \
+  --policy configs/base_policy/frozen_base_policy_v1.json \
+  --clean-rtl runtime/grd1/counter.v \
+  --testbench runtime/grd1/tb.v \
+  --top-module tb \
+  --workspace runtime/grd1 \
+  --run-context-hash sha256:... \
+  --frozen-clean-rtl-hash sha256:... \
+  --frozen-testbench-hash sha256:... \
+  --allowed-file-manifest-hash sha256:...
+```
+
+The fake fixture remains model-free and is not grounded evidence. The real
+slice requires Icarus and currently supports only the frozen comparator subset;
+it does not yet provide a formal-engine provider, the remaining nine core AST
+operators, a real-model discovery run, or empirical results. The legacy
+`r3e.red.validity_gate` remains available for historical Whole-Policy
+compatibility, but is not Grounded Red admission authority.
 
 ### Registry and migration
 

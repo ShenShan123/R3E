@@ -46,7 +46,10 @@ def run_fake_grounded_red(
         effect_registry=project_root
         / "configs/red/grounded_effect_registry_v1.json",
     )
-    archive = GroundedRedArchive(target / "archives")
+    archive = GroundedRedArchive(
+        target / "archives",
+        require_grounded_execution=False,
+    )
     cells = []
     admitted = []
     for index in range(1, rounds + 1):

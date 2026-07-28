@@ -20,15 +20,25 @@ from .registry import (
     GroundedRegistryBundle,
     load_grounded_registries,
 )
+from .materializers import (
+    AstMaterializationViolation,
+    inverse_materialization,
+    materialize_comparator,
+    verify_materialization_receipt,
+)
 
 __all__ = [
     "GroundedAdmissionViolation",
     "GroundedRegistryBundle",
     "GroundedRegistryViolation",
     "MutationPlanViolation",
+    "AstMaterializationViolation",
     "build_mutation_plan",
     "decide_grounded_admission",
+    "inverse_materialization",
     "load_grounded_registries",
+    "materialize_comparator",
     "verify_grounded_admission_decision",
+    "verify_materialization_receipt",
     "verify_mutation_plan",
 ]

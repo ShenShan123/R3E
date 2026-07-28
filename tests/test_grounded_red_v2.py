@@ -431,7 +431,28 @@ def test_grounded_archive_separates_admitted_and_rejected(
         difficulty_delta={"temporal_depth": 0, "dependency_depth": 0},
         semantic_diff_receipt_hash=evidence["semantic_diff"]["receipt_hash"],
     )
-    archive = GroundedRedArchive(tmp_path / "archives")
+    formal_archive = GroundedRedArchive(
+        tmp_path / "formal-archives"
+    )
+    with pytest.raises(
+        GroundedArchiveViolation, match="runner-owned grounded execution"
+    ):
+        formal_archive.add(
+            kind="valid",
+            poison_id="P001",
+            archived_round_id="R001",
+            policy=policy,
+            registries=registries,
+            plan=plan,
+            evidence=evidence,
+            admission_decision=decision,
+            difficulty_profile=profile,
+            lineage=lineage,
+        )
+    archive = GroundedRedArchive(
+        tmp_path / "archives",
+        require_grounded_execution=False,
+    )
     valid = archive.add(
         kind="valid",
         poison_id="P001",

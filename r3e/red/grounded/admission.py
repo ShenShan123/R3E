@@ -6,10 +6,13 @@ import re
 from typing import Any, Mapping
 
 from r3e.grounded.receipts import verify_command_receipt
+from r3e.grounded.provider_receipts import verify_provider_receipt
+from r3e.grounded.icarus import verify_icarus_toolchain_fingerprint
 from r3e.policy.schema import PolicyState
 from r3e.protocol.hashing import hash_payload
 
 from .mutation_plan import verify_mutation_plan
+from .materializers import verify_materialization_receipt
 from .proofs import (
     verify_runtime_effect_receipt,
     verify_semantic_diff_receipt,
@@ -18,7 +21,13 @@ from .registry import GroundedRegistryBundle
 
 
 ADMISSION_EVIDENCE_SCHEMA_VERSION = "r3e-red-admission-evidence-v1"
+ADMISSION_EVIDENCE_GROUNDED_SCHEMA_VERSION = (
+    "r3e-red-admission-evidence-v2"
+)
 ADMISSION_DECISION_SCHEMA_VERSION = "r3e-red-admission-decision-v1"
+ADMISSION_DECISION_GROUNDED_SCHEMA_VERSION = (
+    "r3e-red-admission-decision-v2"
+)
 _HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _NONTRIVIALITY_FLAGS = {
     "constant_output",
@@ -88,13 +97,156 @@ def _observed(receipt: dict[str, Any], required: set[str]) -> dict[str, Any]:
     return observed
 
 
+def _verify_execution_chain(aggregate: dict[str, Any]) -> bool:
+    """Verify optional real command/provider receipts nested in an aggregate."""
+    observed = aggregate["observed"]
+    raw_children = observed.get("provider_receipts")
+    raw_oracle = observed.get("oracle_provider_receipt")
+    if raw_children is None and raw_oracle is None:
+        return False
+    if not isinstance(raw_children, list) or raw_oracle is None:
+        raise GroundedAdmissionViolation(
+            "grounded execution provider chain is incomplete"
+        )
+    children = [verify_command_receipt(row) for row in raw_children]
+    phases = [row["phase"] for row in children]
+    if phases != ["parse", "elaborate", "compile", "simulation"]:
+        raise GroundedAdmissionViolation(
+            "grounded execution provider phases mismatch"
+        )
+    if (
+        len({row["subject_hash"] for row in children}) != 1
+        or children[0]["subject_hash"] != aggregate["subject_hash"]
+        or len({row["run_context_hash"] for row in children}) != 1
+        or children[0]["run_context_hash"] != aggregate["run_context_hash"]
+        or len({row["toolchain_fingerprint_hash"] for row in children}) != 1
+        or children[0]["toolchain_fingerprint_hash"]
+        != aggregate["toolchain_fingerprint_hash"]
+    ):
+        raise GroundedAdmissionViolation(
+            "grounded execution child receipt binding mismatch"
+        )
+    raw_toolchain = observed.get("toolchain_fingerprint")
+    if not isinstance(raw_toolchain, Mapping):
+        raise GroundedAdmissionViolation(
+            "grounded execution lacks a toolchain fingerprint"
+        )
+    toolchain = verify_icarus_toolchain_fingerprint(raw_toolchain)
+    if (
+        toolchain["toolchain_fingerprint_hash"]
+        != aggregate["toolchain_fingerprint_hash"]
+        or any(
+            child["toolchain_fingerprint_hash"]
+            != toolchain["toolchain_fingerprint_hash"]
+            for child in children
+        )
+        or any(
+            child["artifact_hashes"]["executable"]
+            != toolchain["iverilog_hash"]
+            for child in children[:3]
+        )
+        or children[3]["artifact_hashes"]["executable"]
+        != toolchain["vvp_hash"]
+    ):
+        raise GroundedAdmissionViolation(
+            "grounded execution toolchain binding mismatch"
+        )
+    if (
+        any(
+            child["artifact_hashes"].get("rtl")
+            != aggregate["subject_hash"]
+            for child in children[:3]
+        )
+        or len({
+            child["artifact_hashes"].get("testbench")
+            for child in children
+        }) != 1
+        or children[2]["artifact_hashes"].get("simulation_binary")
+        != children[3]["artifact_hashes"].get(
+            "simulation_binary_input"
+        )
+    ):
+        raise GroundedAdmissionViolation(
+            "grounded execution command artifact chain mismatch"
+        )
+    expected_observations = {
+        "parse_ok": children[0]["result_kind"] == "completed",
+        "elaboration_ok": children[1]["result_kind"] == "completed",
+        "compile_ok": children[2]["result_kind"] == "completed",
+        "simulation_complete": children[3]["result_kind"] == "completed",
+    }
+    if any(
+        observed.get(field) != expected
+        for field, expected in expected_observations.items()
+    ):
+        raise GroundedAdmissionViolation(
+            "aggregate observation differs from command receipts"
+        )
+    child_kinds = [row["result_kind"] for row in children]
+    if "timeout" in child_kinds:
+        expected_kind = "timeout"
+    elif "resource_limit" in child_kinds:
+        expected_kind = "resource_limit"
+    elif "crash" in child_kinds:
+        expected_kind = "crash"
+    elif any(kind != "completed" for kind in child_kinds):
+        expected_kind = "tool_error"
+    else:
+        expected_kind = "completed"
+    if aggregate["result_kind"] != expected_kind:
+        raise GroundedAdmissionViolation(
+            "aggregate result differs from command receipts"
+        )
+    for child in children:
+        field = f"{child['phase']}_receipt"
+        if aggregate["artifact_hashes"].get(field) != child["receipt_hash"]:
+            raise GroundedAdmissionViolation(
+                "aggregate/child receipt hash mismatch"
+            )
+    oracle = verify_provider_receipt(raw_oracle)
+    if oracle["provider_kind"] != "oracle_parser":
+        raise GroundedAdmissionViolation(
+            "grounded execution lacks oracle provider authority"
+        )
+    if (
+        oracle["provider_implementation_hash"]
+        != toolchain["oracle_provider_implementation_hash"]
+    ):
+        raise GroundedAdmissionViolation(
+            "oracle provider/toolchain implementation mismatch"
+        )
+    simulation = children[-1]
+    if (
+        oracle["input_artifact_hashes"].get("simulation_stdout")
+        != simulation["artifact_hashes"]["stdout"]
+        or aggregate["artifact_hashes"].get("oracle_provider_receipt")
+        != oracle["receipt_hash"]
+    ):
+        raise GroundedAdmissionViolation(
+            "oracle provider/simulation artifact mismatch"
+        )
+    oracle_result = oracle["result"]
+    for field in (
+        "oracle_pass",
+        "functional_mismatch",
+        "effect_signature",
+        "first_divergence_hash",
+        "mismatch_topology_hash",
+    ):
+        if field in observed and observed[field] != oracle_result.get(field):
+            raise GroundedAdmissionViolation(
+                "aggregate observation differs from oracle provider"
+            )
+    return True
+
+
 def _verify_evidence(
     evidence: Mapping[str, Any],
     *,
     plan: dict[str, Any],
 ) -> dict[str, Any]:
     payload = deepcopy(dict(evidence))
-    required = {
+    base_required = {
         "schema_version",
         "plan_hash",
         "poison_payload_hash",
@@ -108,9 +260,19 @@ def _verify_evidence(
         "minimization",
         "evidence_hash",
     }
+    schema = payload.get("schema_version")
+    required = (
+        base_required
+        | {"materialization_receipt", "semantic_provider_receipt"}
+        if schema == ADMISSION_EVIDENCE_GROUNDED_SCHEMA_VERSION
+        else base_required
+    )
     if set(payload) != required:
         raise GroundedAdmissionViolation("grounded admission evidence fields mismatch")
-    if payload["schema_version"] != ADMISSION_EVIDENCE_SCHEMA_VERSION:
+    if schema not in {
+        ADMISSION_EVIDENCE_SCHEMA_VERSION,
+        ADMISSION_EVIDENCE_GROUNDED_SCHEMA_VERSION,
+    }:
         raise GroundedAdmissionViolation("grounded admission evidence schema mismatch")
     if payload["plan_hash"] != plan["plan_hash"]:
         raise GroundedAdmissionViolation("admission evidence plan mismatch")
@@ -142,17 +304,121 @@ def _verify_evidence(
         raise GroundedAdmissionViolation(
             "grounded receipts use inconsistent run context or toolchain"
         )
+    execution_modes = [_verify_execution_chain(row) for row in receipts]
+    if any(execution_modes) and not all(execution_modes):
+        raise GroundedAdmissionViolation(
+            "real and synthetic execution receipts cannot be mixed"
+        )
+    grounded_execution = all(execution_modes)
+    if grounded_execution != (
+        schema == ADMISSION_EVIDENCE_GROUNDED_SCHEMA_VERSION
+    ):
+        raise GroundedAdmissionViolation(
+            "grounded execution requires V2 evidence authority"
+        )
     if clean["subject_hash"] != source["clean_rtl_hash"] or any(
         row["subject_hash"] != source["poison_rtl_hash"]
         for row in poison_runs
     ):
         raise GroundedAdmissionViolation("execution receipt/source binding mismatch")
+    if grounded_execution:
+        for row in receipts:
+            if (
+                row["artifact_hashes"].get("rtl") != row["subject_hash"]
+                or row["artifact_hashes"].get("testbench")
+                != source["testbench_hash"]
+                or row["observed"]["oracle_provider_receipt"][
+                    "input_artifact_hashes"
+                ].get("testbench") != source["testbench_hash"]
+            ):
+                raise GroundedAdmissionViolation(
+                    "grounded execution/source integrity binding mismatch"
+                )
     semantic = verify_semantic_diff_receipt(payload["semantic_diff"])
     effect = verify_runtime_effect_receipt(payload["runtime_effect"])
     if semantic["plan_hash"] != plan["plan_hash"] or effect["plan_hash"] != plan[
         "plan_hash"
     ]:
         raise GroundedAdmissionViolation("proof receipt plan mismatch")
+    materialization = None
+    semantic_provider = None
+    if grounded_execution:
+        materialization = verify_materialization_receipt(
+            payload["materialization_receipt"]
+        )
+        semantic_provider = verify_provider_receipt(
+            payload["semantic_provider_receipt"]
+        )
+        if (
+            materialization["plan_hash"] != plan["plan_hash"]
+            or materialization["operator_id"] != plan["operator_id"]
+            or materialization["target_module"] != plan["target_module"]
+            or materialization["clean_rtl_hash"]
+            != source["clean_rtl_hash"]
+            or materialization["poison_rtl_hash"]
+            != source["poison_rtl_hash"]
+            or materialization["clean_ast_node_hash"]
+            != plan["target_ast_node_hash"]
+            or materialization["clean_ast_hash"]
+            != semantic["clean_ast_hash"]
+            or materialization["poison_ast_hash"]
+            != semantic["poison_ast_hash"]
+            or materialization["ast_edit_count"]
+            != semantic["ast_edit_count"]
+        ):
+            raise GroundedAdmissionViolation(
+                "materialization/source/semantic proof binding mismatch"
+            )
+        if (
+            semantic_provider["provider_kind"] != "semantic_parser"
+            or semantic_provider["input_artifact_hashes"].get("clean_rtl")
+            != source["clean_rtl_hash"]
+            or semantic_provider["input_artifact_hashes"].get("poison_rtl")
+            != source["poison_rtl_hash"]
+            or semantic_provider["result"].get("materialization_hash")
+            != materialization["materialization_hash"]
+            or semantic_provider["result"].get(
+                "semantic_diff_receipt_hash"
+            ) != semantic["receipt_hash"]
+        ):
+            raise GroundedAdmissionViolation(
+                "semantic provider/materialization proof binding mismatch"
+            )
+        providers = []
+        for row in poison_runs:
+            raw_provider = row["observed"].get(
+                "semantic_provider_receipt"
+            )
+            if raw_provider is None:
+                raise GroundedAdmissionViolation(
+                    "grounded poison execution lacks semantic provider receipt"
+                )
+            provider = verify_provider_receipt(raw_provider)
+            if (
+                provider["provider_kind"] != "semantic_parser"
+                or provider["input_artifact_hashes"].get("clean_rtl")
+                != source["clean_rtl_hash"]
+                or provider["input_artifact_hashes"].get("poison_rtl")
+                != source["poison_rtl_hash"]
+                or provider["result"].get("semantic_diff_receipt_hash")
+                != semantic["receipt_hash"]
+                or row["artifact_hashes"].get(
+                    "semantic_provider_receipt"
+                )
+                != provider["receipt_hash"]
+            ):
+                raise GroundedAdmissionViolation(
+                    "semantic provider/source proof binding mismatch"
+                )
+            providers.append(provider)
+        if len({provider["receipt_hash"] for provider in providers}) != 1:
+            raise GroundedAdmissionViolation(
+                "repeated poison runs use different semantic proof"
+            )
+        if providers[0]["receipt_hash"] != semantic_provider["receipt_hash"]:
+            raise GroundedAdmissionViolation(
+                "execution semantic provider differs from V2 evidence"
+            )
     nontriviality = payload["nontriviality"]
     if (
         not isinstance(nontriviality, dict)
@@ -191,6 +457,9 @@ def _verify_evidence(
         "revert_run": revert,
         "semantic_diff": semantic,
         "runtime_effect": effect,
+        "materialization_receipt": materialization,
+        "semantic_provider_receipt": semantic_provider,
+        "grounded_execution_authority": grounded_execution,
     }
 
 
@@ -342,8 +611,13 @@ def decide_grounded_admission(
             <= semantic["ast_edit_count"]
         ),
     }
+    grounded_execution = bool(verified["grounded_execution_authority"])
     decision = {
-        "schema_version": ADMISSION_DECISION_SCHEMA_VERSION,
+        "schema_version": (
+            ADMISSION_DECISION_GROUNDED_SCHEMA_VERSION
+            if grounded_execution
+            else ADMISSION_DECISION_SCHEMA_VERSION
+        ),
         "plan_hash": verified_plan["plan_hash"],
         "challenged_policy_instance_hash": policy.policy_instance_hash,
         "challenged_effective_policy_hash": policy.effective_policy_hash,
@@ -358,6 +632,8 @@ def decide_grounded_admission(
         "runtime_effect_receipt_hash": effect["receipt_hash"],
         "minimized_poison_hash": minimization["minimized_poison_hash"],
     }
+    if grounded_execution:
+        decision["authority_mode"] = "runner_owned_grounded_execution"
     decision["decision_hash"] = hash_payload(decision)
     return decision
 
@@ -371,7 +647,7 @@ def verify_grounded_admission_decision(
     evidence: Mapping[str, Any],
 ) -> dict[str, Any]:
     recorded = deepcopy(dict(decision))
-    required = {
+    base_required = {
         "schema_version",
         "plan_hash",
         "challenged_policy_instance_hash",
@@ -386,10 +662,24 @@ def verify_grounded_admission_decision(
         "minimized_poison_hash",
         "decision_hash",
     }
+    schema = recorded.get("schema_version")
+    required = (
+        base_required | {"authority_mode"}
+        if schema == ADMISSION_DECISION_GROUNDED_SCHEMA_VERSION
+        else base_required
+    )
     if set(recorded) != required:
         raise GroundedAdmissionViolation("grounded admission decision fields mismatch")
-    if recorded["schema_version"] != ADMISSION_DECISION_SCHEMA_VERSION:
+    if schema not in {
+        ADMISSION_DECISION_SCHEMA_VERSION,
+        ADMISSION_DECISION_GROUNDED_SCHEMA_VERSION,
+    }:
         raise GroundedAdmissionViolation("grounded admission decision schema mismatch")
+    if (
+        schema == ADMISSION_DECISION_GROUNDED_SCHEMA_VERSION
+        and recorded["authority_mode"] != "runner_owned_grounded_execution"
+    ):
+        raise GroundedAdmissionViolation("grounded admission authority mode mismatch")
     if recorded["decision_hash"] != hash_payload({
         key: value for key, value in recorded.items() if key != "decision_hash"
     }):

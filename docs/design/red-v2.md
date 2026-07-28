@@ -8,7 +8,7 @@
 
 ---
 
-## 工程实施状态（2026-07-28，Protocol Foundation）
+## 工程实施状态（2026-07-28，GRD-1 Executable Slice）
 
 当前处于红方系统升级阶段，不是模型实验阶段。第一批冻结范围为
 **Grounded Red Protocol Foundation V1**：
@@ -24,10 +24,14 @@
   packet；
 - [x] deterministic fake evidence 与多轮 fake system，用于协议、幂等性和
   fail-closed 测试，不作为真实 grounded evidence；
-- [ ] GRD-1 执行层：真实 parser/elaboration/compile/simulation/formal/oracle
-  command runner 及 provider receipt 接入；
-- [ ] GRD-2：10 类 operator 当前只冻结定义、precondition、inverse 和 scope，
-  尚未接入 parser-backed AST materializer；
+- [x] GRD-1 Icarus 执行切片：受限 argv-only command runner、真实
+  parse/elaboration/compile/simulation、stdout oracle parser、底层工具链哈希、
+  output artifact/provider receipts、clean/poison/revert V2 bundle 与失败类型
+  硬门；
+- [x] GRD-2 首个 executable operator：`replace_comparator` 使用受约束
+  Verilog token AST 定位目标、执行单 token 语义修改并验证精确 inverse；
+- [ ] GRD-1 formal provider：formal property engine 和 formal receipt 尚未接入；
+- [ ] GRD-2 其余 9 类 operator 尚未接入 parser-backed materializer；
 - [ ] GRD-3 至 GRD-8：真实 coverage search、difficulty curriculum、memory
   adversary、red population、controlled composition 和 multi-round pilot。
 
@@ -36,9 +40,11 @@
 authority。只有可由 `decide_grounded_admission()` 从完整 plan、receipt 和
 proof objects 重建的 decision 才能进入新的 formal archives。
 
-协议说明见 `docs/protocols/grounded-red-discovery-foundation-v1.md`，逐项清单见
+基础协议说明见 `docs/protocols/grounded-red-discovery-foundation-v1.md`；
+GRD-1 执行切片见 `docs/protocols/grounded-red-execution-v1.md`；逐项清单见
 `docs/checklists/grounded-red-discovery-v1.md`，冻结记录见
-`configs/evolution/grounded_red_protocol_foundation_v1.json`。
+`configs/evolution/grounded_red_protocol_foundation_v1.json` 与
+`configs/evolution/grounded_red_execution_v1.json`。
 
 ## 1. 升级背景
 
