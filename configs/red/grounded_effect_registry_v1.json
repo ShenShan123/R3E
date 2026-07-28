@@ -1,0 +1,17 @@
+{
+  "schema_version": "r3e-red-effect-registry-v1",
+  "registry_version": 1,
+  "frozen": true,
+  "effects": [
+    {"effect_id": "wrong_combinational_value", "supported_family_ids": ["combinational.expression_operator", "combinational.comparator_boundary", "combinational.predicate_polarity", "combinational.mux_priority"], "observable_features": ["first_divergence_signal", "mismatch_topology"]},
+    {"effect_id": "wrong_width_or_extension", "supported_family_ids": ["datapath.width_truncation", "datapath.signedness_casting", "datapath.arithmetic_boundary"], "observable_features": ["bit_mismatch_mask", "first_divergence_signal"]},
+    {"effect_id": "candidate_lags_golden_one_cycle", "supported_family_ids": ["temporal.one_cycle_latency", "sequential.current_next_state", "sequential.update_ordering"], "observable_features": ["temporal_relation", "cycle_offset"]},
+    {"effect_id": "state_transition_diverges", "supported_family_ids": ["sequential.assignment_semantics", "control.fsm_transition"], "observable_features": ["first_divergence_cycle", "state_transition"]},
+    {"effect_id": "reset_trace_diverges", "supported_family_ids": ["sequential.reset_semantics"], "observable_features": ["reset_phase", "first_divergence_cycle"]},
+    {"effect_id": "hold_or_enable_violation", "supported_family_ids": ["sequential.enable_hold"], "observable_features": ["enable_state", "unexpected_update"]},
+    {"effect_id": "terminal_event_shifted", "supported_family_ids": ["sequential.counter_index"], "observable_features": ["terminal_cycle_offset", "counter_value"]},
+    {"effect_id": "protocol_transaction_loss_or_duplication", "supported_family_ids": ["protocol.valid_ready", "protocol.request_response"], "observable_features": ["transaction_count_delta", "first_divergence_cycle"]},
+    {"effect_id": "pipeline_state_misaligned", "supported_family_ids": ["pipeline.stall_flush", "control.fsm_output"], "observable_features": ["stage_offset", "control_data_alignment"]},
+    {"effect_id": "storage_or_connectivity_mismatch", "supported_family_ids": ["storage.read_write", "structural.cross_module_wiring", "structural.parameter_dependent", "structural.generate_array_index", "structural.multi_block_dependency", "composition.controlled_pair"], "observable_features": ["first_divergence_signal", "dependency_path_hash"]}
+  ]
+}

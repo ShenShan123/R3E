@@ -147,6 +147,29 @@ cross-policy memory definitions, semantic bank deduplication, and cumulative
 memory provenance. Runner-owned oracle/descriptor/RTL semantic grounding remains
 open and blocks a Grounded Runtime or empirical continual-learning claim.
 
+### Grounded Red Discovery
+
+The red-team V2 engineering path is defined in
+`docs/design/red-v2.md`. Its first checkpoint, **Grounded Red Protocol
+Foundation V1**, introduces frozen family/operator/effect registries,
+policy-bound MutationPlan objects, reconstructable G1-G11 admission,
+semantic/effect receipts, separate formal archives, coverage state, and a
+sanitized active-blue capability packet.
+
+Run the model-free protocol fixture with:
+
+```bash
+python -m r3e.red.grounded.fake_system \
+  --workspace /tmp/r3e-grounded-red-foundation-v1 \
+  --rounds 3
+```
+
+The fixture does not execute a real parser, EDA tool, oracle, or model. The
+legacy `r3e.red.validity_gate` remains available for historical Whole-Policy
+compatibility, but is not Grounded Red admission authority. Real command
+receipts, parser-backed AST operators, and empirical red discovery remain
+explicit follow-up work.
+
 ### Registry and migration
 
 Initialize the sole formal registry from the frozen base policy:

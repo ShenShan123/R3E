@@ -1,0 +1,60 @@
+{
+  "schema_version": "r3e-grounded-red-protocol-foundation-milestone-v1",
+  "milestone_id": "grounded-red-protocol-foundation-v1",
+  "status": "frozen",
+  "parent_milestone": {
+    "milestone_id": "raam-authority-closure-v1",
+    "milestone_hash": "sha256:f38e4165dc3a5c5f3262bc7bc901a8408b5d48950585f75a1cb076de5985bafb"
+  },
+  "completed_scope": [
+    "grd-0-ontology-and-protocol",
+    "grd-1-admission-authority-protocol",
+    "grounded-red-four-archive-boundary",
+    "coverage-state-and-deterministic-target-selection",
+    "sanitized-effective-blue-capability-packet",
+    "deterministic-fake-authority-system"
+  ],
+  "frozen_interfaces": [
+    "r3e-red-family-registry-v1",
+    "r3e-red-operator-registry-v1",
+    "r3e-red-effect-registry-v1",
+    "r3e-grounded-mutation-plan-v1",
+    "r3e-grounded-command-receipt-v1",
+    "r3e-red-semantic-diff-receipt-v1",
+    "r3e-red-effect-receipt-v1",
+    "r3e-red-admission-evidence-v1",
+    "r3e-red-admission-decision-v1",
+    "r3e-red-difficulty-profile-v1",
+    "r3e-red-lineage-v1",
+    "r3e-red-coverage-state-v1",
+    "r3e-red-capability-packet-v1",
+    "r3e-grounded-red-archive-entry-v1"
+  ],
+  "frozen_assets": {
+    "configs/red/grounded_family_registry_v1.json": "sha256:a33cb70b9139b489ff2d8d7823c8220678add8bc31be320edcd30b4adfac3ed5",
+    "configs/red/grounded_operator_registry_v1.json": "sha256:c066e6dc070e6e45f8ef3bbb9453314b483d99e96dc1cccf1e52552d5483bf2b",
+    "configs/red/grounded_effect_registry_v1.json": "sha256:cafc655d3426fc0a53272f8eb998c37d87c789ee7b44fc652a7c30083237f8b2",
+    "docs/protocols/grounded-red-discovery-foundation-v1.md": "sha256:c375402f49f3df5e6ff1c9049d105185fc91ce6a2249d9cb83c42bc3e1a8c459"
+  },
+  "required_validation": [
+    "pytest -q -p no:cacheprovider",
+    "python -m r3e.red.grounded.fake_system --workspace /tmp/r3e-grounded-red-foundation-v1 --rounds 3",
+    "python -m r3e.arena.fake_system --workspace /tmp/r3e-whole-policy-after-grounded-red-v1 --rounds 3",
+    "python scripts/check_release.py",
+    "python scripts/verify_datasets.py"
+  ],
+  "deferred_grounded_execution": [
+    "real_command_execution",
+    "provider_receipt_parsing",
+    "parser_backed_ast_materializers",
+    "artifact_derived_failure_descriptor",
+    "real_delta_debugging",
+    "real_coverage_curriculum",
+    "grounded_memory_adversary",
+    "red_population",
+    "controlled_composition_execution",
+    "real_model_multi_round_pilot"
+  ],
+  "claim_boundary": "Frozen Grounded Red authority protocols and deterministic fake state-machine validation only; no real parser, EDA, oracle, model, bug admission, or empirical discovery result.",
+  "milestone_hash": "sha256:b1457781eb24b8ef9a77cfadceb1a0643204fab3ef82c8ad5656f2e1b13fafc3"
+}

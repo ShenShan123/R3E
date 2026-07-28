@@ -1,4 +1,10 @@
-"""Fail-closed poison validity gate."""
+"""Legacy adapter-evidence poison validity compatibility gate.
+
+This module verifies the integrity of the historical validity envelope.  It is
+not Grounded Red admission authority; formal Grounded Red uses
+``r3e.red.grounded.admission`` and reconstructs G1-G11 from runner-owned
+receipts and proof objects.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -39,7 +45,7 @@ class ValidityResult:
 
 
 def verify_validity_record(record: dict[str, Any]) -> dict[str, Any]:
-    """Verify a persisted validity result without trusting its producer."""
+    """Verify integrity and positive status of a legacy validity envelope."""
     if set(record) != {
         "proven_valid",
         "checks",

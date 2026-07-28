@@ -1,0 +1,17 @@
+{
+  "schema_version": "r3e-red-operator-registry-v1",
+  "registry_version": 1,
+  "frozen": true,
+  "operators": [
+    {"operator_id": "replace_comparator", "supported_family_ids": ["combinational.comparator_boundary"], "preconditions": ["comparison_expression"], "maximum_changed_modules": 1, "maximum_changed_blocks": 1, "maximum_ast_edits": 1, "inverse_operator": "restore_comparator", "executor": "ast_template"},
+    {"operator_id": "negate_predicate", "supported_family_ids": ["combinational.predicate_polarity"], "preconditions": ["boolean_predicate"], "maximum_changed_modules": 1, "maximum_changed_blocks": 1, "maximum_ast_edits": 1, "inverse_operator": "restore_predicate", "executor": "ast_template"},
+    {"operator_id": "shift_boundary_constant", "supported_family_ids": ["combinational.comparator_boundary", "sequential.counter_index"], "preconditions": ["constant_boundary"], "maximum_changed_modules": 1, "maximum_changed_blocks": 1, "maximum_ast_edits": 1, "inverse_operator": "restore_boundary_constant", "executor": "ast_template"},
+    {"operator_id": "shift_slice", "supported_family_ids": ["datapath.width_truncation"], "preconditions": ["part_select"], "maximum_changed_modules": 1, "maximum_changed_blocks": 1, "maximum_ast_edits": 1, "inverse_operator": "restore_slice", "executor": "ast_template"},
+    {"operator_id": "change_signedness_cast", "supported_family_ids": ["datapath.signedness_casting"], "preconditions": ["typed_expression"], "maximum_changed_modules": 1, "maximum_changed_blocks": 1, "maximum_ast_edits": 1, "inverse_operator": "restore_signedness_cast", "executor": "ast_template"},
+    {"operator_id": "change_assignment_kind", "supported_family_ids": ["sequential.assignment_semantics"], "preconditions": ["procedural_assignment"], "maximum_changed_modules": 1, "maximum_changed_blocks": 1, "maximum_ast_edits": 1, "inverse_operator": "restore_assignment_kind", "executor": "ast_template"},
+    {"operator_id": "change_reset_semantics", "supported_family_ids": ["sequential.reset_semantics"], "preconditions": ["reset_signal"], "maximum_changed_modules": 1, "maximum_changed_blocks": 1, "maximum_ast_edits": 2, "inverse_operator": "restore_reset_semantics", "executor": "ast_template"},
+    {"operator_id": "change_enable_condition", "supported_family_ids": ["sequential.enable_hold"], "preconditions": ["clocked_enable"], "maximum_changed_modules": 1, "maximum_changed_blocks": 1, "maximum_ast_edits": 2, "inverse_operator": "restore_enable_condition", "executor": "ast_template"},
+    {"operator_id": "change_counter_terminal", "supported_family_ids": ["sequential.counter_index"], "preconditions": ["counter_terminal_condition"], "maximum_changed_modules": 1, "maximum_changed_blocks": 1, "maximum_ast_edits": 2, "inverse_operator": "restore_counter_terminal", "executor": "ast_template"},
+    {"operator_id": "change_fsm_transition", "supported_family_ids": ["control.fsm_transition"], "preconditions": ["fsm_transition"], "maximum_changed_modules": 1, "maximum_changed_blocks": 1, "maximum_ast_edits": 2, "inverse_operator": "restore_fsm_transition", "executor": "ast_template"}
+  ]
+}
