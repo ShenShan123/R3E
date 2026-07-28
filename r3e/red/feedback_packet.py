@@ -58,6 +58,7 @@ def build_red_search_context(
     *,
     residual_archive: list[dict[str, Any]],
     covered_archive: list[dict[str, Any]],
+    memory_capability: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Expose only a hash-bound archive summary to conditioned red search."""
     summaries = []
@@ -113,7 +114,11 @@ def build_red_search_context(
         row["poison_id"],
     ))
     context = {
-        "schema_version": "r3e-red-search-context-v2",
+        "schema_version": (
+            "r3e-red-search-context-v3"
+            if memory_capability is not None
+            else "r3e-red-search-context-v2"
+        ),
         "challenged_policy_id": policy.policy_id,
         "challenged_policy_hash": policy.policy_hash,
         "archive_summary": summaries,
@@ -124,13 +129,40 @@ def build_red_search_context(
             row["archive_kind"] == "covered" for row in summaries
         ),
     }
+    if memory_capability is not None:
+        leaked = FORBIDDEN_INPUT_KEYS & memory_capability.keys()
+        if leaked:
+            raise CapabilityPacketViolation(
+                f"hidden memory fields supplied to red search: {sorted(leaked)}"
+            )
+        if memory_capability.get("challenged_policy_hash") != policy.policy_hash:
+            raise CapabilityPacketViolation(
+                "memory capability is not bound to challenged policy"
+            )
+        context["memory_capability"] = memory_capability
     context["context_hash"] = hash_payload(context)
     return context
 
 
 def verify_red_search_context(context: dict[str, Any]) -> dict[str, Any]:
-    if context.get("schema_version") != "r3e-red-search-context-v2":
+    schema = context.get("schema_version")
+    if schema not in {
+        "r3e-red-search-context-v2",
+        "r3e-red-search-context-v3",
+    }:
         raise CapabilityPacketViolation("red search context schema mismatch")
+    if schema == "r3e-red-search-context-v3":
+        memory_capability = context.get("memory_capability")
+        if (
+            not isinstance(memory_capability, dict)
+            or memory_capability.get("challenged_policy_hash")
+            != context.get("challenged_policy_hash")
+        ):
+            raise CapabilityPacketViolation(
+                "red search memory capability binding mismatch"
+            )
+    elif "memory_capability" in context:
+        raise CapabilityPacketViolation("v2 red search cannot carry memory capability")
     summaries = context.get("archive_summary")
     if not isinstance(summaries, list):
         raise CapabilityPacketViolation("red search archive summary missing")

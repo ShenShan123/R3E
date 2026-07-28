@@ -22,6 +22,9 @@ installations.
   renewed-challenge binding, and the sanitized adapter-driven round runner.
 - `r3e/protocol/`: canonical hashing, atomic writes, hash-chain ledgers, and
   toolchain fingerprints.
+- `r3e/memory/`: Replay-Activated Adversarial Memory schemas, immutable
+  stores, lifecycle, retrieval/reactivation, execution-plan compilation,
+  paired shadow replay, qualification, compatibility, and audit.
 - `r3e/microsurgeon_frontend/`: syntax and semantic repair components.
 - `r3e/microsurgeon_flow/`: backend repair, skill routing, and guarded
   preflight components.
@@ -83,6 +86,62 @@ policy is active, the registry restores its exact parent snapshot and the
 failed hash remains barred from later promotion.
 
 > 当前仓库提供系统基础设施和协议实现，不代表已经获得真实模型驱动的多轮演化实验结果。
+
+## Replay-Activated Adversarial Memory
+
+RAAM is the formal continual-memory path introduced after System Upgrade
+Complete V1. It stores every verified red/blue episode, distills only
+structured `ControlMemory` deltas, qualifies them with paired shadow replay,
+and gives a memory real execution authority only after both whole-policy bank
+promotion and current-case reactivation.
+
+The path is deliberately non-Prompt: a memory may select analyzers, evidence
+windows, RTL slicing, candidate allocation/ranking, verifier order, and
+stopping rules. It cannot contain prompt fragments or historical patches,
+change the oracle/testbench/registry/model route, or execute AST rewrites.
+`configs/memory/control_whitelist_v1.json` freezes this boundary.
+
+The initial RAAM foundation implements:
+
+- append-only, content-addressed `VerifiedEpisode` and `ControlMemory` stores;
+- append-only lifecycle and relation-graph events;
+- runtime-observable `FailureDescriptor` construction;
+- active-bank-only retrieval, deterministic abstention, compatibility and
+  conflict checks;
+- zero-memory-token `ExecutionPlan` compilation;
+- same-case/seed/model/budget/verifier/toolchain shadow pairing and a
+  runner-owned five-gate qualification decision;
+- hash-bound Active Memory Bank candidates carried by a child `PolicyState`;
+- policy-bound bank loading, memory event logging, and cross-store audit.
+- automatic arena `VerifiedEpisode` emission and resumable memory rounds;
+- deterministic candidate clustering, relation/merge/split consolidation,
+  bounded banks, and cross-policy incremental revalidation;
+- model/budget/verifier/toolchain/command/result adapter conformance;
+- sanitized memory-aware red capability packets and executable
+  bypass/deepening/conflict operators bound to real RTL source hashes.
+
+Run a memory qualification/promotion round with:
+
+```bash
+python -m r3e.memory.runner \
+  --registry runtime/registry/policy_registry.json \
+  --memory-root runtime/memory \
+  --target-manifest runtime/rounds/R001/target_manifest.json \
+  --non-target-manifest runtime/rounds/R001/non_target_manifest.json \
+  --adapter your_package.memory_adapter:factory \
+  --round-id MR001 \
+  --work-dir runtime/memory/rounds/MR001 \
+  --config memory_round_config.json
+```
+
+RAAM is an engineering upgrade, not a real-model result. Its deterministic
+adapter proves the protocol and state machine without model calls; it does not
+demonstrate empirical memory gain.
+
+Phase 1–9 are frozen as **RAAM System Upgrade Complete V1** in
+`configs/evolution/raam_system_upgrade_complete_v1.json`. The milestone binds
+the control whitelist, protocol, threat model, test matrix, parent Whole-Policy
+milestone, validation commands, and explicit experiment exclusions.
 
 ### Registry and migration
 
@@ -190,7 +249,8 @@ toolchain, command, and result hash before the runner accepts them.
 
 Every round writes hash-chained JSONL events under `runtime/events/`:
 `policy.jsonl`, `red.jsonl`, `oracle.jsonl`, `arena.jsonl`, and
-`rollback.jsonl`. Events are observability records and never grant authority.
+`rollback.jsonl`. RAAM additionally writes `memory.jsonl`. Events are
+observability records and never grant authority.
 The adapter supplies environment-specific generation and evaluation; the
 runner retains all registry, manifest, split, promotion, and rollback
 authority.

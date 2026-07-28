@@ -12,7 +12,7 @@ from .ledger import writer_lock
 
 
 EVENT_SCHEMA_VERSION = "r3e-event-v1"
-EVENT_STREAMS = {"policy", "red", "oracle", "arena", "rollback"}
+EVENT_STREAMS = {"policy", "red", "oracle", "arena", "rollback", "memory"}
 
 
 class EventViolation(RuntimeError):
@@ -76,7 +76,7 @@ class EventLogger:
         return self.root / f"{stream}.jsonl"
 
     def ensure_streams(self) -> None:
-        """Materialize the five documented streams without inventing events."""
+        """Materialize all documented streams without inventing events."""
         self.root.mkdir(parents=True, exist_ok=True)
         for stream in sorted(EVENT_STREAMS):
             self.path_for(stream).touch(exist_ok=True)

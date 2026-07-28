@@ -13,6 +13,10 @@ from pathlib import Path
 from typing import Any
 
 from r3e.policy.promotion import decide_policy_promotion, select_single_promotable_child
+from r3e.memory.episode_builder import append_round_episodes
+from r3e.memory.episode_store import EpisodeStore
+from r3e.memory.memory_store import MemoryStore
+from r3e.memory.bank_store import ActiveBankStore
 from r3e.policy.registry_v2 import (
     get_active_policy,
     load_registry,
@@ -41,6 +45,7 @@ from r3e.red.operators import (
 )
 from r3e.red.selection import select_residual_elites
 from r3e.red.validity import validity_gate
+from r3e.red.memory_challenge import build_memory_capability_packet
 
 from .audit import append_round_ledger, freeze_round_audit
 from .conformance import (
@@ -351,10 +356,32 @@ class EvolutionRoundRunner:
         run_context = verify_run_context(read_json(self.round_dir / "toolchain.json"))
 
         if self.state.next_stage() == "RED_GENERATE":
+            memory_capability = None
+            if parent.memory_binding:
+                memory_root = (
+                    self.root
+                    / self.config.get("memory_root", "runtime/memory")
+                )
+                episode_store = EpisodeStore(memory_root / "episodes")
+                memory_store = MemoryStore(
+                    memory_root / "library",
+                    episode_store=episode_store,
+                )
+                bank_store = ActiveBankStore(
+                    memory_root / "active_banks",
+                    memory_store=memory_store,
+                )
+                active_bank = bank_store.load_for_policy(parent)
+                memory_capability = build_memory_capability_packet(
+                    parent,
+                    active_bank,
+                    memory_store,
+                )
             red_context = build_red_search_context(
                 parent,
                 residual_archive=load_archive(self.archive_path),
                 covered_archive=load_archive(self.covered_archive_path),
+                memory_capability=memory_capability,
             )
             atomic_write_json(
                 self.round_dir / "red_search_context.json",
@@ -486,6 +513,45 @@ class EvolutionRoundRunner:
             self._checkpoint("BLUE_CHALLENGE", {"policy": parent.policy_hash, "seeds": seeds}, challenged)
 
         challenged = _read_jsonl(self.round_dir / "blue_challenge_results.jsonl")
+        episode_store = EpisodeStore(
+            self.root
+            / self.config.get("memory_root", "runtime/memory")
+            / "episodes"
+        )
+        verified_episodes = append_round_episodes(
+            challenged,
+            policy=parent,
+            round_id=self.round_id,
+            store=episode_store,
+        )
+        episode_manifest = {
+            "schema_version": "r3e-round-episode-manifest-v1",
+            "round_id": self.round_id,
+            "challenged_policy_hash": parent.policy_hash,
+            "episode_ids": [episode.episode_id for episode in verified_episodes],
+            "episode_hashes": [
+                episode.episode_hash for episode in verified_episodes
+            ],
+        }
+        episode_manifest["manifest_hash"] = hash_payload(episode_manifest)
+        episode_manifest_path = self.round_dir / "verified_episodes.json"
+        episode_manifest_created = not episode_manifest_path.exists()
+        if episode_manifest_path.exists():
+            if read_json(episode_manifest_path) != episode_manifest:
+                raise RoundRunnerViolation(
+                    "verified episode manifest changed during resume"
+                )
+        else:
+            atomic_write_json(episode_manifest_path, episode_manifest)
+        if verified_episodes and episode_manifest_created:
+            self.events.emit(
+                "memory",
+                "verified_episodes_appended",
+                round_id=self.round_id,
+                challenged_policy_hash=parent.policy_hash,
+                episode_count=len(verified_episodes),
+                episode_manifest_hash=episode_manifest["manifest_hash"],
+            )
         if self.state.next_stage() == "ARCHIVE_UPDATE":
             residual_before = load_archive(self.archive_path)
             covered_before = load_archive(self.covered_archive_path)

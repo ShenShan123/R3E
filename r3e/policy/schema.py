@@ -38,6 +38,13 @@ _POLICY_FIELDS = {
     "frozen_assets",
     "proposal_operator",
     "rollback_registry_hash",
+    "memory_binding",
+}
+_MEMORY_BINDING_FIELDS = {
+    "active_memory_bank_hash",
+    "retriever_hash",
+    "activation_guard_hash",
+    "memory_control_whitelist_hash",
 }
 
 
@@ -70,6 +77,7 @@ class PolicyState:
     frozen_assets: dict[str, str] | None = None
     proposal_operator: str = ""
     rollback_registry_hash: str = ""
+    memory_binding: dict[str, str] | None = None
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> "PolicyState":
@@ -136,6 +144,16 @@ class PolicyState:
             })
             if base_hash != expected_base_hash:
                 raise PolicyValidationError("base_policy_hash does not bind frozen base content")
+        memory_binding = deepcopy(payload.get("memory_binding") or {})
+        if not isinstance(memory_binding, dict):
+            raise PolicyValidationError("memory_binding must be an object")
+        if memory_binding and set(memory_binding) != _MEMORY_BINDING_FIELDS:
+            raise PolicyValidationError("memory_binding fields mismatch")
+        if any(
+            not isinstance(digest, str) or not _HASH_RE.fullmatch(digest)
+            for digest in memory_binding.values()
+        ):
+            raise PolicyValidationError("memory_binding contains an invalid hash")
         return cls(
             policy_id=policy_id,
             schema_version=schema,
@@ -153,6 +171,7 @@ class PolicyState:
             frozen_assets=frozen_assets,
             proposal_operator=str(payload.get("proposal_operator") or ""),
             rollback_registry_hash=str(payload.get("rollback_registry_hash") or ""),
+            memory_binding=memory_binding,
         )
 
     @staticmethod
@@ -236,6 +255,7 @@ class PolicyState:
             "frozen_assets": deepcopy(self.frozen_assets or {}),
             "proposal_operator": self.proposal_operator,
             "rollback_registry_hash": self.rollback_registry_hash,
+            "memory_binding": deepcopy(self.memory_binding or {}),
         }
 
     @property
@@ -258,6 +278,8 @@ class PolicyState:
             "frozen_assets": self.frozen_assets or {},
             "proposal_operator": self.proposal_operator,
         }
+        if self.memory_binding:
+            immutable["memory_binding"] = self.memory_binding
         return hash_payload(immutable)
 
     def with_updates(self, **updates: Any) -> "PolicyState":

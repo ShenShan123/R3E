@@ -1,0 +1,56 @@
+{
+  "schema_version": "r3e-raam-system-upgrade-milestone-v1",
+  "milestone_id": "raam-system-upgrade-complete-v1",
+  "status": "frozen",
+  "parent_milestone": {
+    "milestone_id": "system-upgrade-complete-v1",
+    "milestone_hash": "sha256:a5b8ec0bc876e9b470dbac438de33d1a03962275380bb2f5c7a80be53f359a1f"
+  },
+  "phase_scope": [
+    "phase-1-immutable-experience-archive",
+    "phase-2-control-memory-model",
+    "phase-3-runtime-failure-descriptor",
+    "phase-4-shadow-retrieval-reactivation",
+    "phase-5-memory-aware-execution-plan",
+    "phase-6-shadow-paired-qualification",
+    "phase-7-active-bank-whole-policy-promotion",
+    "phase-8-cross-round-compatibility",
+    "phase-9-red-memory-challenges"
+  ],
+  "frozen_interfaces": [
+    "MemoryStore.append_episode/add_candidate/update_lifecycle/get_version",
+    "MemoryRetriever.retrieve(descriptor, active_bank, top_k=3)",
+    "ActivationGuard.reactivate(matches, active_policy, active_bank, runtime_context)",
+    "MemoryAwarePlanCompiler.compile(base_policy, reactivation)",
+    "run_shadow_replay(case, policy, memory, seed, budget, evaluator)",
+    "MemoryEvolutionRunner.run()",
+    "r3e-memory-adapter-output-v1",
+    "r3e-memory-red-capability-v1",
+    "r3e-memory-red-plan-v1"
+  ],
+  "frozen_assets": {
+    "configs/memory/control_whitelist_v1.json": "sha256:a67300092fbe7b857f673db029d058a35153102c2e727654c6dbc95c14f534aa",
+    "docs/protocols/replay-activated-adversarial-memory-v1.md": "sha256:e813d039f8ecee9f0396de8a3aa42cc4a5eea91e0ba91d9f233d3610e8e2850c",
+    "docs/protocols/raam-threat-model-v1.md": "sha256:d6872d01d236811690bd7cb48aad2fd70336595be8a349746fc8f96324713e34",
+    "docs/protocols/raam-test-matrix-v1.md": "sha256:f3e9215224a85ee6eb24775eb3952668f4044ee0df7028110c50067b37ce0876"
+  },
+  "required_validation": [
+    "pytest -q -p no:cacheprovider",
+    "pytest -q -p no:cacheprovider tests/test_raam_memory.py tests/test_raam_memory_runner.py",
+    "python -m r3e.arena.fake_system --workspace /tmp/r3e-raam-system-v1 --rounds 3",
+    "python scripts/check_release.py",
+    "python scripts/verify_datasets.py"
+  ],
+  "deferred_experiment_bindings": [
+    "real_model_adapter",
+    "model_name",
+    "experiment_seeds",
+    "qualification_thresholds",
+    "promotion_thresholds",
+    "experiment_manifests",
+    "experiment_budget",
+    "real_model_cross_round_results"
+  ],
+  "claim_boundary": "Deterministic system infrastructure and protocol implementation only; no real-model memory effectiveness or continual-learning result.",
+  "milestone_hash": "sha256:69ece590db0255beb3ba825acde5e864fc0f341a4ef3167e3664a664f24359a7"
+}

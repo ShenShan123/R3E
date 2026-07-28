@@ -93,10 +93,17 @@ Teacher evidence is stored separately and hash-bound.
 
 ## Observability
 
-Policy, red, oracle, arena, and rollback modules append hash-chained
+Policy, red, oracle, arena, rollback, and RAAM memory modules append hash-chained
 `r3e-event-v1` JSONL records. A promotion event binds parent and child policy
 hashes, registry hashes before/after, round ID, timestamp, and code version.
 Event streams are diagnostic evidence, not state authority.
+
+An active-memory-bank update is represented as a normal child `PolicyState`
+whose optional `memory_binding` contains the bank, retriever, activation
+guard, and control-whitelist hashes. Empty bindings preserve the V1 policy
+hash. A non-empty binding changes the child hash and therefore must pass the
+same paired replay, single-active registry commit, stale-child rejection, and
+exact rollback path as any other whole-policy change.
 
 Each round also freezes a run context binding code version, policy, registry,
 round config, and adapter/toolchain fingerprint. `round_audit.json`

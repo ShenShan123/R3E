@@ -125,6 +125,10 @@ def propose_children(
             "rollback_policy_id": parent.policy_id,
             "frozen_assets": deepcopy(parent.frozen_assets or {}),
             "proposal_operator": operator,
+            # A configuration-changing child must not silently inherit an
+            # executable bank. RAAM compatibility/revalidation constructs a
+            # separate hash-bound bank candidate when inheritance is proven.
+            "memory_binding": {},
         })
         children.append(child)
     return children
