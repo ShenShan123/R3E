@@ -28,18 +28,28 @@ from r3e.protocol.hashing import (
     hash_payload,
     read_json,
 )
+from r3e.blue.portfolio.portfolio_control import (
+    PORTFOLIO_CONTROL_FIELDS,
+    load_portfolio_template_registry,
+)
 
 from .bank_store import ActiveBankStore
 from .authority import build_memory_promotion_authority
 from .compatibility import classify_policy_compatibility
-from .candidate_builder import build_memory_candidates
+from .candidate_builder import (
+    build_memory_candidates,
+    build_portfolio_memory_candidates,
+)
 from .consolidator import select_bounded_active_memories
 from .conformance import MemoryAdapterConformanceGate
 from .episode_store import EpisodeStore
 from .evidence import memory_definition
 from .memory_store import MemoryStore
 from .promotion import build_memory_bank_policy_candidate
-from .qualification_gate import decide_memory_qualification
+from .qualification_gate import (
+    decide_memory_qualification,
+    decide_portfolio_memory_qualification,
+)
 from .round_state import MemoryRoundState
 from .schema import (
     ActiveMemoryBank,
@@ -115,6 +125,19 @@ class MemoryEvolutionRunner:
             "inherit_memory_versions": {},
             **(config or {}),
         }
+        self.portfolio_template_registry = None
+        registry_path = self.config.get("portfolio_template_registry_path")
+        if registry_path:
+            project_root = Path(
+                self.config.get("project_root")
+                or Path(__file__).resolve().parents[2]
+            )
+            self.portfolio_template_registry = (
+                load_portfolio_template_registry(
+                    project_root / str(registry_path),
+                    project_root=project_root,
+                )
+            )
         if self.config.get("inherit_memory_versions"):
             raise MemoryEvolutionViolation(
                 "manual inherit_memory_versions is forbidden; inherit from the active bank"
@@ -252,12 +275,29 @@ class MemoryEvolutionRunner:
                 if episode.challenged_effective_policy_hash
                 == parent.effective_policy_hash
             ]
-            candidates = build_memory_candidates(
-                episodes,
-                policy=parent,
-                origin_round_id=self.round_id,
-                minimum_support=int(self.config["minimum_support"]),
+            template_id = str(
+                self.config.get("portfolio_memory_template_id") or ""
             )
+            if template_id:
+                if self.portfolio_template_registry is None:
+                    raise MemoryEvolutionViolation(
+                        "portfolio candidate builder requires template registry"
+                    )
+                candidates = build_portfolio_memory_candidates(
+                    episodes,
+                    policy=parent,
+                    origin_round_id=self.round_id,
+                    template_registry=self.portfolio_template_registry,
+                    template_id=template_id,
+                    minimum_support=int(self.config["minimum_support"]),
+                )
+            else:
+                candidates = build_memory_candidates(
+                    episodes,
+                    policy=parent,
+                    origin_round_id=self.round_id,
+                    minimum_support=int(self.config["minimum_support"]),
+                )
             accepted = []
             for candidate in candidates:
                 resolved = self.memory_store.resolve_candidate(candidate)
@@ -324,6 +364,15 @@ class MemoryEvolutionRunner:
                             for key, expected in memory.trigger_predicate.items()
                         )
                     value["memory_replay_split"] = split
+                    value["qualification_split"] = (
+                        "adaptation"
+                        if split == "target"
+                        else (
+                            "non_target"
+                            if value["trigger_matched"]
+                            else "false_activation"
+                        )
+                    )
                     return value
 
                 cases = [
@@ -403,16 +452,14 @@ class MemoryEvolutionRunner:
                                     budget=envelope,
                                 )
                             ),
+                            portfolio_template_registry=(
+                                self.portfolio_template_registry
+                            ),
                         )
                         for case in cases
                         for seed in self.config["shadow_seeds"]
                     ]
-                    decision = decide_memory_qualification(
-                        memory,
-                        results,
-                        thresholds=self.config.get("qualification_thresholds"),
-                        evidence_set=current_evidence_set,
-                        provenance={
+                    provenance = {
                             "manifest_hash": hash_payload({
                                 "target": self.target["manifest_hash"],
                                 "non_target": self.non_target["manifest_hash"],
@@ -436,8 +483,35 @@ class MemoryEvolutionRunner:
                                 != parent.effective_policy_hash
                                 else {}
                             ),
-                        },
-                    )
+                        }
+                    if set(memory.control_delta) & PORTFOLIO_CONTROL_FIELDS:
+                        if self.portfolio_template_registry is None:
+                            raise MemoryEvolutionViolation(
+                                "portfolio memory requires template registry"
+                            )
+                        decision = decide_portfolio_memory_qualification(
+                            memory,
+                            results,
+                            policy=parent,
+                            portfolio_template_registry=(
+                                self.portfolio_template_registry
+                            ),
+                            thresholds=self.config.get(
+                                "qualification_thresholds"
+                            ),
+                            evidence_set=current_evidence_set,
+                            provenance=provenance,
+                        )
+                    else:
+                        decision = decide_memory_qualification(
+                            memory,
+                            results,
+                            thresholds=self.config.get(
+                                "qualification_thresholds"
+                            ),
+                            evidence_set=current_evidence_set,
+                            provenance=provenance,
+                        )
                     qualification_bundle = {
                         "schema_version": "r3e-memory-qualification-bundle-v1",
                         "memory_hash": memory.memory_hash,

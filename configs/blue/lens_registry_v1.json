@@ -1,0 +1,90 @@
+{
+  "lenses": {
+    "control_v1": {
+      "allowed_evidence_fields": [
+        "affected_roles",
+        "assignment_type",
+        "first_divergence_signal",
+        "mismatch_pattern",
+        "observable_artifact_hashes",
+        "sequential_context",
+        "temporal_relation"
+      ],
+      "definition_hash": "sha256:23036e5ade58c11a6dd93cd66e5299c8f5f3189714449b27a2f1c69088a3ce3f",
+      "forbid_history": true,
+      "forbid_red_truth": true,
+      "lens_group": "control_flow",
+      "lens_id": "control_v1",
+      "orthogonality_group": "control",
+      "prompt_asset_hash": "sha256:8f3d264dd38e9cf483c64b6481fa3b1c39578e49ea0b263ebeb63af196277161",
+      "prompt_asset_path": "configs/base_policy/prompt_templates/control_v1.txt",
+      "schema_version": "r3e-blue-lens-definition-v1"
+    },
+    "dataflow_v1": {
+      "allowed_evidence_fields": [
+        "affected_roles",
+        "assignment_type",
+        "cone_depth_bucket",
+        "first_divergence_bucket",
+        "first_divergence_signal",
+        "mismatch_pattern",
+        "observable_artifact_hashes"
+      ],
+      "definition_hash": "sha256:8bee2140b4b790f5e068e290890baf036abd4746730e1df4485e5270e70e456c",
+      "forbid_history": true,
+      "forbid_red_truth": true,
+      "lens_group": "data_flow",
+      "lens_id": "dataflow_v1",
+      "orthogonality_group": "combinational",
+      "prompt_asset_hash": "sha256:643c9b945008a3c99b535214f0b364b5c51e2ccb126aea81596da1e51d7ff10a",
+      "prompt_asset_path": "configs/base_policy/prompt_templates/dataflow_v1.txt",
+      "schema_version": "r3e-blue-lens-definition-v1"
+    },
+    "generic_v1": {
+      "allowed_evidence_fields": [
+        "affected_roles",
+        "assignment_type",
+        "cone_depth_bucket",
+        "cycle_offset_bucket",
+        "first_divergence_bucket",
+        "first_divergence_signal",
+        "mismatch_pattern",
+        "observable_artifact_hashes",
+        "sequential_context",
+        "temporal_relation"
+      ],
+      "definition_hash": "sha256:1a3b93f15bcf6b026d0f95a0546328d5242c7793d27315294fa6463f3b3e1a44",
+      "forbid_history": true,
+      "forbid_red_truth": true,
+      "lens_group": "general",
+      "lens_id": "generic_v1",
+      "orthogonality_group": "general",
+      "prompt_asset_hash": "sha256:17da4c75c2e574f9d60dc519c1fe8db15569818595290f958cd073d23d9185a2",
+      "prompt_asset_path": "configs/base_policy/prompt_templates/generic_v1.txt",
+      "schema_version": "r3e-blue-lens-definition-v1"
+    },
+    "temporal_v1": {
+      "allowed_evidence_fields": [
+        "assignment_type",
+        "cycle_offset_bucket",
+        "first_divergence_bucket",
+        "first_divergence_signal",
+        "observable_artifact_hashes",
+        "sequential_context",
+        "temporal_relation"
+      ],
+      "definition_hash": "sha256:e056d987fcdcda1b020ee2ed4968fc29036edacd8cdbd5472fd67183f96f430c",
+      "forbid_history": true,
+      "forbid_red_truth": true,
+      "lens_group": "temporal_state",
+      "lens_id": "temporal_v1",
+      "orthogonality_group": "sequential",
+      "prompt_asset_hash": "sha256:1f0d21a5540c2635f51d44682c65f40bcb236e972d53f5786c9bf0dcc01497d2",
+      "prompt_asset_path": "configs/base_policy/prompt_templates/temporal_v1.txt",
+      "schema_version": "r3e-blue-lens-definition-v1"
+    }
+  },
+  "registry_hash": "sha256:f120a0374c864b097008ef40033030a42b1486101d7240fcf6cb6eb2e520ae88",
+  "registry_id": "blue-lens-registry-v1",
+  "schema_version": "r3e-blue-lens-registry-v1"
+}

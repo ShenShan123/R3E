@@ -6,6 +6,10 @@ from typing import Any, Callable, Mapping
 
 from r3e.policy.schema import PolicyState
 from r3e.protocol.hashing import hash_payload
+from r3e.blue.portfolio.portfolio_control import (
+    PORTFOLIO_CONTROL_FIELDS,
+    PortfolioTemplateRegistry,
+)
 
 from .plan_compiler import MemoryAwarePlanCompiler
 from .schema import (
@@ -35,6 +39,7 @@ def _validate_result(
     command_hash: str,
     design: str,
     triggered: bool,
+    qualification_split: str,
 ) -> dict[str, Any]:
     payload = deepcopy(dict(result))
     required = _PAIR_FIELDS | {"oracle_ok", "resource_usage", "oracle_evidence_hash"}
@@ -67,6 +72,7 @@ def _validate_result(
     payload["schema_version"] = "r3e-memory-shadow-arm-result-v1"
     payload["design"] = design
     payload["triggered"] = triggered
+    payload["qualification_split"] = qualification_split
     payload["command_hash"] = command_hash
     payload.pop("result_hash", None)
     payload["result_hash"] = hash_payload(payload)
@@ -78,6 +84,7 @@ def _shadow_plan(
     memory: ControlMemory,
     *,
     trigger_matched: bool,
+    portfolio_template_registry: PortfolioTemplateRegistry | None = None,
 ) -> ExecutionPlan:
     controls = MemoryAwarePlanCompiler._default_controls(policy)
     if not trigger_matched:
@@ -93,6 +100,26 @@ def _shadow_plan(
     enabled.difference_update(delta.get("disable_analyzers", []))
     controls.update(delta)
     controls["enable_analyzers"] = sorted(enabled)
+    portfolio_delta = {
+        key: controls.pop(key)
+        for key in sorted(PORTFOLIO_CONTROL_FIELDS)
+        if key in controls
+    }
+    if portfolio_delta:
+        if portfolio_template_registry is None:
+            raise ShadowReplayViolation(
+                "portfolio shadow requires frozen template registry"
+            )
+        try:
+            controls.update(
+                portfolio_template_registry.materialize(
+                    portfolio_delta, policy=policy
+                )
+            )
+        except Exception as exc:
+            raise ShadowReplayViolation(
+                "portfolio shadow exceeds policy authority"
+            ) from exc
     return ExecutionPlan.create(
         effective_policy_hash=policy.effective_policy_hash,
         active_bank_hash="",
@@ -112,6 +139,7 @@ def run_shadow_replay(
         [PolicyState, Mapping[str, Any], int, ExecutionPlan, BudgetEnvelope],
         Mapping[str, Any],
     ],
+    portfolio_template_registry: PortfolioTemplateRegistry | None = None,
 ) -> ShadowPairedResult:
     case_id = str(case.get("case_id") or case.get("poison_id") or "")
     if not case_id:
@@ -127,8 +155,18 @@ def run_shadow_replay(
     )
     trigger_matched = bool(case.get("trigger_matched", True))
     shadow_plan = _shadow_plan(
-        policy, memory, trigger_matched=trigger_matched
+        policy,
+        memory,
+        trigger_matched=trigger_matched,
+        portfolio_template_registry=portfolio_template_registry,
     )
+    qualification_split = str(
+        case.get("qualification_split") or case.get("split") or "adaptation"
+    )
+    if qualification_split not in {
+        "adaptation", "non_target", "false_activation"
+    }:
+        raise ShadowReplayViolation("invalid portfolio qualification split")
     def evaluate(plan: ExecutionPlan, *, triggered: bool) -> dict[str, Any]:
         command_hash = hash_payload({
             "schema_version": "r3e-memory-shadow-command-v1",
@@ -144,6 +182,7 @@ def run_shadow_replay(
             command_hash=command_hash,
             design=design,
             triggered=triggered,
+            qualification_split=qualification_split,
         )
 
     control = evaluate(control_plan, triggered=False)

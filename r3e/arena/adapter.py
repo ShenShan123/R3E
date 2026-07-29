@@ -45,3 +45,24 @@ class EvolutionAdapter(Protocol):
     def replay(
         self, policy: PolicyState, case: dict[str, Any], seed: int
     ) -> dict[str, Any]: ...
+
+
+class BlueCandidateProvider(Protocol):
+    """Non-authoritative ACP provider boundary.
+
+    A provider may return a patch proposal and provider usage receipt. It may
+    not parse, verify, rank, select, or declare candidate correctness.
+    """
+
+    toolchain_fingerprint: dict[str, Any]
+
+    def generate_candidate(
+        self,
+        *,
+        policy: PolicyState,
+        current_case_evidence: dict[str, Any],
+        slot: dict[str, Any],
+        prompt_asset: str,
+        prompt_hash: str,
+        candidate_id: str,
+    ) -> dict[str, Any]: ...

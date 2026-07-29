@@ -1,0 +1,69 @@
+{
+  "schema_version": "r3e-fixed-mixed-portfolio-milestone-v1",
+  "milestone_id": "fixed-mixed-portfolio-v1",
+  "status": "frozen",
+  "parent_milestone": {
+    "milestone_id": "adaptive-candidate-protocol-v1",
+    "milestone_hash": "sha256:9a689e8084a415e5415301ec5ba8f426318fab80598c2c89efb3343a00790446"
+  },
+  "completed_scope": [
+    "policy-v3-explicit-candidate-portfolio-binding",
+    "fixed-mixed-temporal-control-dataflow-one-candidate-per-lens",
+    "generic-v1-times-three-equal-budget-control-definition",
+    "formal-arena-candidate-portfolio-blue-evaluation-authority",
+    "grounded-failure-descriptor-and-proven-validity-binding",
+    "runner-owned-blue-evaluation-v2-per-challenge-seed",
+    "legacy-opaque-evaluate-blue-bypass-in-formal-portfolio-mode",
+    "provider-verifier-portfolio-and-lens-authority-in-round-toolchain",
+    "blue-challenge-checkpoint-event-and-offline-audit-binding",
+    "policy-v3-fail-closed-before-challenge",
+    "deterministic-fixed-mixed-fake-provider-conformance"
+  ],
+  "frozen_interfaces": [
+    "r3e-policy-v3",
+    "r3e-candidate-portfolio-v1",
+    "r3e-candidate-allocation-plan-v1",
+    "r3e-blue-evaluation-v2",
+    "candidate_portfolio_v1",
+    "fixed-mixed-temporal-control-dataflow-v1"
+  ],
+  "frozen_assets": {
+    "README.md": "sha256:20c28aaabb5b2836004f94eace61cdba024d339ee9373a15832517b05e347d5c",
+    "configs/blue/fixed_mixed_portfolio_v1.json": "sha256:c61e0b4efc19223d3d69a6139aa3d1fb808ce07f70df9d4e21ca79debe0394f0",
+    "configs/evolution/round_acp1_fixed_mixed_v1.json": "sha256:1e57dc679bbe4d6681e1bd884724d2c380be57c3025d4ebe1d57aa7f88e3cdc8",
+    "r3e/policy/schema.py": "sha256:48237ed039169241728901abcc5ecd10fe1dd4b197d9bb00b9961dae69705591",
+    "r3e/policy/search.py": "sha256:9a657a06269230a874254932a71c95a204f3bb4a1f1ffa6732533a2e2af4d7a5",
+    "r3e/arena/portfolio.py": "sha256:a0d2646ec6feef3f49f4fca3856c9a52b20854d45100cfa0b94436529c29ce91",
+    "r3e/arena/runner.py": "sha256:8d2a74b5ad1cc8aeeef67684b4e0068c4747bb0b5946b023e25f8ef035881e36",
+    "r3e/arena/audit.py": "sha256:260dac6519e5c99a940ec6f3a55e74283d966e9dfc86bf56100786814c2c7abd",
+    "r3e/blue/portfolio/__init__.py": "sha256:a52ff62dc6952ecd7214ddd1c5641b13645a1d8cffd09871db44debe1335bf5e",
+    "r3e/blue/portfolio/schema.py": "sha256:76a928c4e0665bdc569b4184929c9ab307fb1b75ecfdda051a175237c81b853b",
+    "r3e/blue/portfolio/candidate_executor.py": "sha256:916a9d13a04d2041b297e5227bdd261bf1688717b8d6d5ac1eab8c066a4a76dc",
+    "r3e/blue/portfolio/audit.py": "sha256:2e64c468aa9a0cb2d539758353f3f9c177f60e8742c533c7544d13e79a697d88",
+    "r3e/blue/portfolio/fake.py": "sha256:bc60a9227b504ce2cd25d2f1dcd0c9434bd8cd01cc39e0e109ef2300eba226c0",
+    "r3e/blue/portfolio/fake_system.py": "sha256:2e19b175fabd07997ebabf533077b29182478f9bd0475c09fbdc2b62172e21f4",
+    "tests/test_adaptive_candidate_protocol.py": "sha256:9a376ddabf88340e5676fe3282cc45bd27a39a4e3723cee34e7323a6b80ca709",
+    "tests/test_adaptive_candidate_fixed_mixed.py": "sha256:d26179399bc4ebb0c7c52a1d268b23ac2dcae3be11233afd407f5dc120f3555e",
+    "tests/test_grounded_planner_raam_closure.py": "sha256:18d648f7bc8c383e828dc4c6a89cc96bec82353dcea6589eaf3af00236bc1174"
+  },
+  "required_validation": [
+    "pytest -q -p no:cacheprovider tests/test_adaptive_candidate_protocol.py tests/test_adaptive_candidate_fixed_mixed.py",
+    "pytest -q -p no:cacheprovider",
+    "python -m r3e.blue.portfolio.fake_system --project-root . --portfolio configs/blue/fixed_mixed_portfolio_v1.json --out /tmp/r3e-acp1-blue-evaluation.json",
+    "python scripts/check_release.py",
+    "python scripts/verify_datasets.py"
+  ],
+  "deferred_scope": [
+    "acp1-real-model-equal-budget-measurement",
+    "lens-collapse-and-unique-solve-statistics",
+    "acp2-descriptor-routed-portfolio",
+    "semantic-diversity-and-recovery",
+    "offline-adaptive-allocation",
+    "raam-portfolio-control",
+    "portfolio-aware-red-challenge",
+    "real-model-candidate-provider",
+    "acp7-real-model-multi-round-experiment"
+  ],
+  "claim_boundary": "Frozen deterministic ACP-1 Policy V3, fixed mixed temporal-control-dataflow allocation, formal arena challenge adoption, checkpoint/event/audit authority, and fake-provider conformance only; no real-model comparison, lens-collapse measurement, unique-solve evidence, adaptive routing, repair gain, or multi-round ACP result.",
+  "milestone_hash": "sha256:b25a3df2ecadca0ed609af15d13fbc225239ec21e468878fe965f068f9a25af4"
+}

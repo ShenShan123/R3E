@@ -1,0 +1,57 @@
+{
+  "schema_version": "r3e-portfolio-template-registry-v1",
+  "registry_id": "acp5-raam-portfolio-templates-v1",
+  "candidate_budget": 3,
+  "effective_portfolio_hash": "sha256:1ed10d64d8f0f2aeb6acd2d366cd84b17bc3ce23b89fdc7201dbc988e3534126",
+  "lens_registry_hash": "sha256:f120a0374c864b097008ef40033030a42b1486101d7240fcf6cb6eb2e520ae88",
+  "allocator_hash": "sha256:2fa2be300e8326403b9bad7f3a61968117c50b6bd8df974dd9bfc2f06ca12faf",
+  "general_lens_id": "generic_v1",
+  "lens_ids": [
+    "generic_v1",
+    "temporal_v1",
+    "control_v1",
+    "dataflow_v1"
+  ],
+  "templates": [
+    {
+      "schema_version": "r3e-portfolio-template-v1",
+      "template_id": "general_control_dataflow_v1",
+      "slots": [
+        "generic_v1",
+        "control_v1",
+        "dataflow_v1"
+      ],
+      "specialist_slot_budget": 2,
+      "diversity_retry_budget": 0,
+      "portfolio_early_stop": "all_candidates",
+      "template_hash": "sha256:4f361aa5e778bd47f8117f6448dd075b5326a4bb2bd1c384ea4f62051b4e8fdb"
+    },
+    {
+      "schema_version": "r3e-portfolio-template-v1",
+      "template_id": "general_temporal_control_v1",
+      "slots": [
+        "generic_v1",
+        "temporal_v1",
+        "control_v1"
+      ],
+      "specialist_slot_budget": 2,
+      "diversity_retry_budget": 0,
+      "portfolio_early_stop": "all_candidates",
+      "template_hash": "sha256:9df916d4a7d4bb7ddcdd15a0186b120b9993339b93111c03233a5f3c940fe270"
+    },
+    {
+      "schema_version": "r3e-portfolio-template-v1",
+      "template_id": "general_temporal_dataflow_v1",
+      "slots": [
+        "generic_v1",
+        "temporal_v1",
+        "dataflow_v1"
+      ],
+      "specialist_slot_budget": 2,
+      "diversity_retry_budget": 0,
+      "portfolio_early_stop": "all_candidates",
+      "template_hash": "sha256:5242d623d983506ff78524f4f32f61660fae66457771ad54d4965817c6262f36"
+    }
+  ],
+  "registry_hash": "sha256:a5dc2c99b55e0537dc1d77b8c8888c88cffc572c61643320bbf19fedcd9d483c"
+}

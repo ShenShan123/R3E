@@ -3,6 +3,11 @@ from __future__ import annotations
 
 from r3e.policy.schema import PolicyState
 from r3e.protocol.hashing import hash_payload
+from r3e.blue.portfolio.portfolio_control import (
+    PORTFOLIO_CONTROL_FIELDS,
+    PortfolioControlViolation,
+    PortfolioTemplateRegistry,
+)
 
 from .conflict_resolver import conflict_fields
 from .memory_store import MemoryStore
@@ -29,12 +34,14 @@ class ActivationGuard:
         *,
         minimum_score: float = 1.0,
         control_whitelist: dict | None = None,
+        portfolio_template_registry: PortfolioTemplateRegistry | None = None,
     ):
         self.store = store
         self.minimum_score = minimum_score
         self.control_whitelist = validate_whitelist(
             control_whitelist or default_whitelist()
         )
+        self.portfolio_template_registry = portfolio_template_registry
 
     @property
     def control_whitelist_hash(self) -> str:
@@ -48,6 +55,11 @@ class ActivationGuard:
             "maximum_activation": 1,
             "conflict_behavior": "abstain",
             "control_whitelist_hash": self.control_whitelist_hash,
+            "portfolio_template_registry_hash": (
+                self.portfolio_template_registry.registry_hash
+                if self.portfolio_template_registry is not None
+                else ""
+            ),
         })
 
     def _abstain(
@@ -142,6 +154,20 @@ class ActivationGuard:
                 continue
             if not self._delta_within_budget(memory, runtime_context):
                 continue
+            portfolio_delta = {
+                key: value
+                for key, value in memory.control_delta.items()
+                if key in PORTFOLIO_CONTROL_FIELDS
+            }
+            if portfolio_delta:
+                if self.portfolio_template_registry is None:
+                    continue
+                try:
+                    self.portfolio_template_registry.materialize(
+                        portfolio_delta, policy=active_policy
+                    )
+                except PortfolioControlViolation:
+                    continue
             if match.score >= self.minimum_score:
                 eligible.append(memory)
         if not eligible:

@@ -1,0 +1,19 @@
+{
+  "allocator_hash": "sha256:c1571ee97b9a7d9d4fb332ec6439f3b052664001f335ca51f0bb75ffc8ddeed5",
+  "candidate_budget": 3,
+  "duplicate_policy": "measure_only",
+  "early_stop_mode": "all_candidates",
+  "effective_portfolio_hash": "sha256:b523e1f4f10d66b25aaa30d5e8768819a171d463056ba306f53317c19c59bab6",
+  "lens_ids": [
+    "temporal_v1",
+    "control_v1",
+    "dataflow_v1"
+  ],
+  "lens_registry_hash": "sha256:f120a0374c864b097008ef40033030a42b1486101d7240fcf6cb6eb2e520ae88",
+  "mode": "fixed_mixed",
+  "portfolio_id": "fixed-mixed-temporal-control-dataflow-v1",
+  "router_hash": "sha256:747fa213cf1632e0b3375cc2173832d9c9e04a28b685279b31445ab22dbd1f5d",
+  "schema_version": "r3e-candidate-portfolio-v1",
+  "selector_hash": "sha256:5007b04ecc4e9eac902e54fe9f1dd206ae98c1dab9391190d83cb81499d12024",
+  "semantic_signature_provider_hash": "sha256:9d0811e8a3bef8171ff292472f17eb167f0756bc7c5f6cd5cd935c2f2eb2eaeb"
+}

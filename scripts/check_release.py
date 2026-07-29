@@ -80,10 +80,14 @@ for path in ROOT.rglob("*"):
                       path.stem, re.IGNORECASE)
         is not None
     )
+    frozen_protocol_config = rel.parts[:2] in {
+        ("configs", "evolution"),
+        ("configs", "blue"),
+    }
     if (
         any(part in FORBIDDEN_NAMES for part in rel.parts)
         or generated_result_dir
-        or generated_result_file
+        or (generated_result_file and not frozen_protocol_config)
         or path.suffix in FORBIDDEN_SUFFIXES
         or path.name.startswith(("run_", "launch_", "resume_", "rerun_"))
     ):

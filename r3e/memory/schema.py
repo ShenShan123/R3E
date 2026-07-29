@@ -86,6 +86,10 @@ CONTROL_DELTA_FIELDS = {
     "max_changed_blocks",
     "prefer_local_patch",
     "candidate_plan",
+    "candidate_portfolio_template_id",
+    "specialist_slot_budget",
+    "diversity_retry_budget",
+    "portfolio_early_stop",
 }
 FORBIDDEN_CONTROL_FIELDS = {
     "oracle",
@@ -103,6 +107,15 @@ FORBIDDEN_CONTROL_FIELDS = {
     "patch",
     "model_route_id",
     "ast_rewrite",
+    "lens_prompt",
+    "lens_prompt_hash",
+    "lens_definition",
+    "candidate_budget",
+    "portfolio_slots",
+    "portfolio_hash",
+    "allocator_hash",
+    "selector_hash",
+    "semantic_signature_provider_hash",
 }
 ANALYZERS = {
     "temporal_alignment",
@@ -244,6 +257,8 @@ def validate_control_delta(raw: Mapping[str, Any]) -> dict[str, Any]:
         "revision_rounds",
         "candidate_batch_size",
         "max_changed_blocks",
+        "specialist_slot_budget",
+        "diversity_retry_budget",
     ):
         if key in payload:
             payload[key] = _non_negative_int(payload[key], key)
@@ -261,6 +276,24 @@ def validate_control_delta(raw: Mapping[str, Any]) -> dict[str, Any]:
         raise MemoryValidationError("invalid candidate_ranking")
     if "early_stop" in payload and payload["early_stop"] not in EARLY_STOP_MODES:
         raise MemoryValidationError("invalid early_stop")
+    portfolio_fields = {
+        "candidate_portfolio_template_id",
+        "specialist_slot_budget",
+        "diversity_retry_budget",
+        "portfolio_early_stop",
+    }
+    present_portfolio_fields = set(payload) & portfolio_fields
+    if present_portfolio_fields:
+        if present_portfolio_fields != portfolio_fields:
+            raise MemoryValidationError(
+                "portfolio control must bind all bounded fields"
+            )
+        _string(
+            payload["candidate_portfolio_template_id"],
+            "candidate_portfolio_template_id",
+        )
+        if payload["portfolio_early_stop"] not in EARLY_STOP_MODES:
+            raise MemoryValidationError("invalid portfolio_early_stop")
     if "verifier_order" in payload:
         order = payload["verifier_order"]
         if not isinstance(order, list) or not order or any(

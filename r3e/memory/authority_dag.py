@@ -13,7 +13,13 @@ from .bank_store import ActiveBankStore
 from .episode_store import EpisodeStore
 from .evidence import verify_memory_evidence_set
 from .memory_store import MemoryStore
-from .qualification_gate import decide_memory_qualification
+from .qualification_gate import (
+    decide_memory_qualification,
+    verify_stored_portfolio_qualification,
+)
+from r3e.blue.portfolio.portfolio_control import (
+    PORTFOLIO_CONTROL_FIELDS,
+)
 from .schema import ShadowPairedResult
 
 
@@ -324,13 +330,21 @@ def build_authority_dag(
             ShadowPairedResult(**value)
             for value in bundle["results"]
         ]
-        decision = decide_memory_qualification(
-            memory,
-            results,
-            thresholds=bundle["decision"].get("thresholds"),
-            provenance=bundle["decision"].get("provenance") or {},
-            evidence_set=evidence_set,
-        )
+        if set(memory.control_delta) & PORTFOLIO_CONTROL_FIELDS:
+            decision = verify_stored_portfolio_qualification(
+                memory,
+                results,
+                bundle["decision"],
+                evidence_set=evidence_set,
+            )
+        else:
+            decision = decide_memory_qualification(
+                memory,
+                results,
+                thresholds=bundle["decision"].get("thresholds"),
+                provenance=bundle["decision"].get("provenance") or {},
+                evidence_set=evidence_set,
+            )
         if decision != bundle["decision"]:
             raise AuthorityDagViolation(
                 "qualification decision cannot be reconstructed"

@@ -1,0 +1,60 @@
+{
+  "schema_version": "r3e-round-interface-v1",
+  "phase": "system_upgrade",
+  "executable": false,
+  "validity_authority": "grounded_runtime_authority_v1",
+  "blue_evaluation_authority": "candidate_portfolio_v1",
+  "blue_lens_registry": "configs/blue/lens_registry_v1.json",
+  "blue_candidate_portfolio": "configs/blue/semantic_diversity_portfolio_v1.json",
+  "blue_descriptor_router": "configs/blue/descriptor_router_v1.json",
+  "blue_candidate_provider": "r3e.blue.portfolio.fake:create_candidate_provider",
+  "blue_candidate_verifier": "r3e.blue.portfolio.fake:create_candidate_verifier",
+  "blue_semantic_signature_provider": "r3e.blue.portfolio.semantic_signature:create_semantic_signature_provider",
+  "blue_candidate_provider_toolchain_fingerprint": {
+    "adapter_id": "r3e-acp-deterministic-fake",
+    "adapter_version": "1",
+    "model_hash": "sha256:48b427f6a4dc64033cdcab024f5f74c191958b239b482d6db6a046e8a86428a7",
+    "model_id": "deterministic-fake-candidate-model",
+    "runtime_hash": "sha256:eea495b5943c171e2ef66b2d1ec1b97e087b8be5e4d12f6d5e8c77ebd8c08c67",
+    "runtime_id": "python-acp-fixture",
+    "schema_version": "r3e-adapter-toolchain-v1",
+    "verifier_hash": "sha256:fa4978f5f77fcbdad306cbe2ae3d93548a41e6ee328312c4961c83807f6f3fc9",
+    "verifier_id": "runner-owned-fake-candidate-verifier"
+  },
+  "blue_candidate_verifier_hash": "sha256:bc79c1e463fb6e6280c4d2a448a3cad630a55499037b350e28af6452da04e089",
+  "blue_semantic_signature_provider_hash": "sha256:c9974065d5a3bcce77c23cceb3e3cd967464f85c4225fbe8e4b912ca6aac6404",
+  "challenge_seeds": [
+    1,
+    2,
+    3
+  ],
+  "fake_candidate_successful_slots": [
+    1
+  ],
+  "formal_protocols": {
+    "policy": "r3e-policy-v3",
+    "candidate_portfolio": "r3e-candidate-portfolio-v1",
+    "descriptor_router": "r3e-descriptor-router-v1",
+    "descriptor_router_receipt": "r3e-descriptor-router-receipt-v1",
+    "allocation_plan": "r3e-candidate-allocation-plan-v1",
+    "candidate_provider": "r3e-blue-candidate-provider-receipt-v1",
+    "candidate_generation": "r3e-blue-candidate-generation-v1",
+    "semantic_patch_signature": "r3e-semantic-patch-signature-v1",
+    "candidate_semantic_signature": "r3e-candidate-semantic-signature-v1",
+    "semantic_patch_relation": "r3e-semantic-patch-relation-v1",
+    "portfolio_diversity": "r3e-portfolio-diversity-v1",
+    "candidate_verification": "r3e-blue-candidate-verification-v1",
+    "candidate_selection": "r3e-blue-candidate-selection-v1",
+    "blue_evaluation": "r3e-blue-evaluation-v2",
+    "execution_trace": "r3e-memory-execution-trace-v2",
+    "round_audit": "r3e-round-audit-v1"
+  },
+  "deferred_experiment_bindings": [
+    "real_model_name",
+    "experiment_seeds",
+    "promotion_thresholds",
+    "non_target_manifest",
+    "experiment_budget"
+  ],
+  "note": "Deterministic ACP-3 measurement-only semantic diversity authority. All three candidates are verified even when duplicate; no retry or extra model call is permitted."
+}

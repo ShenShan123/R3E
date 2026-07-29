@@ -10,6 +10,8 @@ from r3e.protocol.hashing import hash_payload
 
 
 POLICY_SCHEMA_VERSION = "r3e-policy-v2"
+POLICY_SCHEMA_V3 = "r3e-policy-v3"
+POLICY_SCHEMA_VERSIONS = {POLICY_SCHEMA_VERSION, POLICY_SCHEMA_V3}
 EVIDENCE_MODES = {"raw", "hybrid"}
 REPAIR_LOOPS = {"one-shot", "critique-revise"}
 CANDIDATE_SELECTION = {"first_verified", "critic_ranked", "verifier_guided"}
@@ -39,6 +41,7 @@ _POLICY_FIELDS = {
     "proposal_operator",
     "rollback_registry_hash",
     "memory_binding",
+    "candidate_portfolio_binding",
 }
 _MEMORY_BINDING_FIELDS = {
     "active_memory_bank_hash",
@@ -46,6 +49,15 @@ _MEMORY_BINDING_FIELDS = {
     "retriever_hash",
     "activation_guard_hash",
     "memory_control_whitelist_hash",
+}
+_CANDIDATE_PORTFOLIO_BINDING_FIELDS = {
+    "portfolio_hash",
+    "effective_portfolio_hash",
+    "lens_registry_hash",
+    "router_hash",
+    "allocator_hash",
+    "selector_hash",
+    "semantic_signature_provider_hash",
 }
 
 
@@ -79,6 +91,7 @@ class PolicyState:
     proposal_operator: str = ""
     rollback_registry_hash: str = ""
     memory_binding: dict[str, str] | None = None
+    candidate_portfolio_binding: dict[str, str] | None = None
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> "PolicyState":
@@ -87,7 +100,7 @@ class PolicyState:
         if unknown:
             raise PolicyValidationError(f"undeclared policy fields: {sorted(unknown)}")
         schema = _require_string(payload, "schema_version")
-        if schema != POLICY_SCHEMA_VERSION:
+        if schema not in POLICY_SCHEMA_VERSIONS:
             raise PolicyValidationError(f"unsupported policy schema: {schema}")
         policy_id = _require_string(payload, "policy_id")
         parent_id = _require_string(payload, "parent_policy_id", allow_empty=True)
@@ -136,13 +149,46 @@ class PolicyState:
             for path, digest in frozen_assets.items()
         ):
             raise PolicyValidationError("invalid frozen asset binding")
+        candidate_portfolio_binding = deepcopy(
+            payload.get("candidate_portfolio_binding") or {}
+        )
+        if not isinstance(candidate_portfolio_binding, dict):
+            raise PolicyValidationError(
+                "candidate_portfolio_binding must be an object"
+            )
+        if candidate_portfolio_binding and set(
+            candidate_portfolio_binding
+        ) != _CANDIDATE_PORTFOLIO_BINDING_FIELDS:
+            raise PolicyValidationError(
+                "candidate_portfolio_binding fields mismatch"
+            )
+        if any(
+            not isinstance(digest, str) or not _HASH_RE.fullmatch(digest)
+            for digest in candidate_portfolio_binding.values()
+        ):
+            raise PolicyValidationError(
+                "candidate_portfolio_binding contains an invalid hash"
+            )
+        if schema == POLICY_SCHEMA_V3 and not candidate_portfolio_binding:
+            raise PolicyValidationError(
+                "Policy V3 requires candidate_portfolio_binding"
+            )
+        if schema == POLICY_SCHEMA_VERSION and candidate_portfolio_binding:
+            raise PolicyValidationError(
+                "Policy V2 cannot carry candidate_portfolio_binding"
+            )
         if policy_id == "B0":
-            expected_base_hash = hash_payload({
+            base_content = {
                 "schema_version": schema,
                 "configuration": configuration,
                 "budgets": {key: int(value) for key, value in budgets.items()},
                 "frozen_assets": frozen_assets,
-            })
+            }
+            if candidate_portfolio_binding:
+                base_content["candidate_portfolio_binding"] = (
+                    candidate_portfolio_binding
+                )
+            expected_base_hash = hash_payload(base_content)
             if base_hash != expected_base_hash:
                 raise PolicyValidationError("base_policy_hash does not bind frozen base content")
         memory_binding = deepcopy(payload.get("memory_binding") or {})
@@ -173,6 +219,7 @@ class PolicyState:
             proposal_operator=str(payload.get("proposal_operator") or ""),
             rollback_registry_hash=str(payload.get("rollback_registry_hash") or ""),
             memory_binding=memory_binding,
+            candidate_portfolio_binding=candidate_portfolio_binding,
         )
 
     @staticmethod
@@ -257,6 +304,9 @@ class PolicyState:
             "proposal_operator": self.proposal_operator,
             "rollback_registry_hash": self.rollback_registry_hash,
             "memory_binding": deepcopy(self.memory_binding or {}),
+            "candidate_portfolio_binding": deepcopy(
+                self.candidate_portfolio_binding or {}
+            ),
         }
 
     @property
@@ -281,6 +331,10 @@ class PolicyState:
         }
         if self.memory_binding:
             immutable["memory_binding"] = self.memory_binding
+        if self.candidate_portfolio_binding:
+            immutable["candidate_portfolio_binding"] = (
+                self.candidate_portfolio_binding
+            )
         return hash_payload(immutable)
 
     @property
@@ -300,6 +354,12 @@ class PolicyState:
             "frozen_assets": self.frozen_assets or {},
             "effective_memory_bank_hash": str(
                 memory_binding.get("effective_memory_bank_hash") or ""
+            ),
+            "effective_candidate_portfolio_hash": str(
+                (self.candidate_portfolio_binding or {}).get(
+                    "effective_portfolio_hash"
+                )
+                or ""
             ),
         })
 

@@ -21,6 +21,15 @@ from r3e.memory.episode_builder import append_round_episodes
 from r3e.memory.episode_store import EpisodeStore
 from r3e.memory.memory_store import MemoryStore
 from r3e.memory.bank_store import ActiveBankStore
+from r3e.memory.activation_guard import ActivationGuard
+from r3e.memory.plan_compiler import MemoryAwarePlanCompiler
+from r3e.memory.retriever import MemoryRetriever
+from r3e.memory.schema import (
+    ANALYZERS,
+    BudgetEnvelope,
+    FailureDescriptor,
+    RuntimeContext,
+)
 from r3e.policy.registry_v2 import (
     get_active_policy,
     load_registry,
@@ -60,6 +69,13 @@ from r3e.red.poison_payload import (
     verify_poison_payload,
 )
 from r3e.red.memory_challenge import build_memory_capability_packet
+from r3e.red.portfolio_challenge import (
+    PortfolioChallengeViolation,
+    build_portfolio_red_authority,
+    build_portfolio_coverage_packet,
+    portfolio_red_authority_hash,
+    verify_portfolio_challenge_execution,
+)
 from r3e.red.grounded.formal_rejection import (
     append_formal_rejection,
 )
@@ -87,6 +103,13 @@ from .conformance import (
 )
 from .manifests import freeze_manifest, grouped_split, make_manifest, verify_manifest
 from .paired_replay import paired_replay
+from .portfolio import (
+    BLUE_EVALUATION_AUTHORITIES,
+    CANDIDATE_PORTFOLIO_AUTHORITY,
+    LEGACY_BLUE_EVALUATION_AUTHORITY,
+    ArenaCandidatePortfolioAuthority,
+    extract_grounded_failure_descriptor,
+)
 from .renewed_challenge import assert_renewed_challenge_binding
 from .round_state import RoundState, RoundStateViolation
 
@@ -214,6 +237,10 @@ class EvolutionRoundRunner:
         round_id: str,
         adapter: Any,
         project_root: str | Path,
+        candidate_provider: Any | None = None,
+        candidate_verifier: Any | None = None,
+        semantic_signature_provider: Any | None = None,
+        offline_allocator: Any | None = None,
     ):
         self.config = config
         self.round_id = round_id
@@ -228,13 +255,24 @@ class EvolutionRoundRunner:
             raise RoundRunnerViolation(
                 "round validity authority is unsupported"
             )
+        self.blue_evaluation_authority = str(
+            config.get(
+                "blue_evaluation_authority",
+                LEGACY_BLUE_EVALUATION_AUTHORITY,
+            )
+        )
+        if self.blue_evaluation_authority not in BLUE_EVALUATION_AUTHORITIES:
+            raise RoundRunnerViolation(
+                "round blue evaluation authority is unsupported"
+            )
         required_methods = {
             "generate_red",
-            "evaluate_blue",
             "probe_learnability",
             "screen_child",
             "replay",
         }
+        if self.blue_evaluation_authority == LEGACY_BLUE_EVALUATION_AUTHORITY:
+            required_methods.add("evaluate_blue")
         if self.validity_authority not in GROUNDED_ARENA_AUTHORITIES:
             required_methods.add("prepare_validity")
         missing = sorted(
@@ -244,6 +282,80 @@ class EvolutionRoundRunner:
             raise RoundRunnerViolation(f"evolution adapter missing methods: {missing}")
         self.adapter_gate = AdapterConformanceGate(adapter)
         self.root = Path(project_root)
+        self.candidate_portfolio_authority = None
+        if self.blue_evaluation_authority == CANDIDATE_PORTFOLIO_AUTHORITY:
+            if self.validity_authority not in GROUNDED_ARENA_AUTHORITIES:
+                raise RoundRunnerViolation(
+                    "candidate portfolio requires Grounded validity authority"
+                )
+            if candidate_provider is None or candidate_verifier is None:
+                raise RoundRunnerViolation(
+                    "candidate portfolio provider and verifier are required"
+                )
+            try:
+                self.candidate_portfolio_authority = (
+                    ArenaCandidatePortfolioAuthority(
+                        project_root=self.root,
+                        config=config,
+                        provider=candidate_provider,
+                        verifier=candidate_verifier,
+                        semantic_signature_provider=(
+                            semantic_signature_provider
+                        ),
+                        allocator=offline_allocator,
+                    )
+                )
+            except Exception as exc:
+                raise RoundRunnerViolation(str(exc)) from exc
+        adapter_toolchain = dict(
+            getattr(self.adapter, "toolchain_fingerprint", {}) or {}
+        )
+        self.round_toolchain_fingerprint: dict[str, Any] = adapter_toolchain
+        if self.candidate_portfolio_authority is not None:
+            self.round_toolchain_fingerprint = {
+                "schema_version": "r3e-arena-composite-toolchain-v1",
+                "evolution_adapter": adapter_toolchain,
+                "blue_candidate_provider": (
+                    self.candidate_portfolio_authority.provider_fingerprint
+                ),
+                "blue_candidate_verifier_hash": (
+                    self.candidate_portfolio_authority.verifier_hash
+                ),
+                "blue_semantic_signature_provider_hash": (
+                    self.candidate_portfolio_authority
+                    .semantic_signature_provider_hash
+                ),
+                "blue_offline_allocator_hash": (
+                    self.candidate_portfolio_authority
+                    .allocator.allocator_hash
+                    if (
+                        self.candidate_portfolio_authority.allocator
+                        is not None
+                    )
+                    else ""
+                ),
+                "blue_descriptor_router_hash": (
+                    self.candidate_portfolio_authority.router.router_hash
+                    if self.candidate_portfolio_authority.router is not None
+                    else ""
+                ),
+                "blue_portfolio_authority_hash": (
+                    self.candidate_portfolio_authority.authority_hash
+                ),
+                "blue_portfolio_template_registry_hash": (
+                    self.candidate_portfolio_authority
+                    .portfolio_template_registry.registry_hash
+                    if (
+                        self.candidate_portfolio_authority
+                        .portfolio_template_registry is not None
+                    )
+                    else ""
+                ),
+            }
+            if self.config.get("portfolio_aware_red_challenge"):
+                self.round_toolchain_fingerprint[
+                    "portfolio_red_authority_hash"
+                ] = portfolio_red_authority_hash()
         self.round_dir = self.root / config.get("rounds_root", "runtime/rounds") / round_id
         self.round_dir.mkdir(parents=True, exist_ok=True)
         self.registry_path = self.root / config["policy_registry"]
@@ -303,6 +415,186 @@ class EvolutionRoundRunner:
             stage_output_hash=hash_payload(stage_output),
         )
 
+    def _evaluate_blue_challenges(
+        self,
+        parent: PolicyState,
+        valid_poisons: list[dict[str, Any]],
+        *,
+        seeds: list[int],
+    ) -> list[dict[str, Any]]:
+        if self.candidate_portfolio_authority is not None:
+            challenged = []
+            for poison in valid_poisons:
+                execution_plan = (
+                    self._compile_portfolio_memory_plan(parent, poison)
+                    if parent.memory_binding
+                    else None
+                )
+                challenged.append(
+                    self.candidate_portfolio_authority.evaluate_challenge(
+                        parent,
+                        poison,
+                        seeds=seeds,
+                        execution_plan=execution_plan,
+                    )
+                )
+            return challenged
+
+        def evaluate_blue(policy, poison, seed):
+            return self.adapter_gate.validate(
+                "evaluate_blue",
+                self.adapter.evaluate_blue(policy, poison, seed),
+            )
+
+        return [
+            evaluate_challenge(
+                parent,
+                poison,
+                seeds=seeds,
+                evaluator=evaluate_blue,
+            )
+            for poison in valid_poisons
+        ]
+
+    def _compile_portfolio_memory_plan(
+        self,
+        parent: PolicyState,
+        poison: dict[str, Any],
+    ):
+        authority = self.candidate_portfolio_authority
+        if (
+            authority is None
+            or authority.portfolio_template_registry is None
+        ):
+            raise RoundRunnerViolation(
+                "memory-bound ACP round requires template registry"
+            )
+        memory_root = (
+            self.root
+            / self.config.get("memory_root", "runtime/memory")
+        )
+        episode_store = EpisodeStore(memory_root / "episodes")
+        memory_store = MemoryStore(
+            memory_root / "library",
+            episode_store=episode_store,
+        )
+        bank_store = ActiveBankStore(
+            memory_root / "active_banks",
+            memory_store=memory_store,
+        )
+        bank = bank_store.load_for_policy(parent)
+        retriever = MemoryRetriever(memory_store)
+        guard = ActivationGuard(
+            memory_store,
+            portfolio_template_registry=(
+                authority.portfolio_template_registry
+            ),
+        )
+        if (
+            bank.retriever_hash != retriever.retriever_hash
+            or bank.activation_guard_hash != guard.guard_hash
+            or bank.control_whitelist_hash
+            != guard.control_whitelist_hash
+        ):
+            raise RoundRunnerViolation(
+                "arena memory runtime differs from active bank authority"
+            )
+        descriptor = FailureDescriptor.from_dict(
+            extract_grounded_failure_descriptor(poison)
+        )
+        matches = retriever.retrieve(descriptor, bank, top_k=3)
+        verifier_calls = (
+            int(parent.budgets["max_llm_calls_per_case"])
+            * len(parent.configuration["verifier_order"])
+        )
+        context = RuntimeContext(
+            effective_policy_hash=parent.effective_policy_hash,
+            policy_instance_hash=parent.policy_instance_hash,
+            available_analyzers=tuple(sorted(ANALYZERS)),
+            budget=BudgetEnvelope(
+                int(parent.budgets["max_llm_calls_per_case"]),
+                verifier_calls,
+                int(parent.budgets["max_tokens_per_case"]),
+                float(parent.budgets["max_wall_seconds_per_case"]),
+            ),
+            control_whitelist_hash=guard.control_whitelist_hash,
+        )
+        decision = guard.reactivate(
+            matches=matches,
+            active_policy=parent,
+            active_bank=bank,
+            runtime_context=context,
+        )
+        return MemoryAwarePlanCompiler(
+            memory_store,
+            bank,
+            portfolio_template_registry=(
+                authority.portfolio_template_registry
+            ),
+        ).compile(base_policy=parent, reactivation=decision)
+
+    def _build_portfolio_red_capability(
+        self,
+        parent: PolicyState,
+        *,
+        residual_archive: list[dict[str, Any]],
+        covered_archive: list[dict[str, Any]],
+    ):
+        if not self.config.get("portfolio_aware_red_challenge"):
+            return None
+        if self.candidate_portfolio_authority is None:
+            raise RoundRunnerViolation(
+                "portfolio-aware red requires candidate portfolio authority"
+            )
+        return build_portfolio_coverage_packet(
+            parent,
+            archive_rows=residual_archive + covered_archive,
+        )
+
+    @staticmethod
+    def _verify_portfolio_red_candidate(
+        row: dict[str, Any],
+        *,
+        parent: PolicyState,
+        portfolio_capability: dict[str, Any] | None,
+    ) -> None:
+        if portfolio_capability is None:
+            return
+        try:
+            verify_portfolio_challenge_execution(
+                row,
+                plan=row.get("portfolio_challenge_plan") or {},
+                packet=portfolio_capability,
+                policy=parent,
+            )
+        except PortfolioChallengeViolation as exc:
+            raise RoundRunnerViolation(str(exc)) from exc
+
+    def _load_red_checkpoint_output(self) -> Any:
+        generated = _read_jsonl(
+            self.round_dir / "red_candidates.jsonl"
+        )
+        coverage_path = self.round_dir / "coverage_plan.json"
+        authority_path = (
+            self.round_dir / "portfolio_red_authority.json"
+        )
+        if not coverage_path.is_file() and not authority_path.is_file():
+            return generated
+        output: dict[str, Any] = {"generated": generated}
+        if coverage_path.is_file():
+            output.update({
+                "coverage_plan": read_json(coverage_path),
+                "planned": _read_jsonl(
+                    self.round_dir
+                    / "planned_red_candidates.jsonl"
+                ),
+            })
+        if authority_path.is_file():
+            output["portfolio_red_authority"] = read_json(
+                authority_path
+            )
+        return output
+
     def _verify_persisted_checkpoints(self) -> None:
         """Fail closed when any completed stage artifact was changed."""
         state = self.state.load()
@@ -315,24 +607,7 @@ class EvolutionRoundRunner:
                     read_json(self.round_dir / "toolchain.json")
                 )["run_context_hash"],
             },
-            "RED_GENERATE": lambda: (
-                {
-                    "generated": _read_jsonl(
-                        self.round_dir / "red_candidates.jsonl"
-                    ),
-                    "coverage_plan": read_json(
-                        self.round_dir / "coverage_plan.json"
-                    ),
-                    "planned": _read_jsonl(
-                        self.round_dir
-                        / "planned_red_candidates.jsonl"
-                    ),
-                }
-                if (self.round_dir / "coverage_plan.json").is_file()
-                else _read_jsonl(
-                    self.round_dir / "red_candidates.jsonl"
-                )
-            ),
+            "RED_GENERATE": self._load_red_checkpoint_output,
             "VALIDITY_GATE": lambda: (
                 {
                     "validity": _read_jsonl(
@@ -434,6 +709,52 @@ class EvolutionRoundRunner:
                     stage_input = verify_red_search_context(
                         read_json(self.round_dir / "red_search_context.json")
                     )["context_hash"]
+                elif stage == "BLUE_CHALLENGE":
+                    active_parent = PolicyState.from_dict(
+                        read_json(self.round_dir / "active_parent.json")
+                    )
+                    stage_input = {
+                        "policy": active_parent.policy_hash,
+                        "seeds": [
+                            int(seed) for seed in self.config.get(
+                                "challenge_seeds", [1, 2, 3]
+                            )
+                        ],
+                        "blue_evaluation_authority": (
+                            self.blue_evaluation_authority
+                        ),
+                        "blue_portfolio_authority_hash": (
+                            self.candidate_portfolio_authority.authority_hash
+                            if self.candidate_portfolio_authority is not None
+                            else ""
+                        ),
+                        "blue_semantic_signature_provider_hash": (
+                            self.candidate_portfolio_authority
+                            .semantic_signature_provider_hash
+                            if self.candidate_portfolio_authority is not None
+                            else ""
+                        ),
+                        "blue_offline_allocator_hash": (
+                            self.candidate_portfolio_authority
+                            .allocator.allocator_hash
+                            if (
+                                self.candidate_portfolio_authority
+                                is not None
+                                and self.candidate_portfolio_authority
+                                .allocator is not None
+                            )
+                            else ""
+                        ),
+                        "blue_descriptor_router_hash": (
+                            self.candidate_portfolio_authority.router.router_hash
+                            if (
+                                self.candidate_portfolio_authority is not None
+                                and self.candidate_portfolio_authority.router
+                                is not None
+                            )
+                            else ""
+                        ),
+                    }
                 self.state.verify_stage(
                     stage,
                     stage_input=stage_input,
@@ -457,6 +778,13 @@ class EvolutionRoundRunner:
         if self.state.next_stage() == "LOAD_ACTIVE_POLICY":
             registry = load_registry(self.registry_path)
             parent = get_active_policy(registry)
+            if self.candidate_portfolio_authority is not None:
+                try:
+                    self.candidate_portfolio_authority.assert_policy_authorized(
+                        parent
+                    )
+                except Exception as exc:
+                    raise RoundRunnerViolation(str(exc)) from exc
             expected = self.config.get("expected_parent_policy_hash")
             if expected and expected != parent.policy_hash:
                 raise RoundRunnerViolation("configured parent policy hash is stale")
@@ -469,9 +797,7 @@ class EvolutionRoundRunner:
                 registry_hash=registry["registry_hash"],
                 active_policy_id=parent.policy_id,
                 active_policy_hash=parent.policy_hash,
-                toolchain_fingerprint=dict(
-                    getattr(self.adapter, "toolchain_fingerprint", {}) or {}
-                ),
+                toolchain_fingerprint=self.round_toolchain_fingerprint,
             )
             atomic_write_json(self.round_dir / "toolchain.json", run_context)
             self._checkpoint(
@@ -488,6 +814,7 @@ class EvolutionRoundRunner:
 
         if self.state.next_stage() == "RED_GENERATE":
             memory_capability = None
+            portfolio_capability = None
             if parent.memory_binding:
                 memory_root = (
                     self.root
@@ -508,11 +835,19 @@ class EvolutionRoundRunner:
                     active_bank,
                     memory_store,
                 )
+            residual_archive = load_archive(self.archive_path)
+            covered_archive = load_archive(self.covered_archive_path)
+            portfolio_capability = self._build_portfolio_red_capability(
+                parent,
+                residual_archive=residual_archive,
+                covered_archive=covered_archive,
+            )
             red_context = build_red_search_context(
                 parent,
-                residual_archive=load_archive(self.archive_path),
-                covered_archive=load_archive(self.covered_archive_path),
+                residual_archive=residual_archive,
+                covered_archive=covered_archive,
                 memory_capability=memory_capability,
+                portfolio_capability=portfolio_capability,
             )
             atomic_write_json(
                 self.round_dir / "red_search_context.json",
@@ -560,11 +895,39 @@ class EvolutionRoundRunner:
                     )
                 except LineageOperatorViolation as exc:
                     raise RoundRunnerViolation(str(exc)) from exc
+                self._verify_portfolio_red_candidate(
+                    row,
+                    parent=parent,
+                    portfolio_capability=portfolio_capability,
+                )
                 bound_poison = bind_poison_payload(row)
                 row.clear()
                 row.update(bound_poison)
             _write_jsonl(self.round_dir / "red_candidates.jsonl", candidates)
-            red_stage_output: Any = candidates
+            portfolio_red_authority = None
+            if portfolio_capability is not None:
+                portfolio_red_authority = build_portfolio_red_authority(
+                    policy=parent,
+                    packet=portfolio_capability,
+                    poisons=candidates,
+                    toolchain_fingerprint=(
+                        self.round_toolchain_fingerprint
+                    ),
+                )
+                atomic_write_json(
+                    self.round_dir / "portfolio_red_authority.json",
+                    portfolio_red_authority,
+                )
+            red_stage_output: Any = (
+                {
+                    "generated": candidates,
+                    "portfolio_red_authority": (
+                        portfolio_red_authority
+                    ),
+                }
+                if portfolio_red_authority is not None
+                else candidates
+            )
             if self.validity_authority in GROUNDED_ARENA_AUTHORITIES:
                 coverage_before = load_coverage_state(
                     self.coverage_state_path
@@ -621,6 +984,10 @@ class EvolutionRoundRunner:
                     "coverage_plan": coverage_plan,
                     "planned": planned,
                 }
+                if portfolio_red_authority is not None:
+                    red_stage_output["portfolio_red_authority"] = (
+                        portfolio_red_authority
+                    )
                 self.events.emit(
                     "red",
                     "grounded_coverage_plan_frozen",
@@ -641,6 +1008,16 @@ class EvolutionRoundRunner:
                 challenged_policy_hash=parent.policy_hash,
                 candidate_count=len(candidates),
                 candidates_hash=hash_payload(candidates),
+                portfolio_capability_packet_hash=(
+                    portfolio_capability["packet_hash"]
+                    if portfolio_capability is not None
+                    else ""
+                ),
+                portfolio_coverage_region_count=(
+                    len(portfolio_capability["coverage_regions"])
+                    if portfolio_capability is not None
+                    else 0
+                ),
             )
             self._checkpoint(
                 "RED_GENERATE",
@@ -831,32 +1208,117 @@ class EvolutionRoundRunner:
         valid = _read_jsonl(self.round_dir / "valid_poisons.jsonl")
         if self.state.next_stage() == "BLUE_CHALLENGE":
             seeds = [int(seed) for seed in self.config.get("challenge_seeds", [1, 2, 3])]
-
-            def evaluate_blue(policy, poison, seed):
-                return self.adapter_gate.validate(
-                    "evaluate_blue",
-                    self.adapter.evaluate_blue(policy, poison, seed),
-                )
-
-            challenged = [
-                evaluate_challenge(
-                    parent,
-                    poison,
-                    seeds=seeds,
-                    evaluator=evaluate_blue,
-                )
-                for poison in valid
-            ]
+            challenged = self._evaluate_blue_challenges(
+                parent,
+                valid,
+                seeds=seeds,
+            )
             _write_jsonl(self.round_dir / "blue_challenge_results.jsonl", challenged)
             self.events.emit(
                 "red",
                 "blue_challenge_completed",
                 round_id=self.round_id,
                 challenged_policy_hash=parent.policy_hash,
+                blue_evaluation_authority=self.blue_evaluation_authority,
+                blue_portfolio_authority_hash=(
+                    self.candidate_portfolio_authority.authority_hash
+                    if self.candidate_portfolio_authority is not None
+                    else ""
+                ),
+                blue_semantic_signature_provider_hash=(
+                    self.candidate_portfolio_authority
+                    .semantic_signature_provider_hash
+                    if self.candidate_portfolio_authority is not None
+                    else ""
+                ),
+                blue_offline_allocator_hash=(
+                    self.candidate_portfolio_authority
+                    .allocator.allocator_hash
+                    if (
+                        self.candidate_portfolio_authority is not None
+                        and self.candidate_portfolio_authority.allocator
+                        is not None
+                    )
+                    else ""
+                ),
+                blue_descriptor_router_hash=(
+                    self.candidate_portfolio_authority.router.router_hash
+                    if (
+                        self.candidate_portfolio_authority is not None
+                        and self.candidate_portfolio_authority.router
+                        is not None
+                    )
+                    else ""
+                ),
+                blue_portfolio_template_registry_hash=(
+                    self.candidate_portfolio_authority
+                    .portfolio_template_registry.registry_hash
+                    if (
+                        self.candidate_portfolio_authority is not None
+                        and self.candidate_portfolio_authority
+                        .portfolio_template_registry is not None
+                    )
+                    else ""
+                ),
+                memory_execution_plan_hashes=sorted({
+                    str(
+                        blue_result.get(
+                            "memory_execution_plan_hash"
+                        )
+                        or ""
+                    )
+                    for challenge in challenged
+                    for blue_result in challenge.get(
+                        "blue_results", []
+                    )
+                    if blue_result.get(
+                        "memory_execution_plan_hash"
+                    )
+                }),
                 result_count=len(challenged),
                 results_hash=hash_payload(challenged),
             )
-            self._checkpoint("BLUE_CHALLENGE", {"policy": parent.policy_hash, "seeds": seeds}, challenged)
+            self._checkpoint(
+                "BLUE_CHALLENGE",
+                {
+                    "policy": parent.policy_hash,
+                    "seeds": seeds,
+                    "blue_evaluation_authority": (
+                        self.blue_evaluation_authority
+                    ),
+                    "blue_portfolio_authority_hash": (
+                        self.candidate_portfolio_authority.authority_hash
+                        if self.candidate_portfolio_authority is not None
+                        else ""
+                    ),
+                    "blue_semantic_signature_provider_hash": (
+                        self.candidate_portfolio_authority
+                        .semantic_signature_provider_hash
+                        if self.candidate_portfolio_authority is not None
+                        else ""
+                    ),
+                    "blue_offline_allocator_hash": (
+                        self.candidate_portfolio_authority
+                        .allocator.allocator_hash
+                        if (
+                            self.candidate_portfolio_authority is not None
+                            and self.candidate_portfolio_authority.allocator
+                            is not None
+                        )
+                        else ""
+                    ),
+                    "blue_descriptor_router_hash": (
+                        self.candidate_portfolio_authority.router.router_hash
+                        if (
+                            self.candidate_portfolio_authority is not None
+                            and self.candidate_portfolio_authority.router
+                            is not None
+                        )
+                        else ""
+                    ),
+                },
+                challenged,
+            )
 
         challenged = _read_jsonl(self.round_dir / "blue_challenge_results.jsonl")
         episode_store = EpisodeStore(
@@ -1517,11 +1979,34 @@ def _main() -> None:
     config = _read_config(Path(args.config))
     config.setdefault("project_root", args.project_root)
     adapter = _load_adapter(config["adapter"], config)
+    candidate_provider = None
+    candidate_verifier = None
+    semantic_signature_provider = None
+    if (
+        config.get("blue_evaluation_authority")
+        == CANDIDATE_PORTFOLIO_AUTHORITY
+    ):
+        candidate_provider = _load_adapter(
+            config["blue_candidate_provider"], config
+        )
+        candidate_verifier = _load_adapter(
+            config["blue_candidate_verifier"], config
+        )
+        semantic_provider_spec = str(
+            config.get("blue_semantic_signature_provider") or ""
+        )
+        if semantic_provider_spec:
+            semantic_signature_provider = _load_adapter(
+                semantic_provider_spec, config
+            )
     result = EvolutionRoundRunner(
         config,
         round_id=args.round_id,
         adapter=adapter,
         project_root=args.project_root,
+        candidate_provider=candidate_provider,
+        candidate_verifier=candidate_verifier,
+        semantic_signature_provider=semantic_signature_provider,
     ).run()
     print(json.dumps(result, ensure_ascii=False, indent=2))
 

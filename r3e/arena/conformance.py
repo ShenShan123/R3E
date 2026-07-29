@@ -12,6 +12,7 @@ ADAPTER_CONFORMANCE_VERSION = "r3e-evolution-adapter-v1"
 TOOLCHAIN_FINGERPRINT_VERSION = "r3e-adapter-toolchain-v1"
 OUTPUT_SCHEMAS = {
     "generate_red": "r3e-red-candidate-v1",
+    "generate_blue_candidate": "r3e-blue-candidate-provider-receipt-v1",
     "prepare_validity": "r3e-validity-evidence-v2",
     "evaluate_blue": "r3e-blue-evaluation-v1",
     "probe_learnability": "r3e-learnability-probe-v1",
@@ -217,7 +218,82 @@ def _require_fields(
 
 
 def _validate_operation_payload(operation: str, payload: Mapping[str, Any]) -> None:
-    if operation == "generate_red":
+    if operation == "generate_blue_candidate":
+        _require_fields(
+            payload,
+            {
+                "candidate_id",
+                "slot_index",
+                "lens_id",
+                "lens_hash",
+                "candidate_seed",
+                "prompt_hash",
+                "current_case_evidence_hash",
+                "raw_response_hash",
+                "patch_payload",
+                "patch_payload_hash",
+                "input_tokens",
+                "output_tokens",
+            },
+            operation=operation,
+        )
+        forbidden = {
+            "selected_candidate_id",
+            "winner",
+            "rank",
+            "score",
+            "oracle_ok",
+            "parse_ok",
+            "scope_ok",
+            "compile_ok",
+            "formal_ok",
+            "verification_hash",
+            "selection_hash",
+        }
+        leaked = forbidden & payload.keys()
+        if leaked:
+            raise AdapterConformanceViolation(
+                "blue candidate provider attempted an authority decision: "
+                f"{sorted(leaked)}"
+            )
+        for field in ("candidate_id", "lens_id"):
+            if not isinstance(payload.get(field), str) or not payload[field]:
+                raise AdapterConformanceViolation(
+                    f"{operation}.{field} must be non-empty"
+                )
+        for field in (
+            "lens_hash",
+            "prompt_hash",
+            "current_case_evidence_hash",
+            "raw_response_hash",
+            "patch_payload_hash",
+        ):
+            _digest(payload.get(field), field=f"{operation}.{field}")
+        for field in (
+            "slot_index",
+            "candidate_seed",
+            "input_tokens",
+            "output_tokens",
+        ):
+            value = payload.get(field)
+            if (
+                not isinstance(value, int)
+                or isinstance(value, bool)
+                or value < 0
+            ):
+                raise AdapterConformanceViolation(
+                    f"{operation}.{field} must be a non-negative integer"
+                )
+        patch_payload = payload.get("patch_payload")
+        if not isinstance(patch_payload, Mapping):
+            raise AdapterConformanceViolation(
+                "generate_blue_candidate.patch_payload must be an object"
+            )
+        if payload["patch_payload_hash"] != hash_payload(patch_payload):
+            raise AdapterConformanceViolation(
+                "generate_blue_candidate patch payload hash mismatch"
+            )
+    elif operation == "generate_red":
         _require_fields(
             payload,
             {
@@ -346,6 +422,9 @@ class AdapterConformanceGate:
             validate_toolchain_fingerprint(fingerprint)
             for fingerprint in fingerprints
         ]
+        self.toolchains_by_hash = {
+            hash_payload(fingerprint): fingerprint for fingerprint in validated
+        }
         self.allowed_toolchain_hashes = {
             hash_payload(fingerprint) for fingerprint in validated
         }
@@ -385,6 +464,17 @@ class AdapterConformanceGate:
         ):
             raise AdapterConformanceViolation(
                 f"{operation} output uses an undeclared toolchain fingerprint"
+            )
+        toolchain = self.toolchains_by_hash[
+            payload["toolchain_fingerprint_hash"]
+        ]
+        if payload["model_id"] != toolchain["model_id"]:
+            raise AdapterConformanceViolation(
+                f"{operation} model does not match its declared toolchain"
+            )
+        if payload["verifier_hash"] != toolchain["verifier_hash"]:
+            raise AdapterConformanceViolation(
+                f"{operation} verifier does not match its declared toolchain"
             )
         body = {
             key: value for key, value in payload.items() if key != "result_hash"

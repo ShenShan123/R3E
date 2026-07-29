@@ -21,6 +21,9 @@ schemas/configuration instead of unpublished local design documents.
   learnability, lineage, and residual archive.
 - `r3e/arena/`: hash-bound manifests, paired replay, resumable round state,
   renewed-challenge binding, and the sanitized adapter-driven round runner.
+- `r3e/blue/portfolio/`: candidate-level lens registry, allocation plan,
+  provider conformance, runner-owned verification/selection, ExecutionTrace
+  V2, offline audit, and deterministic ACP fixtures.
 - `r3e/protocol/`: canonical hashing, atomic writes, hash-chain ledgers, and
   toolchain fingerprints.
 - `r3e/memory/`: Replay-Activated Adversarial Memory schemas, immutable
@@ -153,6 +156,184 @@ and difficulty curriculum, parser-backed RAAM challenge operators, controlled
 two-parent composition, cross-round revalidation, and a complete authority DAG.
 Complete waveform semantics, complete language coverage, and empirical
 continual-learning claims remain open.
+
+### Adaptive Candidate Portfolio
+
+**Adaptive Candidate Protocol V1** freezes the ACP-0 candidate-level authority
+foundation in `configs/evolution/adaptive_candidate_protocol_v1.json`.
+`configs/blue/lens_registry_v1.json` binds the existing generic, temporal,
+control, and dataflow prompt assets by exact hash.
+
+The formal portfolio executor deterministically derives candidate slots and
+seeds from the effective policy, Grounded `FailureDescriptor`, portfolio, and
+run seed. A candidate provider may return only a patch proposal and usage
+receipt; it cannot report parse/formal/oracle success, rank candidates, or
+select a winner. The runner owns candidate verification, deterministic
+oracle-backed selection, aggregate call/Token/post-call wall-time gates,
+BlueEvaluation V2, and per-slot/lens ExecutionTrace V2. Offline audit rebuilds
+the complete provider→generation→semantic-signature→verification→diversity
+→selection chain.
+
+Run the model-free ACP-0 conformance fixture with:
+
+```bash
+python -m r3e.blue.portfolio.fake_system \
+  --project-root . \
+  --out /tmp/r3e-acp0-blue-evaluation.json
+```
+
+The V2 policy compatibility path authorizes only its implicit homogeneous
+portfolio. **ACP-1 Fixed Mixed Portfolio** adds explicit Policy V3 portfolio
+binding and the frozen equal-budget specialist allocation:
+
+```text
+temporal_v1 + control_v1 + dataflow_v1
+```
+
+`configs/blue/fixed_mixed_portfolio_v1.json` binds all three lens slots plus
+the lens registry, router, allocator, selector, and semantic-signature
+provider. `configs/evolution/round_acp1_fixed_mixed_v1.json` selects
+`candidate_portfolio_v1` as the formal arena blue authority. Under that
+authority, `BLUE_CHALLENGE` requires Grounded validity with a hash-bound
+`FailureDescriptor`, rejects any active policy other than the exactly matching
+Policy V3, and emits a complete BlueEvaluation V2 for every challenge seed.
+The formal path does not call the legacy opaque `evaluate_blue()` method.
+
+The deterministic comparison control remains `generic_v1 × 3`, with the same
+three-call candidate budget. These fixtures establish protocol, replay, and
+authority conformance only; they do not measure lens collapse, unique solves,
+or repair gain.
+
+Run the explicit model-free ACP-1 fixed-mixed fixture with:
+
+```bash
+python -m r3e.blue.portfolio.fake_system \
+  --project-root . \
+  --portfolio configs/blue/fixed_mixed_portfolio_v1.json \
+  --out /tmp/r3e-acp1-blue-evaluation.json
+```
+
+**ACP-2 Descriptor-Routed Portfolio** freezes a descriptor-only router in
+`configs/blue/descriptor_router_v1.json`. Its three-slot allocation is always:
+
+```text
+generic_v1 + primary specialist + orthogonal specialist
+```
+
+The router scores only current Grounded FailureDescriptor V1 fields. It cannot
+read mutation family/operator, red truth, history, a reference patch, or model
+judgment. Equal scores use the frozen `temporal → control → dataflow` order.
+Every decision emits a reconstructable router receipt containing the matched
+rules, specialist scores, primary/orthogonal lenses, and allocated slots.
+`configs/blue/descriptor_routed_portfolio_v1.json` authorizes the four-lens
+pool, while each AllocationPlan and BlueEvaluation binds the case-specific
+three-slot receipt.
+
+`configs/evolution/round_acp2_descriptor_routed_v1.json` connects the router
+to formal arena challenge, run toolchain, checkpoint/event hashes, and offline
+audit. `portfolio_conditioned_neighbors()` also provides the frozen
+`fixed_to_descriptor_routed` Policy V3 child operation without changing the
+parent's scalar repair configuration, budget, or model route.
+
+Run the model-free ACP-2 fixture with:
+
+```bash
+python -m r3e.blue.portfolio.fake_system \
+  --project-root . \
+  --portfolio configs/blue/descriptor_routed_portfolio_v1.json \
+  --router configs/blue/descriptor_router_v1.json \
+  --out /tmp/r3e-acp2-blue-evaluation.json
+```
+
+**ACP-3 Semantic Patch Diversity** adds a runner-owned structured semantic
+signature provider and freezes `r3e-semantic-patch-signature-v1`. The provider
+validates the patch scope against the active policy and derives the normalized
+AST patch hash; the candidate verifier can only reference that runner-owned
+signature and cannot self-report semantic authority.
+
+Every three-candidate run emits deterministic `semantic_duplicate`,
+`near_duplicate`, or `orthogonal` pair receipts plus candidate success,
+unique/co-solve lens, lens-collapse, semantic-diversity, and portfolio-cost
+statistics. Formal challenge aggregates the same metrics across seeds, while
+offline audit reconstructs every receipt and the run toolchain binds the
+semantic provider hash. ACP-3 V1 is measurement-only: duplicate candidates are
+still verified, `retry_calls` is always zero, and no additional provider call
+is allowed.
+
+Run the model-free ACP-3 fixture with:
+
+```bash
+python -m r3e.blue.portfolio.fake_system \
+  --project-root . \
+  --portfolio configs/blue/semantic_diversity_portfolio_v1.json \
+  --router configs/blue/descriptor_router_v1.json \
+  --out /tmp/r3e-acp3-blue-evaluation.json
+```
+
+**ACP-4 Offline Adaptive Allocator** consumes only a frozen adaptation
+manifest from the preceding round. It groups Grounded descriptors without
+signal identity or artifact hashes, accumulates per-lens compile/oracle,
+unique/co-solve, semantic-duplicate, Token, wall-time, and pair-overlap
+statistics, and freezes them as `r3e-offline-allocator-state-v1`. Target and
+non-target manifests are rejected as allocator inputs.
+
+The allocator uses integer-only utility arithmetic and exhaustively scores all
+legal three-slot combinations. V1 always preserves a general slot, limits a
+specialist to two slots, keeps the model route and total call/Token budgets
+unchanged, and emits a reconstructable receipt. The state hash is part of the
+Policy V3 portfolio binding and formal arena toolchain; it cannot update during
+a round. `descriptor_routed_to_adaptive` proposes exactly one allocator child,
+which remains subject to the existing paired-replay and atomic-promotion
+protocol.
+
+The checked-in allocator state is deterministic synthetic conformance data,
+not an experiment result. Run the ACP-4 fixture with:
+
+```bash
+python -m r3e.blue.portfolio.fake_system \
+  --project-root . \
+  --portfolio configs/blue/adaptive_portfolio_v1.json \
+  --allocator-state configs/blue/offline_allocator_state_v1.json \
+  --out /tmp/r3e-acp4-blue-evaluation.json
+```
+
+**ACP-5 RAAM Portfolio Control** permits an `active_dormant` ControlMemory to
+select one template from the exact registry frozen by the active Policy V3.
+The memory stores only the template ID and three bounded controls: specialist
+slot budget, zero diversity-retry budget, and the frozen early-stop mode. It
+cannot carry lens text, redefine a lens, change the model route or selector,
+increase candidate budget, or add a provider call.
+
+Qualification is paired and partitioned into adaptation repair gain,
+non-target safety, and false-activation safety. Formal execution binds
+`ExecutionPlan`, template registry/template hashes, a runner-owned control
+receipt, `AllocationPlan`, BlueEvaluation V2, event/checkpoint toolchain, and
+offline audit. The checked-in template registry and deterministic tests are
+protocol fixtures only; they are not stored runtime memory or experimental
+qualification evidence.
+
+**ACP-6 Portfolio-Aware Red Challenge** exposes only a hash-bound, sanitized
+coverage packet derived from prior challenges executed under the same
+effective portfolio. It contains descriptor-cluster coverage, aggregate
+portfolio success/collapse/duplicate/cost signals, and no prompt, candidate
+patch, provider/verifier receipt, successful-lens identity, private RAAM
+evidence, reference repair, hidden target, or model route.
+
+The formal red path supports four deterministic, policy-bound operators:
+`portfolio_bypass`, `router_ambiguity`, `specialist_deepening`, and
+`portfolio_conflict`. Every generated poison binds the active policy and
+effective portfolio, capability-packet hash, target region, operator plan,
+materialized stress semantics, poison payload hash, and the composite
+toolchain authority. The generation checkpoint freezes a portfolio-red
+authority record, and offline round audit reconstructs it before accepting the
+round. Cross-round coverage may be reused under a new policy only when the
+effective portfolio hash is unchanged.
+
+These deterministic fixtures do not establish router accuracy, held-out
+generalization, real-model lens collapse, unique solves, repair gain, adaptive
+allocation benefit, diversity-recovery benefit, or red challenge
+effectiveness. Real candidate/red providers and empirical ACP results remain
+open.
 
 ### Grounded Red Discovery
 

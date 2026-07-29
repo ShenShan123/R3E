@@ -50,7 +50,11 @@ class MemoryRuntime:
             runtime_context=runtime_context,
         )
         plan = MemoryAwarePlanCompiler(
-            self.bank_store.memory_store, bank
+            self.bank_store.memory_store,
+            bank,
+            portfolio_template_registry=(
+                self.activation_guard.portfolio_template_registry
+            ),
         ).compile(
             base_policy=active_policy,
             reactivation=decision,

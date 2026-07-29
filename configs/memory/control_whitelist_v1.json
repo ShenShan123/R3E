@@ -10,9 +10,11 @@
   "allowed_control_fields": [
     "candidate_batch_size",
     "candidate_plan",
+    "candidate_portfolio_template_id",
     "candidate_ranking",
     "cone_depth",
     "disable_analyzers",
+    "diversity_retry_budget",
     "early_stop",
     "enable_analyzers",
     "evidence_window_after",
@@ -23,10 +25,12 @@
     "max_signals",
     "pre_oracle_filters",
     "prefer_local_patch",
+    "portfolio_early_stop",
     "retry_after_compile_fail",
     "retry_after_oracle_fail",
     "revision_rounds",
     "rtl_slice_mode",
+    "specialist_slot_budget",
     "verifier_order"
   ],
   "forbid_ast_rewrite": true,
@@ -34,5 +38,5 @@
   "forbid_model_routing": true,
   "forbid_prompt_payload": true,
   "schema_version": "r3e-memory-control-whitelist-v1",
-  "whitelist_hash": "sha256:76ec94e961e0731305f5124c2bb2ef780876cc701b92f05b5a87c4f2573ec4cb"
+  "whitelist_hash": "sha256:41c11b4c1d7d59e03fcaea80d998a631e8d3cfd7aab2fbdc5c25bbf70c8c532b"
 }

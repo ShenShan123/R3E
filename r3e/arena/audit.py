@@ -9,6 +9,26 @@ from pathlib import Path
 from typing import Any
 
 from r3e.arena.manifests import verify_manifest
+from r3e.arena.conformance import validate_toolchain_fingerprint
+from r3e.arena.portfolio import (
+    CANDIDATE_PORTFOLIO_AUTHORITY,
+    LEGACY_BLUE_EVALUATION_AUTHORITY,
+    extract_grounded_failure_descriptor,
+)
+from r3e.blue.portfolio.audit import verify_blue_evaluation
+from r3e.blue.portfolio.allocator import (
+    OfflineAdaptiveAllocator,
+    load_offline_allocator_state,
+)
+from r3e.blue.portfolio.lens_registry import load_lens_registry
+from r3e.blue.portfolio.router import load_descriptor_router
+from r3e.blue.portfolio.schema import (
+    CandidatePortfolio,
+    build_candidate_portfolio_binding,
+)
+from r3e.blue.portfolio.statistics import (
+    build_challenge_portfolio_statistics,
+)
 from r3e.memory.episode_builder import (
     episode_from_challenge,
     episode_from_formal_rejection,
@@ -31,6 +51,10 @@ from r3e.protocol.ledger import read_ledger, writer_lock
 from r3e.protocol.provenance import verify_run_context
 from r3e.red.feedback_packet import FORBIDDEN_INPUT_KEYS
 from r3e.red.feedback_packet import verify_red_search_context
+from r3e.red.portfolio_challenge import (
+    PortfolioChallengeViolation,
+    build_portfolio_red_authority,
+)
 from r3e.red.learnability import verify_learnability_result
 from r3e.red.selection import select_residual_elites
 from r3e.red.poison_payload import verify_poison_payload
@@ -231,6 +255,238 @@ def reconstruct_round(round_dir: str | Path) -> dict[str, Any]:
     challenge_rows = _read_jsonl(
         root / "blue_challenge_results.jsonl"
     )
+    blue_evaluation_authority = str(
+        config.get(
+            "blue_evaluation_authority",
+            LEGACY_BLUE_EVALUATION_AUTHORITY,
+        )
+    )
+    for challenge in challenge_rows:
+        if challenge.get("challenge_result_hash") != hash_payload({
+            key: value for key, value in challenge.items()
+            if key != "challenge_result_hash"
+        }):
+            raise RoundAuditViolation(
+                "blue challenge result hash mismatch"
+            )
+    blue_portfolio_audit: dict[str, Any] = {}
+    if blue_evaluation_authority == CANDIDATE_PORTFOLIO_AUTHORITY:
+        if validity_authority not in GROUNDED_ARENA_AUTHORITIES:
+            raise RoundAuditViolation(
+                "candidate portfolio lacks Grounded validity"
+            )
+        registry = load_lens_registry(
+            project_root
+            / config.get(
+                "blue_lens_registry",
+                "configs/blue/lens_registry_v1.json",
+            ),
+            project_root=project_root,
+        )
+        portfolio = CandidatePortfolio.from_dict(read_json(
+            project_root / config["blue_candidate_portfolio"]
+        ))
+        router = None
+        router_path_value = str(
+            config.get("blue_descriptor_router") or ""
+        )
+        if portfolio.mode == "descriptor_routed":
+            if not router_path_value:
+                raise RoundAuditViolation(
+                    "descriptor portfolio lacks frozen router config"
+                )
+            router = load_descriptor_router(
+                project_root / router_path_value
+            )
+            if router.router_hash != portfolio.router_hash:
+                raise RoundAuditViolation(
+                    "audited portfolio/router binding mismatch"
+                )
+        elif router_path_value:
+            raise RoundAuditViolation(
+                "static portfolio declares descriptor router"
+            )
+        allocator = None
+        allocator_hash = ""
+        if portfolio.mode == "adaptive":
+            allocator_path_value = str(
+                config.get("blue_offline_allocator_state") or ""
+            )
+            allocator_path = project_root / allocator_path_value
+            if (
+                not allocator_path_value
+                or not allocator_path.is_file()
+            ):
+                raise RoundAuditViolation(
+                    "adaptive portfolio lacks frozen allocator state"
+                )
+            allocator = OfflineAdaptiveAllocator(
+                load_offline_allocator_state(allocator_path)
+            )
+            allocator_hash = str(
+                config.get("blue_offline_allocator_hash") or ""
+            )
+            if (
+                allocator.allocator_hash != allocator_hash
+                or allocator_hash != portfolio.allocator_hash
+            ):
+                raise RoundAuditViolation(
+                    "audited offline allocator binding mismatch"
+                )
+        elif config.get("blue_offline_allocator_state"):
+            raise RoundAuditViolation(
+                "non-adaptive portfolio declares offline allocator"
+            )
+        if (
+            parent.candidate_portfolio_binding
+            != build_candidate_portfolio_binding(portfolio)
+        ):
+            raise RoundAuditViolation(
+                "active policy does not authorize audited portfolio"
+            )
+        provider_fingerprint = validate_toolchain_fingerprint(
+            config.get("blue_candidate_provider_toolchain_fingerprint")
+            or {}
+        )
+        verifier_hash = str(
+            config.get("blue_candidate_verifier_hash") or ""
+        )
+        semantic_provider_hash = str(
+            config.get("blue_semantic_signature_provider_hash")
+            or portfolio.semantic_signature_provider_hash
+        )
+        if (
+            semantic_provider_hash
+            != portfolio.semantic_signature_provider_hash
+        ):
+            raise RoundAuditViolation(
+                "semantic signature provider/portfolio binding mismatch"
+            )
+        authority_hash = hash_payload({
+            "authority": CANDIDATE_PORTFOLIO_AUTHORITY,
+            "lens_registry_hash": registry.registry_hash,
+            "portfolio_hash": portfolio.portfolio_hash,
+            "effective_portfolio_hash": (
+                portfolio.effective_portfolio_hash
+            ),
+            "descriptor_router_hash": (
+                router.router_hash if router is not None else ""
+            ),
+            "provider_toolchain_fingerprint": provider_fingerprint,
+            "verifier_hash": verifier_hash,
+            "semantic_signature_provider_hash": semantic_provider_hash,
+            "offline_allocator_hash": allocator_hash,
+        })
+        round_toolchain = context["toolchain_fingerprint"]
+        if (
+            round_toolchain.get("schema_version")
+            != "r3e-arena-composite-toolchain-v1"
+            or round_toolchain.get("blue_candidate_provider")
+            != provider_fingerprint
+            or round_toolchain.get("blue_candidate_verifier_hash")
+            != verifier_hash
+            or round_toolchain.get(
+                "blue_semantic_signature_provider_hash"
+            )
+            != semantic_provider_hash
+            or round_toolchain.get("blue_offline_allocator_hash")
+            != allocator_hash
+            or round_toolchain.get("blue_descriptor_router_hash")
+            != (router.router_hash if router is not None else "")
+            or round_toolchain.get("blue_portfolio_authority_hash")
+            != authority_hash
+        ):
+            raise RoundAuditViolation(
+                "round toolchain does not bind portfolio authority"
+            )
+        for challenge in challenge_rows:
+            try:
+                descriptor = extract_grounded_failure_descriptor(challenge)
+            except Exception as exc:
+                raise RoundAuditViolation(
+                    "portfolio challenge lacks bound Grounded descriptor"
+                ) from exc
+            blue_results = challenge.get("blue_results")
+            configured_seeds = [
+                int(seed)
+                for seed in config.get("challenge_seeds", [1, 2, 3])
+            ]
+            if (
+                not isinstance(blue_results, list)
+                or challenge.get("challenged_policy_hash")
+                != parent.policy_hash
+                or challenge.get("challenge_budget_hash")
+                != hash_payload(parent.budgets)
+                or challenge.get("repair_attempts") != len(blue_results)
+                or challenge.get("repair_successes") != sum(
+                    bool(row.get("oracle_ok")) for row in blue_results
+                )
+                or [row.get("seed") for row in blue_results]
+                != configured_seeds
+            ):
+                raise RoundAuditViolation(
+                    "portfolio challenge aggregate cannot be reconstructed"
+                )
+            try:
+                portfolio_statistics = (
+                    build_challenge_portfolio_statistics(blue_results)
+                )
+            except Exception as exc:
+                raise RoundAuditViolation(
+                    "portfolio challenge statistics are invalid"
+                ) from exc
+            if (
+                challenge.get("portfolio_statistics")
+                != portfolio_statistics
+            ):
+                raise RoundAuditViolation(
+                    "portfolio challenge statistics cannot be reconstructed"
+                )
+            for result in blue_results:
+                if result.get("descriptor_hash") != descriptor.get(
+                    "descriptor_hash"
+                ):
+                    raise RoundAuditViolation(
+                        "BlueEvaluation descriptor differs from challenge"
+                    )
+                try:
+                    verify_blue_evaluation(
+                        result,
+                        policy=parent,
+                        registry=registry,
+                        portfolio=portfolio,
+                        provider_fingerprints=[provider_fingerprint],
+                        expected_verifier_hash=verifier_hash,
+                        expected_semantic_signature_provider_hash=(
+                            semantic_provider_hash
+                        ),
+                        router=router,
+                        allocator=allocator,
+                        descriptor=descriptor,
+                    )
+                except Exception as exc:
+                    raise RoundAuditViolation(
+                        "BlueEvaluation V2 cannot be reconstructed"
+                    ) from exc
+        blue_portfolio_audit = {
+            "blue_portfolio_authority_hash": authority_hash,
+            "blue_lens_registry_hash": registry.registry_hash,
+            "blue_candidate_portfolio_hash": portfolio.portfolio_hash,
+            "blue_effective_portfolio_hash": (
+                portfolio.effective_portfolio_hash
+            ),
+            "blue_descriptor_router_hash": (
+                router.router_hash if router is not None else ""
+            ),
+            "blue_semantic_signature_provider_hash": (
+                semantic_provider_hash
+            ),
+            "blue_offline_allocator_hash": allocator_hash,
+        }
+    elif blue_evaluation_authority != LEGACY_BLUE_EVALUATION_AUTHORITY:
+        raise RoundAuditViolation(
+            "unsupported blue evaluation authority"
+        )
     coverage_audit: dict[str, Any] = {}
     if validity_authority in GROUNDED_ARENA_AUTHORITIES:
         generated = _read_jsonl(root / "red_candidates.jsonl")
@@ -398,6 +654,55 @@ def reconstruct_round(round_dir: str | Path) -> dict[str, Any]:
     )
     if red_context["challenged_policy_hash"] != parent.policy_hash:
         raise RoundAuditViolation("red search context policy binding mismatch")
+    portfolio_red_audit: dict[str, Any] = {}
+    portfolio_capability = red_context.get("portfolio_capability")
+    portfolio_authority_path = root / "portfolio_red_authority.json"
+    if config.get("portfolio_aware_red_challenge"):
+        if (
+            not isinstance(portfolio_capability, dict)
+            or not portfolio_authority_path.is_file()
+        ):
+            raise RoundAuditViolation(
+                "portfolio red authority artifacts are missing"
+            )
+        try:
+            rebuilt_portfolio_red = build_portfolio_red_authority(
+                policy=parent,
+                packet=portfolio_capability,
+                poisons=_read_jsonl(root / "red_candidates.jsonl"),
+                toolchain_fingerprint=context[
+                    "toolchain_fingerprint"
+                ],
+            )
+        except PortfolioChallengeViolation as exc:
+            raise RoundAuditViolation(
+                "portfolio red authority cannot be reconstructed"
+            ) from exc
+        if read_json(portfolio_authority_path) != rebuilt_portfolio_red:
+            raise RoundAuditViolation(
+                "frozen portfolio red authority differs from reconstruction"
+            )
+        portfolio_red_audit = {
+            "portfolio_red_authority_record_hash": (
+                rebuilt_portfolio_red["authority_record_hash"]
+            ),
+            "portfolio_red_capability_packet_hash": (
+                rebuilt_portfolio_red["capability_packet_hash"]
+            ),
+            "portfolio_red_candidate_count": (
+                rebuilt_portfolio_red["candidate_count"]
+            ),
+            "portfolio_red_operator_counts": (
+                rebuilt_portfolio_red["operator_counts"]
+            ),
+        }
+    elif (
+        portfolio_capability is not None
+        or portfolio_authority_path.exists()
+    ):
+        raise RoundAuditViolation(
+            "portfolio red authority is present without config permission"
+        )
     registry_before = validate_registry(read_json(root / "registry_before.json"))
     if registry_before["registry_hash"] != context["registry_hash_before"]:
         raise RoundAuditViolation("registry_before does not match frozen run context")
@@ -623,6 +928,7 @@ def reconstruct_round(round_dir: str | Path) -> dict[str, Any]:
         "residual_selection_hash": selection["selection_hash"],
         "residual_archive_updates_hash": hash_payload(archive_updates),
         "validity_authority": validity_authority,
+        "blue_evaluation_authority": blue_evaluation_authority,
         "validity_results_hash": hash_payload(validity_rows),
         "blue_challenge_results_hash": hash_payload(
             challenge_rows
@@ -654,6 +960,8 @@ def reconstruct_round(round_dir: str | Path) -> dict[str, Any]:
             ),
         })
     record.update(coverage_audit)
+    record.update(blue_portfolio_audit)
+    record.update(portfolio_red_audit)
     record["audit_record_hash"] = hash_payload(record)
     return record
 

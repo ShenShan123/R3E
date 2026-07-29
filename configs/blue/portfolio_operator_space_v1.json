@@ -1,0 +1,43 @@
+{
+  "schema_version": "r3e-portfolio-operator-space-v1",
+  "frozen": true,
+  "operators": [
+    "homogeneous_to_fixed_mixed",
+    "fixed_to_descriptor_routed",
+    "descriptor_routed_to_adaptive",
+    "replace_router",
+    "replace_allocator_state",
+    "replace_selector",
+    "enable_diversity_measurement",
+    "enable_diversity_retry"
+  ],
+  "transition_fields": {
+    "homogeneous_to_fixed_mixed": [
+      "router_hash",
+      "allocator_hash"
+    ],
+    "fixed_to_descriptor_routed": [
+      "router_hash",
+      "allocator_hash"
+    ],
+    "descriptor_routed_to_adaptive": [
+      "allocator_hash"
+    ],
+    "replace_router": [
+      "router_hash"
+    ],
+    "replace_allocator_state": [
+      "allocator_hash"
+    ],
+    "replace_selector": [
+      "selector_hash"
+    ],
+    "enable_diversity_measurement": [
+      "semantic_signature_provider_hash"
+    ],
+    "enable_diversity_retry": [
+      "allocator_hash"
+    ]
+  },
+  "operator_space_hash": "sha256:130448f99b79e9275746cc53775879f77ba0cacf6e67613ed588126695122d09"
+}

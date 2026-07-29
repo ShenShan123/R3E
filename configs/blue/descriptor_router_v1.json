@@ -1,0 +1,175 @@
+{
+  "schema_version": "r3e-descriptor-router-v1",
+  "router_id": "grounded-descriptor-router-v1",
+  "descriptor_schema_version": "r3e-failure-descriptor-v1",
+  "generic_lens_id": "generic_v1",
+  "specialist_lens_ids": [
+    "temporal_v1",
+    "control_v1",
+    "dataflow_v1"
+  ],
+  "tie_break_order": [
+    "temporal_v1",
+    "control_v1",
+    "dataflow_v1"
+  ],
+  "orthogonal_priority": {
+    "temporal_v1": [
+      "dataflow_v1",
+      "control_v1"
+    ],
+    "control_v1": [
+      "dataflow_v1",
+      "temporal_v1"
+    ],
+    "dataflow_v1": [
+      "temporal_v1",
+      "control_v1"
+    ]
+  },
+  "score_rules": [
+    {
+      "rule_id": "sequential-context",
+      "field": "sequential_context",
+      "operator": "equals",
+      "value": true,
+      "scores": {
+        "temporal_v1": 4,
+        "control_v1": 1
+      }
+    },
+    {
+      "rule_id": "combinational-context",
+      "field": "sequential_context",
+      "operator": "equals",
+      "value": false,
+      "scores": {
+        "dataflow_v1": 4
+      }
+    },
+    {
+      "rule_id": "positive-cycle-offset",
+      "field": "cycle_offset_bucket",
+      "operator": "greater_than",
+      "value": 0,
+      "scores": {
+        "temporal_v1": 3
+      }
+    },
+    {
+      "rule_id": "same-cycle-offset",
+      "field": "cycle_offset_bucket",
+      "operator": "equals",
+      "value": 0,
+      "scores": {
+        "dataflow_v1": 2
+      }
+    },
+    {
+      "rule_id": "temporal-relation",
+      "field": "temporal_relation",
+      "operator": "one_of",
+      "value": [
+        "candidate_lags_golden",
+        "candidate_leads_golden",
+        "one_cycle_lag",
+        "delayed",
+        "early"
+      ],
+      "scores": {
+        "temporal_v1": 3
+      }
+    },
+    {
+      "rule_id": "same-cycle-relation",
+      "field": "temporal_relation",
+      "operator": "one_of",
+      "value": [
+        "same_cycle",
+        "combinational"
+      ],
+      "scores": {
+        "dataflow_v1": 3
+      }
+    },
+    {
+      "rule_id": "sequential-assignment",
+      "field": "assignment_type",
+      "operator": "one_of",
+      "value": [
+        "nonblocking",
+        "sequential"
+      ],
+      "scores": {
+        "temporal_v1": 2,
+        "control_v1": 1
+      }
+    },
+    {
+      "rule_id": "combinational-assignment",
+      "field": "assignment_type",
+      "operator": "one_of",
+      "value": [
+        "combinational",
+        "continuous"
+      ],
+      "scores": {
+        "dataflow_v1": 3
+      }
+    },
+    {
+      "rule_id": "deep-cone",
+      "field": "cone_depth_bucket",
+      "operator": "one_of",
+      "value": [
+        "depth_2_3",
+        "depth_4_plus"
+      ],
+      "scores": {
+        "dataflow_v1": 2
+      }
+    },
+    {
+      "rule_id": "late-first-divergence",
+      "field": "first_divergence_bucket",
+      "operator": "one_of",
+      "value": [
+        "cycle_2_3",
+        "cycle_4_7",
+        "cycle_8_plus"
+      ],
+      "scores": {
+        "temporal_v1": 1
+      }
+    },
+    {
+      "rule_id": "transition-pattern",
+      "field": "mismatch_pattern",
+      "operator": "one_of",
+      "value": [
+        "early_transition",
+        "late_transition",
+        "terminal_transition",
+        "one_cycle_lag"
+      ],
+      "scores": {
+        "temporal_v1": 1,
+        "control_v1": 8
+      }
+    },
+    {
+      "rule_id": "value-pattern",
+      "field": "mismatch_pattern",
+      "operator": "one_of",
+      "value": [
+        "same_cycle_mismatch",
+        "value_mismatch",
+        "wrong_combinational_value"
+      ],
+      "scores": {
+        "dataflow_v1": 3
+      }
+    }
+  ],
+  "router_hash": "sha256:d1d84d77f09f33c26142a2e5bed2be3a6a49ff277adf89e17ae45bb062fb9aa8"
+}

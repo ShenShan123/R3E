@@ -18,6 +18,10 @@ _DELTA_POLICY_DEPENDENCIES = {
     "evidence_window_after": {"evidence_mode", "evidence_k"},
     "rtl_slice_mode": {"evidence_mode", "evidence_k"},
     "cone_depth": {"evidence_mode", "evidence_k"},
+    "candidate_portfolio_template_id": {"n_candidates"},
+    "specialist_slot_budget": {"n_candidates"},
+    "diversity_retry_budget": {"n_candidates"},
+    "portfolio_early_stop": {"n_candidates"},
 }
 
 
@@ -51,11 +55,31 @@ def classify_policy_compatibility(
         and current_binding
         and previous_binding.get(field) != current_binding.get(field)
     )
+    portfolio_component_changes = sorted(
+        field
+        for field in {
+            "effective_portfolio_hash",
+            "lens_registry_hash",
+            "router_hash",
+            "allocator_hash",
+            "selector_hash",
+            "semantic_signature_provider_hash",
+        }
+        if (set(memory.control_delta) & {
+            "candidate_portfolio_template_id",
+            "specialist_slot_budget",
+            "diversity_retry_budget",
+            "portfolio_early_stop",
+        })
+        and (previous.candidate_portfolio_binding or {}).get(field)
+        != (current.candidate_portfolio_binding or {}).get(field)
+    )
     assets_changed = previous.frozen_assets != current.frozen_assets
     if (
         not affected
         and not changed_budgets
         and not component_changes
+        and not portfolio_component_changes
         and not assets_changed
     ):
         classification = "static_compatible"
@@ -70,6 +94,7 @@ def classify_policy_compatibility(
         "affected_policy_fields": affected,
         "changed_budget_fields": changed_budgets,
         "changed_runtime_components": component_changes,
+        "changed_portfolio_components": portfolio_component_changes,
         "frozen_assets_changed": assets_changed,
         "plan_compiler_version": "r3e-memory-plan-compiler-v1",
         "conflict_policy_version": "r3e-memory-conflict-policy-v1",

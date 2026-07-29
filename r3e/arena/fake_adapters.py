@@ -16,6 +16,10 @@ from r3e.red.operators import (
     make_lineage_plan,
     materialize_lineage_operator,
 )
+from r3e.red.portfolio_challenge import (
+    make_portfolio_challenge_plan,
+    materialize_portfolio_challenge,
+)
 
 from .conformance import bind_adapter_output, make_toolchain_fingerprint
 
@@ -135,8 +139,37 @@ class FakeRedAdapter:
                     else {"target_role": target_role}
                 ),
             )
+            generated = {**row, **materialized}
+            portfolio_packet = red_search_context.get(
+                "portfolio_capability"
+            )
+            if portfolio_packet is not None:
+                portfolio_operators = (
+                    "portfolio_bypass",
+                    "router_ambiguity",
+                    "specialist_deepening",
+                    "portfolio_conflict",
+                )
+                region_hashes = [
+                    region["region_hash"]
+                    for region in portfolio_packet["coverage_regions"]
+                ]
+                targets = (
+                    [region_hashes[index % len(region_hashes)]]
+                    if region_hashes else []
+                )
+                portfolio_plan = make_portfolio_challenge_plan(
+                    policy=parent,
+                    packet=portfolio_packet,
+                    operator=portfolio_operators[index],
+                    poison_id=row["poison_id"],
+                    target_region_hashes=targets,
+                )
+                generated = materialize_portfolio_challenge(
+                    portfolio_plan, generated
+                )
             rows.append(bind_adapter_output(
-                {**row, **materialized},
+                generated,
                 "generate_red",
                 self.toolchain_fingerprint,
             ))

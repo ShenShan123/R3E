@@ -78,6 +78,9 @@ def build_memory_bank_policy_candidate(
         "frozen_assets": deepcopy(parent.frozen_assets or {}),
         "proposal_operator": "memory_bank_update",
         "memory_binding": provisional_bank.policy_binding,
+        "candidate_portfolio_binding": deepcopy(
+            parent.candidate_portfolio_binding or {}
+        ),
     })
     bank = ActiveMemoryBank.create(
         bank_id=bank_id,

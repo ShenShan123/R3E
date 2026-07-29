@@ -1,0 +1,76 @@
+{
+  "schema_version": "r3e-round-interface-v1",
+  "phase": "system_upgrade",
+  "executable": false,
+  "validity_authority": "grounded_runtime_authority_v1",
+  "blue_evaluation_authority": "candidate_portfolio_v1",
+  "portfolio_aware_red_challenge": true,
+  "blue_lens_registry": "configs/blue/lens_registry_v1.json",
+  "blue_candidate_portfolio": "configs/blue/adaptive_portfolio_v1.json",
+  "blue_offline_allocator_state": "configs/blue/offline_allocator_state_v1.json",
+  "blue_offline_allocator_hash": "sha256:2fa2be300e8326403b9bad7f3a61968117c50b6bd8df974dd9bfc2f06ca12faf",
+  "blue_portfolio_template_registry": "configs/blue/portfolio_template_registry_v1.json",
+  "memory_control_whitelist": "configs/memory/control_whitelist_v1.json",
+  "memory_root": "runtime/memory",
+  "blue_candidate_provider": "r3e.blue.portfolio.fake:create_candidate_provider",
+  "blue_candidate_verifier": "r3e.blue.portfolio.fake:create_candidate_verifier",
+  "blue_semantic_signature_provider": "r3e.blue.portfolio.semantic_signature:create_semantic_signature_provider",
+  "blue_candidate_provider_toolchain_fingerprint": {
+    "adapter_id": "r3e-acp-deterministic-fake",
+    "adapter_version": "1",
+    "model_hash": "sha256:48b427f6a4dc64033cdcab024f5f74c191958b239b482d6db6a046e8a86428a7",
+    "model_id": "deterministic-fake-candidate-model",
+    "runtime_hash": "sha256:eea495b5943c171e2ef66b2d1ec1b97e087b8be5e4d12f6d5e8c77ebd8c08c67",
+    "runtime_id": "python-acp-fixture",
+    "schema_version": "r3e-adapter-toolchain-v1",
+    "verifier_hash": "sha256:fa4978f5f77fcbdad306cbe2ae3d93548a41e6ee328312c4961c83807f6f3fc9",
+    "verifier_id": "runner-owned-fake-candidate-verifier"
+  },
+  "blue_candidate_verifier_hash": "sha256:bc79c1e463fb6e6280c4d2a448a3cad630a55499037b350e28af6452da04e089",
+  "blue_semantic_signature_provider_hash": "sha256:c9974065d5a3bcce77c23cceb3e3cd967464f85c4225fbe8e4b912ca6aac6404",
+  "challenge_seeds": [
+    1,
+    2,
+    3
+  ],
+  "fake_candidate_successful_slots": [
+    1
+  ],
+  "formal_protocols": {
+    "policy": "r3e-policy-v3",
+    "red_search_context": "r3e-red-search-context-v4",
+    "portfolio_coverage": "r3e-red-portfolio-coverage-v1",
+    "portfolio_challenge_plan": "r3e-red-portfolio-plan-v1",
+    "portfolio_red_authority": "r3e-red-portfolio-authority-v1",
+    "lineage_operators": "r3e-lineage-operator-space-v1",
+    "candidate_portfolio": "r3e-candidate-portfolio-v1",
+    "blue_evaluation": "r3e-blue-evaluation-v2",
+    "round_audit": "r3e-round-audit-v1"
+  },
+  "portfolio_red_operators": [
+    "portfolio_bypass",
+    "portfolio_conflict",
+    "router_ambiguity",
+    "specialist_deepening"
+  ],
+  "forbidden_red_inputs": [
+    "prompt",
+    "candidate_patch",
+    "candidate_provider_receipt",
+    "candidate_verification_receipt",
+    "selection_receipt",
+    "successful_lens_ids",
+    "private_raam_evidence",
+    "reference_repair",
+    "hidden_target",
+    "model_route"
+  ],
+  "deferred_experiment_bindings": [
+    "real_model_name",
+    "experiment_seeds",
+    "promotion_thresholds",
+    "non_target_manifest",
+    "experiment_budget"
+  ],
+  "note": "Deterministic ACP-6 sanitized portfolio-aware red conformance only. Coverage rows contain aggregate descriptor-cluster outcomes, never candidate or prompt content; no real-model red effectiveness is claimed."
+}

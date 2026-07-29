@@ -1,12 +1,20 @@
 """Reconstructable authority for promoting a memory-bound whole policy."""
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from r3e.policy.schema import PolicyState
 from r3e.protocol.hashing import hash_payload
 
-from .qualification_gate import decide_memory_qualification
+from .qualification_gate import (
+    decide_memory_qualification,
+    decide_portfolio_memory_qualification,
+)
+from r3e.blue.portfolio.portfolio_control import (
+    PORTFOLIO_CONTROL_FIELDS,
+    load_portfolio_template_registry,
+)
 from .compatibility import classify_policy_compatibility
 from .schema import ActiveMemoryBank, ControlMemory, ShadowPairedResult
 from .schema import VerifiedEpisode
@@ -45,6 +53,7 @@ def verify_memory_promotion_authority(
     *,
     parent: PolicyState,
     candidate: PolicyState,
+    project_root: str | Path | None = None,
 ) -> dict[str, Any]:
     required = {
         "schema_version",
@@ -117,13 +126,41 @@ def verify_memory_promotion_authority(
             raise MemoryAuthorityViolation(str(exc)) from exc
         results = [ShadowPairedResult(**row) for row in bundle["results"]]
         decision = bundle["decision"]
-        reconstructed = decide_memory_qualification(
-            memory,
-            results,
-            thresholds=decision.get("thresholds"),
-            provenance=decision.get("provenance") or {},
-            evidence_set=bundle["evidence_set"],
-        )
+        if set(memory.control_delta) & PORTFOLIO_CONTROL_FIELDS:
+            portfolio_control = decision.get("portfolio_control") or {}
+            asset_path = str(
+                portfolio_control.get("registry_asset_path") or ""
+            )
+            if project_root is None or not asset_path:
+                raise MemoryAuthorityViolation(
+                    "portfolio memory audit requires checked-in registry"
+                )
+            try:
+                registry = load_portfolio_template_registry(
+                    Path(project_root) / asset_path,
+                    project_root=project_root,
+                )
+                reconstructed = decide_portfolio_memory_qualification(
+                    memory,
+                    results,
+                    policy=parent,
+                    portfolio_template_registry=registry,
+                    thresholds=decision.get("thresholds"),
+                    provenance=decision.get("provenance") or {},
+                    evidence_set=bundle["evidence_set"],
+                )
+            except Exception as exc:
+                raise MemoryAuthorityViolation(
+                    "portfolio qualification cannot be reconstructed"
+                ) from exc
+        else:
+            reconstructed = decide_memory_qualification(
+                memory,
+                results,
+                thresholds=decision.get("thresholds"),
+                provenance=decision.get("provenance") or {},
+                evidence_set=bundle["evidence_set"],
+            )
         if reconstructed != decision or not reconstructed.get("qualified"):
             raise MemoryAuthorityViolation(
                 "memory qualification decision is not reconstructable"

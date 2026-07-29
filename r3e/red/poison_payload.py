@@ -35,6 +35,7 @@ _DOWNSTREAM_FIELDS = {
     "hardness",
     "hardness_class",
     "blue_results",
+    "portfolio_statistics",
     "challenge_budget_hash",
     "challenge_result_hash",
     "validity_adapter_output",

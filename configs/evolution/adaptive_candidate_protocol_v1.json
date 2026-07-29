@@ -1,0 +1,71 @@
+{
+  "schema_version": "r3e-adaptive-candidate-protocol-milestone-v1",
+  "milestone_id": "adaptive-candidate-protocol-v1",
+  "status": "frozen",
+  "parent_milestone": {
+    "milestone_id": "grounded-planner-raam-cross-round-v1",
+    "milestone_hash": "sha256:fbf1c47d7a18e855ec07ce5a869e87cb0ad64dcd5f4461ca161cdae0efe02e05"
+  },
+  "completed_scope": [
+    "four-lens-registry-with-prompt-asset-authority",
+    "candidate-portfolio-and-deterministic-allocation-plan",
+    "policy-v2-implicit-homogeneous-portfolio-authorization",
+    "candidate-provider-conformance-without-selection-authority",
+    "runner-owned-candidate-generation-verification-and-selection-receipts",
+    "blue-evaluation-v2",
+    "candidate-and-lens-level-execution-trace-v2",
+    "model-budget-verifier-toolchain-command-result-and-schema-binding",
+    "post-call-wall-time-and-aggregate-token-call-budget-gates",
+    "offline-blue-evaluation-authority-reconstruction",
+    "deterministic-fake-candidate-provider-and-verifier"
+  ],
+  "frozen_interfaces": [
+    "r3e-blue-lens-definition-v1",
+    "r3e-blue-lens-registry-v1",
+    "r3e-candidate-portfolio-v1",
+    "r3e-candidate-allocation-plan-v1",
+    "r3e-blue-candidate-provider-receipt-v1",
+    "r3e-blue-candidate-generation-v1",
+    "r3e-blue-candidate-verification-v1",
+    "r3e-blue-candidate-selection-v1",
+    "r3e-blue-evaluation-v2",
+    "r3e-memory-execution-trace-v2"
+  ],
+  "frozen_assets": {
+    "README.md": "sha256:8f60ff87b6016676223fbdf11745208ba4c54226b84f0dd98b6feebbc515df77",
+    "configs/blue/lens_registry_v1.json": "sha256:65560bd82d230a3f208c4b9167f8d9a811ffefd46039c43bdcdd4335069056c1",
+    "r3e/arena/adapter.py": "sha256:a27450bc7618b57fe49b61fab541b3d7e556c3bade4e7c0f6182ceb6ebc1589a",
+    "r3e/arena/conformance.py": "sha256:726ff031152c671f1ae0327cb8b2d07a27555bd7b8288e06879b6709863f7c07",
+    "r3e/blue/__init__.py": "sha256:a29e1bdb99f043080aea600886b76858e5bd3a5d4487398db43042b7e7b69aae",
+    "r3e/blue/portfolio/__init__.py": "sha256:195bcd663024b13d65b71683d9294e39b6163a39da49cf11239d0adda385b836",
+    "r3e/blue/portfolio/schema.py": "sha256:2a08b634c8c961ceaee13b05233ade444ac9e199ae00b41c2d50559d0d7a197f",
+    "r3e/blue/portfolio/lens_registry.py": "sha256:0f0687b1607b5937ccb657dc51c1b52f750ceb8f9afd4ae9e2fd093b528dc3f0",
+    "r3e/blue/portfolio/candidate_receipts.py": "sha256:7ac42a094fa920f8a828c2af899ddcc1278c598ac001767f4941f10869154b95",
+    "r3e/blue/portfolio/candidate_executor.py": "sha256:5ac65cccbd3a070dbd48d20883e4a6c6021dbed0ad821319b3de8fbf22bc4fc1",
+    "r3e/blue/portfolio/audit.py": "sha256:405380ffe51c17b3848411b5ec9e636a08e08f993c1ede1d802af3c2d2d0fff7",
+    "r3e/blue/portfolio/fake.py": "sha256:83a1bc9eb168abc80f213070cc5a2234b36bc8b86d40d115103cc40d37f06271",
+    "r3e/blue/portfolio/fake_system.py": "sha256:81ab35d0ff0678d64ab4cc0e489c39abe5acec0a16f71c1c2807956b1186ae4e",
+    "r3e/memory/execution_trace.py": "sha256:dccbf13f73ff6c149c1765a943f72b9bbbc14ecc3ddc9edf6eccf3d0ba22a587",
+    "scripts/check_release.py": "sha256:233eb10cfae575b5b876af6344928f53e7f164f4d2a66e5060c47cc2ad5c994b",
+    "tests/test_adaptive_candidate_protocol.py": "sha256:e4cbb25d942f0c2feeb4805878b744225eea04bd10a989d097f0867b410e683d"
+  },
+  "required_validation": [
+    "pytest -q -p no:cacheprovider",
+    "pytest -q -p no:cacheprovider tests/test_adaptive_candidate_protocol.py",
+    "python -m r3e.blue.portfolio.fake_system --project-root . --out /tmp/r3e-acp0-blue-evaluation.json",
+    "python scripts/check_release.py",
+    "python scripts/verify_datasets.py"
+  ],
+  "deferred_scope": [
+    "explicit-policy-v3-candidate-portfolio-binding",
+    "formal-evolution-round-blue-challenge-adoption",
+    "acp1-fixed-mixed-portfolio",
+    "acp2-descriptor-routed-portfolio",
+    "semantic-diversity-and-adaptive-allocation",
+    "raam-portfolio-control-and-portfolio-aware-red",
+    "real-model-candidate-provider",
+    "acp7-real-model-multi-round-experiment"
+  ],
+  "claim_boundary": "Frozen deterministic ACP-0 candidate-level authority, receipts, budget gates, ExecutionTrace V2, offline audit, and fake-provider infrastructure only; no fixed-mixed or routed portfolio result, formal arena-wide adoption, real-model repair gain, or multi-round ACP evidence.",
+  "milestone_hash": "sha256:9a689e8084a415e5415301ec5ba8f426318fab80598c2c89efb3343a00790446"
+}

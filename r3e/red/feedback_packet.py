@@ -6,6 +6,10 @@ from typing import Any
 
 from r3e.policy.schema import PolicyState
 from r3e.protocol.hashing import hash_payload
+from r3e.red.portfolio_challenge import (
+    PortfolioChallengeViolation,
+    verify_portfolio_coverage_packet,
+)
 
 
 ALLOWED_PACKET_KEYS = {
@@ -59,6 +63,7 @@ def build_red_search_context(
     residual_archive: list[dict[str, Any]],
     covered_archive: list[dict[str, Any]],
     memory_capability: dict[str, Any] | None = None,
+    portfolio_capability: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Expose only a hash-bound archive summary to conditioned red search."""
     summaries = []
@@ -113,12 +118,16 @@ def build_red_search_context(
         row["archive_cell"],
         row["poison_id"],
     ))
+    if memory_capability is not None and portfolio_capability is not None:
+        schema_version = "r3e-red-search-context-v5"
+    elif portfolio_capability is not None:
+        schema_version = "r3e-red-search-context-v4"
+    elif memory_capability is not None:
+        schema_version = "r3e-red-search-context-v3"
+    else:
+        schema_version = "r3e-red-search-context-v2"
     context = {
-        "schema_version": (
-            "r3e-red-search-context-v3"
-            if memory_capability is not None
-            else "r3e-red-search-context-v2"
-        ),
+        "schema_version": schema_version,
         "challenged_policy_id": policy.policy_id,
         "challenged_policy_hash": policy.policy_hash,
         "archive_summary": summaries,
@@ -140,6 +149,17 @@ def build_red_search_context(
                 "memory capability is not bound to challenged policy"
             )
         context["memory_capability"] = memory_capability
+    if portfolio_capability is not None:
+        try:
+            context["portfolio_capability"] = (
+                verify_portfolio_coverage_packet(
+                    portfolio_capability, policy=policy
+                )
+            )
+        except PortfolioChallengeViolation as exc:
+            raise CapabilityPacketViolation(
+                "portfolio capability is invalid"
+            ) from exc
     context["context_hash"] = hash_payload(context)
     return context
 
@@ -149,9 +169,37 @@ def verify_red_search_context(context: dict[str, Any]) -> dict[str, Any]:
     if schema not in {
         "r3e-red-search-context-v2",
         "r3e-red-search-context-v3",
+        "r3e-red-search-context-v4",
+        "r3e-red-search-context-v5",
     }:
         raise CapabilityPacketViolation("red search context schema mismatch")
-    if schema == "r3e-red-search-context-v3":
+    required_fields = {
+        "schema_version",
+        "challenged_policy_id",
+        "challenged_policy_hash",
+        "archive_summary",
+        "residual_count",
+        "covered_count",
+        "context_hash",
+    }
+    if schema in {
+        "r3e-red-search-context-v3",
+        "r3e-red-search-context-v5",
+    }:
+        required_fields.add("memory_capability")
+    if schema in {
+        "r3e-red-search-context-v4",
+        "r3e-red-search-context-v5",
+    }:
+        required_fields.add("portfolio_capability")
+    if set(context) != required_fields:
+        raise CapabilityPacketViolation(
+            "red search context fields mismatch"
+        )
+    if schema in {
+        "r3e-red-search-context-v3",
+        "r3e-red-search-context-v5",
+    }:
         memory_capability = context.get("memory_capability")
         if (
             not isinstance(memory_capability, dict)
@@ -163,6 +211,34 @@ def verify_red_search_context(context: dict[str, Any]) -> dict[str, Any]:
             )
     elif "memory_capability" in context:
         raise CapabilityPacketViolation("v2 red search cannot carry memory capability")
+    if schema in {
+        "r3e-red-search-context-v4",
+        "r3e-red-search-context-v5",
+    }:
+        portfolio_capability = context.get("portfolio_capability")
+        if (
+            not isinstance(portfolio_capability, dict)
+            or portfolio_capability.get("challenged_policy_hash")
+            != context.get("challenged_policy_hash")
+        ):
+            raise CapabilityPacketViolation(
+                "red search portfolio capability binding mismatch"
+            )
+        packet_body = {
+            key: value
+            for key, value in portfolio_capability.items()
+            if key != "packet_hash"
+        }
+        if portfolio_capability.get("packet_hash") != hash_payload(
+            packet_body
+        ):
+            raise CapabilityPacketViolation(
+                "red search portfolio capability hash mismatch"
+            )
+    elif "portfolio_capability" in context:
+        raise CapabilityPacketViolation(
+            "red search context cannot carry portfolio capability"
+        )
     summaries = context.get("archive_summary")
     if not isinstance(summaries, list):
         raise CapabilityPacketViolation("red search archive summary missing")

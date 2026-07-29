@@ -64,8 +64,62 @@ def test_grounded_planner_raam_cross_round_milestone_is_frozen():
         "milestone_id": parent["milestone_id"],
         "milestone_hash": parent["milestone_hash"],
     }
+    acp0 = json.loads((
+        ROOT / "configs/evolution/adaptive_candidate_protocol_v1.json"
+    ).read_text(encoding="utf-8"))
+    acp1 = json.loads((
+        ROOT / "configs/evolution/fixed_mixed_portfolio_v1.json"
+    ).read_text(encoding="utf-8"))
+    successor = json.loads((
+        ROOT / "configs/evolution/descriptor_routed_portfolio_v1.json"
+    ).read_text(encoding="utf-8"))
+    acp3 = json.loads((
+        ROOT / "configs/evolution/semantic_patch_diversity_v1.json"
+    ).read_text(encoding="utf-8"))
+    acp4 = json.loads((
+        ROOT / "configs/evolution/offline_adaptive_allocator_v1.json"
+    ).read_text(encoding="utf-8"))
+    acp5 = json.loads((
+        ROOT / "configs/evolution/raam_portfolio_control_v1.json"
+    ).read_text(encoding="utf-8"))
+    acp6 = json.loads((
+        ROOT
+        / "configs/evolution/portfolio_aware_red_challenge_v1.json"
+    ).read_text(encoding="utf-8"))
+    assert acp0["parent_milestone"] == {
+        "milestone_id": milestone["milestone_id"],
+        "milestone_hash": milestone["milestone_hash"],
+    }
+    assert acp1["parent_milestone"] == {
+        "milestone_id": acp0["milestone_id"],
+        "milestone_hash": acp0["milestone_hash"],
+    }
+    assert successor["parent_milestone"] == {
+        "milestone_id": acp1["milestone_id"],
+        "milestone_hash": acp1["milestone_hash"],
+    }
+    assert acp3["parent_milestone"] == {
+        "milestone_id": successor["milestone_id"],
+        "milestone_hash": successor["milestone_hash"],
+    }
+    assert acp4["parent_milestone"] == {
+        "milestone_id": acp3["milestone_id"],
+        "milestone_hash": acp3["milestone_hash"],
+    }
+    assert acp5["parent_milestone"] == {
+        "milestone_id": acp4["milestone_id"],
+        "milestone_hash": acp4["milestone_hash"],
+    }
     for relative, expected in milestone["frozen_assets"].items():
-        assert hash_file(ROOT / relative) == expected
+        current = hash_file(ROOT / relative)
+        if current != expected:
+            assert current in {
+                successor["frozen_assets"].get(relative),
+                    acp3["frozen_assets"].get(relative),
+                    acp4["frozen_assets"].get(relative),
+                    acp5["frozen_assets"].get(relative),
+                    acp6["frozen_assets"].get(relative),
+                }
 
 
 @pytest.fixture
