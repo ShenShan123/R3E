@@ -96,6 +96,21 @@ def test_shadow_admission_is_exactly_twelve_plus_one_and_resumable(tmp_path):
         )
         assert resumed["summary_hash"] == first["summary_hash"]
         assert len(calls) == 13
+        missing_cell = next(
+            workspace.glob("blue_matrix/cells/**/cell_summary.json")
+        )
+        missing_cell.unlink()
+        with pytest.raises(
+            ShadowAdmissionViolation,
+            match="incomplete blue cell",
+        ):
+            run_shadow_admission(
+                project_root=ROOT,
+                workspace=workspace,
+                client=_client(transport),
+                smoke_only=True,
+            )
+        assert len(calls) == 13
         summary_path = workspace / "summary.json"
         tampered = json.loads(summary_path.read_text(encoding="utf-8"))
         tampered["expected_total_provider_calls"] = 999

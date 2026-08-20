@@ -15,7 +15,7 @@ from typing import Any
 from r3e.pilot.grd8_acp7_smoke import _client_from_environment
 from r3e.pilot.grounded_red_shadow import run_grounded_red_shadow
 from r3e.pilot.shadow_matrix import load_shadow_pilot_matrix
-from r3e.pilot.shadow_runner import run_shadow_matrix
+from r3e.pilot.shadow_runner import _safe_component, run_shadow_matrix
 from r3e.protocol.hashing import atomic_write_json, hash_payload, read_json
 
 
@@ -24,6 +24,104 @@ SHADOW_ADMISSION_SCHEMA = "r3e-real-provider-shadow-admission-v1"
 
 class ShadowAdmissionViolation(RuntimeError):
     """Raised when the combined shadow budget or authority is invalid."""
+
+
+def _verify_completed_children(
+    *,
+    output: Path,
+    matrix: Any,
+    smoke_only: bool,
+    summary: dict[str, Any],
+    expected_blue_calls: int,
+    expected_red_calls: int,
+) -> None:
+    """Fail closed before resume can recreate a supposedly completed call.
+
+    A wrapper summary is written only after both children complete. If that
+    summary remains but a child artifact is removed or replaced, treating the
+    missing cell as an ordinary interruption could issue provider calls twice.
+    Require the complete child shape before entering either child runner.
+    """
+    mode = "smoke" if smoke_only else "full_matrix"
+    blue_dir = output / "blue_matrix"
+    red_dir = output / "grounded_red"
+    blue_summary_path = blue_dir / "summary.json"
+    red_summary_path = red_dir / "summary.json"
+    if not blue_summary_path.is_file() or not red_summary_path.is_file():
+        raise ShadowAdmissionViolation(
+            "completed shadow admission is missing child summary artifacts"
+        )
+    blue = read_json(blue_summary_path)
+    red = read_json(red_summary_path)
+    for payload, field, label in (
+        (blue, "summary_hash", "blue child summary"),
+        (red, "summary_hash", "red child summary"),
+    ):
+        if not isinstance(payload, dict) or payload.get(field) != hash_payload({
+            key: value for key, value in payload.items() if key != field
+        }):
+            raise ShadowAdmissionViolation(f"{label} hash mismatch")
+    expected_cells = (
+        len(matrix.smoke_case_ids if smoke_only else matrix.case_ids)
+        * len(matrix.smoke_seeds if smoke_only else matrix.seeds)
+        * len(matrix.arms)
+    )
+    if (
+        blue.get("schema_version") != "r3e-shadow-pilot-run-summary-v1"
+        or blue.get("matrix_id") != matrix.matrix_id
+        or blue.get("matrix_hash") != matrix.matrix_hash
+        or blue.get("execution_mode") != mode
+        or blue.get("completed_cells") != expected_cells
+        or blue.get("call_matched") is not True
+        or blue.get("promotion_executed") is not False
+        or blue.get("raam_execution_executed") is not False
+        or blue.get("summary_hash") != summary.get("blue_summary_hash")
+        or not (blue_dir / "aggregate.json").is_file()
+        or not (blue_dir / "events.jsonl").is_file()
+    ):
+        raise ShadowAdmissionViolation(
+            "completed shadow admission blue artifacts are incomplete"
+        )
+    case_ids = matrix.smoke_case_ids if smoke_only else matrix.case_ids
+    seeds = matrix.smoke_seeds if smoke_only else matrix.seeds
+    for case_id in case_ids:
+        for seed in seeds:
+            for arm in matrix.arms:
+                cell = (
+                    blue_dir / "cells" / _safe_component(case_id)
+                    / f"seed_{seed}" / f"arm_{arm['arm_id']}"
+                )
+                if not (
+                    (cell / "cell_summary.json").is_file()
+                    and (cell / "blue_evaluation.json").is_file()
+                ):
+                    raise ShadowAdmissionViolation(
+                        "completed shadow admission has an incomplete blue cell"
+                    )
+    red_seed = (matrix.smoke_seeds if smoke_only else matrix.seeds)[0]
+    if (
+        red.get("schema_version") != "r3e-grounded-red-shadow-summary-v1"
+        or red.get("matrix_id") != matrix.matrix_id
+        or red.get("matrix_hash") != matrix.matrix_hash
+        or red.get("round_id")
+        != f"{matrix.matrix_id}-red-seed-{red_seed}"
+        or red.get("promotion_executed") is not False
+        or red.get("memory_qualification_executed") is not False
+        or red.get("summary_hash") != summary.get("red_summary_hash")
+        or not (red_dir / "red_result.json").is_file()
+        or not (red_dir / "event.json").is_file()
+        or not (red_dir / "events.jsonl").is_file()
+    ):
+        raise ShadowAdmissionViolation(
+            "completed shadow admission red artifacts are incomplete"
+        )
+    if (
+        summary.get("expected_blue_provider_calls") != expected_blue_calls
+        or summary.get("expected_red_provider_calls") != expected_red_calls
+    ):
+        raise ShadowAdmissionViolation(
+            "completed shadow admission child call budget drifted"
+        )
 
 
 def _verify_frozen_summary(
@@ -90,10 +188,18 @@ def run_shadow_admission(
             raise ShadowAdmissionViolation(
                 "completed shadow admission cannot be overwritten"
             )
-        _verify_frozen_summary(
+        existing_summary = _verify_frozen_summary(
             read_json(summary_path),
             matrix=matrix,
             execution_mode="smoke" if smoke_only else "full_matrix",
+            expected_blue_calls=expected_blue_calls,
+            expected_red_calls=expected_red_calls,
+        )
+        _verify_completed_children(
+            output=output,
+            matrix=matrix,
+            smoke_only=smoke_only,
+            summary=existing_summary,
             expected_blue_calls=expected_blue_calls,
             expected_red_calls=expected_red_calls,
         )
