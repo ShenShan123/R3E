@@ -55,9 +55,18 @@ class RealGroundedArenaAdapter:
         self.artifact_root = Path(artifact_root)
         if not self.artifact_root.is_absolute():
             self.artifact_root = (self.root / self.artifact_root).resolve()
-        if self._outside_root(self.artifact_root):
+        # Run products may live in the caller-owned workspace (often outside
+        # the checkout), but must never overlap the project root itself or a
+        # parent/child of it.  This prevents provider/formal artifacts from
+        # silently becoming release-tree contents while still allowing an
+        # external temporary workspace.
+        if (
+            self.artifact_root == self.root
+            or self.artifact_root in self.root.parents
+            or self.root in self.artifact_root.parents
+        ):
             raise RealGroundedArenaAdapterViolation(
-                "Grounded artifact root must remain under the project root"
+                "Grounded artifact root must be disjoint from the project root"
             )
         self.case_id = case_id
         self._round_id = str(round_id)

@@ -68,12 +68,16 @@ def build_shadow_runner(
     root = Path(project_root).resolve()
     work = Path(workspace).resolve()
     work.mkdir(parents=True, exist_ok=True)
-    round_root = root / "runtime/real_integrated_shadow"
+    # Keep all run products under the caller-owned workspace.  In particular,
+    # a test or pilot must not silently write RTL/formal receipts into the
+    # repository tree merely because the project root is used for immutable
+    # manifests and registries.
+    round_root = work / "rounds"
     adapter = RealGroundedArenaAdapter(
         project_root=root,
         manifest_path=root / "configs/pilot/real_integrated_shadow_manifest_v1.jsonl",
         client=client,
-        artifact_root=round_root / "artifacts",
+        artifact_root=round_root / round_id / "artifacts",
         case_id=case_id,
         round_id=round_id,
     )
@@ -96,6 +100,7 @@ def build_shadow_runner(
     verifier = PublicManifestOracleVerifier(
         project_root=root,
         workspace=work / "blue_verifier",
+        allowed_case_artifact_roots=(round_root,),
         run_context_hash=hash_payload({
             "schema_version": SHADOW_SCHEMA,
             "round_id": round_id,
@@ -110,6 +115,9 @@ def build_shadow_runner(
     config = {
         "schema_version": "r3e-round-interface-v1",
         "phase": "real_integrated_shadow",
+        # Persist the immutable source root so an external workspace can be
+        # audited without inferring it from the round directory layout.
+        "project_root": str(root),
         "validity_authority": "grounded_runtime_authority_v1",
         "blue_evaluation_authority": "candidate_portfolio_v1",
         "policy_registry": str(registry_path),

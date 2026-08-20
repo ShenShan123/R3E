@@ -126,6 +126,35 @@ def _output_under_root(
     return value
 
 
+def _output_under_allowed_roots(
+    path: str | Path,
+    roots: tuple[str | Path, ...],
+    *,
+    label: str,
+) -> Path:
+    """Resolve a generated output under one of the caller-owned roots.
+
+    Immutable manifest inputs stay constrained by ``_under_root``. Generated
+    RTL may instead live in the external round workspace, but it must remain
+    below that explicit workspace boundary; an arbitrary absolute path is
+    never accepted.
+    """
+    value = Path(path).resolve()
+    resolved_roots = tuple(Path(root).resolve() for root in roots)
+    if not any(
+        value == root or root in value.parents
+        for root in resolved_roots
+    ):
+        raise GroundedAuthorityIntegrationViolation(
+            f"{label} escapes the allowed round workspace"
+        )
+    if value.exists() and not value.is_file():
+        raise GroundedAuthorityIntegrationViolation(
+            f"{label} is not a regular file"
+        )
+    return value
+
+
 def verify_arena_grounded_authority(
     authority_bundle: Mapping[str, Any],
     *,
@@ -319,18 +348,14 @@ def execute_grounded_arena_validity(
     )
     sequential_plan = poison.get("grounded_sequential_plan")
     mutation_plan = poison.get("grounded_mutation_plan")
-    poison_source = (
-        _output_under_root(
-            str(poison.get("buggy_rtl") or ""),
-            root,
-            label="poison RTL output",
-        )
-        if isinstance(sequential_plan, Mapping)
-        else _under_root(
-            str(poison.get("buggy_rtl") or ""),
-            root,
-            label="poison RTL",
-        )
+    # Manifest-backed clean/testbench/property inputs are immutable public
+    # assets and remain project-root constrained. Generated poison RTL is a
+    # runner artifact and is allowed only under this round's explicit output
+    # directory (or the project root for legacy in-tree fixtures).
+    poison_source = _output_under_allowed_roots(
+        str(poison.get("buggy_rtl") or ""),
+        (root, Path(round_dir).resolve()),
+        label="poison RTL",
     )
     testbench = _under_root(
         str(poison.get("grounded_testbench") or ""),

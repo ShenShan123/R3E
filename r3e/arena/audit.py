@@ -126,10 +126,19 @@ def _manifest(path: Path) -> dict[str, Any]:
 
 
 def reconstruct_round(round_dir: str | Path) -> dict[str, Any]:
-    root = Path(round_dir)
-    project_root = root.parents[2]
-    context = verify_run_context(read_json(root / "toolchain.json"))
+    root = Path(round_dir).resolve()
     config = read_json(root / "round_config.json")
+    configured_project_root = config.get("project_root")
+    if configured_project_root:
+        project_root = Path(str(configured_project_root))
+        if not project_root.is_absolute():
+            project_root = (root.parents[2] / project_root).resolve()
+        else:
+            project_root = project_root.resolve()
+    else:
+        # Backward-compatible layout for historical in-tree runtime rounds.
+        project_root = root.parents[2]
+    context = verify_run_context(read_json(root / "toolchain.json"))
     if context["round_config_hash"] != hash_payload(config):
         raise RoundAuditViolation("round config does not match frozen run context")
     parent = PolicyState.from_dict(read_json(root / "active_parent.json"))

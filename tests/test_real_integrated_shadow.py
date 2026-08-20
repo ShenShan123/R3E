@@ -79,7 +79,7 @@ def test_real_integrated_shadow_is_runner_owned_and_resumable(tmp_path):
         # One Grounded target-choice request plus one ACP request per slot.
         assert len(calls) == 4
 
-        round_dir = ROOT / "runtime/real_integrated_shadow" / round_id
+        round_dir = tmp_path / "shadow" / "rounds" / round_id
         assert (round_dir / "round_audit.json").is_file()
         assert (round_dir / "verified_episodes.json").is_file()
         challenge = json.loads(
@@ -116,5 +116,4 @@ def test_real_integrated_shadow_is_runner_owned_and_resumable(tmp_path):
         assert len(calls) == 4
         assert hash_file(registry_path) == registry_hash_after_first
     finally:
-        shutil.rmtree(ROOT / "runtime/real_integrated_shadow" / round_id, ignore_errors=True)
-        shutil.rmtree(ROOT / "runtime/real_integrated_shadow" / "artifacts" / round_id, ignore_errors=True)
+        shutil.rmtree(tmp_path / "shadow", ignore_errors=True)

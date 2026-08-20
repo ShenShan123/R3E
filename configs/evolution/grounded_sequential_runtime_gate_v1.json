@@ -37,7 +37,7 @@
     "r3e/red/grounded/execution.py": "sha256:49f59fbacba3ffc72381b437f51adcacfb0071126308ee031c6a103e6ff970b2",
     "r3e/red/grounded/arena_validity.py": "sha256:f60823be150083dcc7bbc29cf8fb85e07bca7fb8deb7bbc0f8a79eedf1885e59",
     "r3e/red/grounded/formal_rejection.py": "sha256:30c8454343cdc6cff716b7153fb8e26b9a52a54b1152b95beaede14331b23acf",
-    "r3e/arena/grounded_authority.py": "sha256:5e5ff84e1428b636fa3394c8f11a140babd3dbe0ac2bf4a2e04a15b4ecc38143",
+    "r3e/arena/grounded_authority.py": "sha256:b4597b9c3d967dadeb9b339ddb28ad393e373b3a338df564bc8c704c5883b530",
     "r3e/arena/runner.py": "sha256:00d57fe2260a09c382a0b3b2a00dee689723715d866ad4cf345b8b7a0d95b6fc",
     "r3e/arena/audit.py": "sha256:7160d629a20ce3b886a99414a35ff881a4a68b701f46d1c0412529425e21672b",
     "tests/test_grounded_sequential_execution.py": "sha256:cd02829d0c9fb5f3ab53ebf7f9fae3b44975bb57f24768ff660814c0050d0c04",
@@ -66,5 +66,5 @@
     "empirical-cross-design-memory-gain"
   ],
   "claim_boundary": "Frozen deterministic parser-memory and controlled-composition final execution authority only. No real-model discovery yield, population gain, cross-design memory gain, or GRD-8 result is claimed.",
-  "milestone_hash": "sha256:af1980bc638a524360f2a776f6c7ff2878044d07cf9c7f9765b0d6da21603b26"
+  "milestone_hash": "sha256:23d3ad2f66f75374f382daff4f07305f955f12439701118eb998395176b1c02e"
 }

@@ -190,7 +190,9 @@ def _run_manifest_grounded(
         project_root=root,
         manifest_path=manifest_path,
         client=client,
-        artifact_root=root / "runtime/real_integrated_shadow/artifacts",
+        # Provider-facing and formal command artifacts belong to the caller's
+        # ignored/external workspace, never to the checked-out repository.
+        artifact_root=workspace / "round" / "artifacts",
         case_id=case_id,
         round_id=round_id,
     )

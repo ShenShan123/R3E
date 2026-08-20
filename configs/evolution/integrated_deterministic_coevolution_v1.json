@@ -4,7 +4,7 @@
   "status": "frozen",
   "parent_milestone": {
     "milestone_id": "grounded-deterministic-population-v1",
-    "milestone_hash": "sha256:3359be62d1d7c078cd308eb8ee0ba657ebafa24b3f240ba4bb01f748c7557353"
+    "milestone_hash": "sha256:662463878d9315af0af288ffeb9472a84d601144a205ae0f4bb76dbcdac3514d"
   },
   "completed_scope": [
     "policy-v3-registry-initialization-preserves-base-schema-authority",
@@ -32,7 +32,7 @@
     "r3e/red/fitness.py": "sha256:98606902547eae23a60a92b542e42f68e11c82d7314d638cb433deab876e1187",
     "r3e/arena/fake_adapters.py": "sha256:53b83e08fc76c589d4521ac53e6ac94d7c432e821ff38529feaa390151cd015b",
     "r3e/arena/runner.py": "sha256:e4f932dd223eaafebd551d65f4d2efc87966ac1ac8d9a06ddf429c08515ac2fd",
-    "r3e/arena/audit.py": "sha256:b18f597b1b2f36487b2191e5127fe38a7d6c8ebcbdea175884a683829ab231cb",
+    "r3e/arena/audit.py": "sha256:808111df5bc77d6223fa3dbb4ca6ac9a0803c0550401d997cb02fd6a82c3ce7c",
     "r3e/arena/integrated_loop.py": "sha256:2250f25c88b86d2548cc98744dabedc45d92bbd3e7b96a980de26872222b0176",
     "r3e/arena/integrated_fake_system.py": "sha256:c424c8ea4f04bb8fd2f392450d25116feb661f310f4233f436ec1451d5b50da4",
     "tests/test_integrated_coevolution_loop.py": "sha256:2eaae518caaeb410099330cda3963b2f212a7413aac82b2d8341fc7aad97a1e6"
@@ -51,5 +51,5 @@
     "acp7-repair-gain"
   ],
   "claim_boundary": "Frozen integrated deterministic Arena and RAAM scheduler authority only. The four-round fixture uses fake adapters and is not real-model coevolution evidence.",
-  "milestone_hash": "sha256:62ed1ae571c173cb9f306075107b4f8463591a7ab53df66a4d56339d33166f10"
+  "milestone_hash": "sha256:6572ee9aec5ea06127e65d1a6af5e3ea12007775287473446b19bef72e3919da"
 }

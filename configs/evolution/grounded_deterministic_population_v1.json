@@ -4,7 +4,7 @@
   "status": "frozen",
   "parent_milestone": {
     "milestone_id": "grounded-sequential-runtime-gate-v1",
-    "milestone_hash": "sha256:af1980bc638a524360f2a776f6c7ff2878044d07cf9c7f9765b0d6da21603b26"
+    "milestone_hash": "sha256:23d3ad2f66f75374f382daff4f07305f955f12439701118eb998395176b1c02e"
   },
   "completed_scope": [
     "pre-generation-one-provider-per-selected-intent-schedule",
@@ -35,7 +35,7 @@
     "r3e/red/feedback_packet.py": "sha256:238df6a40c626b6a94555f843824eff2b60cc22e0911dc1f1a980fe10aaee351",
     "r3e/arena/fake_adapters.py": "sha256:7bd82b3bf11f0fc0e1337e2d5c011b23d3a90ca00b802b143f20c6fc6931d075",
     "r3e/arena/runner.py": "sha256:10565fdb4071f8dfb1fe34ea1792e61905fa2ebf0ae2cd6af3ccfa3aa103e47b",
-    "r3e/arena/audit.py": "sha256:0fe85a689e0aaa94626ccc34e854aaab1e6664bbb3046dc695a58836cf3f571f",
+    "r3e/arena/audit.py": "sha256:808111df5bc77d6223fa3dbb4ca6ac9a0803c0550401d997cb02fd6a82c3ce7c",
     "tests/test_grounded_population_scheduler.py": "sha256:84e74c3becf05240f476729675623bdc9809639119ad2a9c16218febe4e930a7",
     "tests/test_grounded_authority_integration.py": "sha256:7084988fc08b546d2686ea6e0f6f5c7a45ab3d9b9d75cc264f7290593e97676f",
     "tests/test_grounded_pre_generation_planner.py": "sha256:dc7a49d4de25ebbebb2076ff059f43c979bcef2d9008c50c80e74486af1ad6d8",
@@ -63,5 +63,5 @@
     "grd8-real-model-pilot"
   ],
   "claim_boundary": "Frozen deterministic GRD-6 population scheduling, provenance, budget, checkpoint, event, and audit authority only. Provider roles are deterministic fixtures; no real multi-model population gain or GRD-8 result is claimed.",
-  "milestone_hash": "sha256:3359be62d1d7c078cd308eb8ee0ba657ebafa24b3f240ba4bb01f748c7557353"
+  "milestone_hash": "sha256:662463878d9315af0af288ffeb9472a84d601144a205ae0f4bb76dbcdac3514d"
 }
