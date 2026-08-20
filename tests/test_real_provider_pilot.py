@@ -42,6 +42,26 @@ def test_real_pilot_entry_accepts_deepseek_environment_aliases(monkeypatch):
     assert client.config.provider_id == "deepseek"
 
 
+def test_real_pilot_entry_accepts_llm_environment_template(monkeypatch):
+    for name in (
+        "OPENAI_MODEL",
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "DEEPSEEK_MODEL",
+        "DEEPSEEK_API_KEY",
+        "DEEPSEEK_BASE_URL",
+        "LLM_PROVIDER",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("LLM_MODEL", "template-test-model")
+    monkeypatch.setenv("LLM_API_KEY", "injected-template-key")
+    monkeypatch.setenv("LLM_BASE_URL", "https://template.invalid/v1")
+    client = _client_from_environment()
+    assert client.config.model_id == "template-test-model"
+    assert client.config.api_key_env == "LLM_API_KEY"
+    assert client.config.base_url_env == "LLM_BASE_URL"
+
+
 def _config():
     return OpenAICompatibleClientConfig.from_dict({
         "schema_version": "r3e-openai-compatible-client-config-v1",

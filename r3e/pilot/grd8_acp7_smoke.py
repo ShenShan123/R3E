@@ -154,12 +154,14 @@ def _client_from_environment() -> OpenAICompatibleJSONClient:
     api_key_env = _selected_env(
         "OPENAI_API_KEY",
         "DEEPSEEK_API_KEY",
+        "LLM_API_KEY",
         "R3E_PILOT_API_KEY",
         default="OPENAI_API_KEY",
     )
     base_url_env = _selected_env(
         "OPENAI_BASE_URL",
         "DEEPSEEK_BASE_URL",
+        "LLM_BASE_URL",
         "R3E_PILOT_BASE_URL",
         default="OPENAI_BASE_URL",
     )
