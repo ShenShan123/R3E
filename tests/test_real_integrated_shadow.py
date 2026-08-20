@@ -12,6 +12,7 @@ from r3e.providers.openai_compatible import (
     OpenAICompatibleClientConfig,
     OpenAICompatibleJSONClient,
 )
+from r3e.protocol.hashing import hash_file
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -88,6 +89,22 @@ def test_real_integrated_shadow_is_runner_owned_and_resumable(tmp_path):
         assert challenge["repair_attempts"] == 1
         assert len(challenge["blue_results"][0]["candidate_provider_receipts"]) == 3
         assert challenge["grounded_authority_bundle"]["formal_proof_triplet"]["poison"]["verdict"] == "counterexample"
+        assert (round_dir / "archive_updates.jsonl").is_file()
+        assert (round_dir / "covered_archive_updates.jsonl").is_file()
+        episode_manifest = json.loads(
+            (round_dir / "verified_episodes.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert episode_manifest["episode_ids"]
+        renewed = json.loads(
+            (round_dir / "renewed_challenge_binding.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert renewed["challenged_policy_hash"] == first["summary"]["active_policy_hash"]
+        registry_path = tmp_path / "shadow" / "policy_registry.json"
+        registry_hash_after_first = hash_file(registry_path)
 
         resumed = run_real_integrated_shadow(
             project_root=ROOT,
@@ -97,6 +114,7 @@ def test_real_integrated_shadow_is_runner_owned_and_resumable(tmp_path):
         )
         assert resumed["summary"] == first["summary"]
         assert len(calls) == 4
+        assert hash_file(registry_path) == registry_hash_after_first
     finally:
         shutil.rmtree(ROOT / "runtime/real_integrated_shadow" / round_id, ignore_errors=True)
         shutil.rmtree(ROOT / "runtime/real_integrated_shadow" / "artifacts" / round_id, ignore_errors=True)
