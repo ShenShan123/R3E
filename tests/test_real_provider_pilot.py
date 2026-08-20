@@ -11,6 +11,7 @@ from r3e.blue.portfolio.openai_provider import (
     RealCandidateProviderViolation,
 )
 from r3e.pilot.readiness import assess_pilot_readiness
+from r3e.pilot.grd8_acp7_smoke import _client_from_environment
 from r3e.policy.schema import PolicyState
 from r3e.protocol.hashing import hash_file, hash_payload
 from r3e.providers.openai_compatible import (
@@ -21,6 +22,24 @@ from r3e.providers.openai_compatible import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_real_pilot_entry_accepts_deepseek_environment_aliases(monkeypatch):
+    for name in (
+        "OPENAI_MODEL",
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "LLM_PROVIDER",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("DEEPSEEK_MODEL", "deepseek-test-model")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "injected-test-key")
+    monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://injected.invalid/v1")
+    client = _client_from_environment()
+    assert client.config.model_id == "deepseek-test-model"
+    assert client.config.api_key_env == "DEEPSEEK_API_KEY"
+    assert client.config.base_url_env == "DEEPSEEK_BASE_URL"
+    assert client.config.provider_id == "deepseek"
 
 
 def _config():

@@ -139,20 +139,47 @@ def _load_manifest_case(path: Path, case_id: str) -> dict[str, Any]:
 
 
 def _client_from_environment() -> OpenAICompatibleJSONClient:
-    model = str(os.environ.get("OPENAI_MODEL") or "")
+    def _selected_env(*names: str, default: str) -> str:
+        for name in names:
+            if os.environ.get(name):
+                return name
+        return default
+
+    model_env = _selected_env(
+        "OPENAI_MODEL",
+        "DEEPSEEK_MODEL",
+        "LLM_MODEL",
+        default="OPENAI_MODEL",
+    )
+    api_key_env = _selected_env(
+        "OPENAI_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "R3E_PILOT_API_KEY",
+        default="OPENAI_API_KEY",
+    )
+    base_url_env = _selected_env(
+        "OPENAI_BASE_URL",
+        "DEEPSEEK_BASE_URL",
+        "R3E_PILOT_BASE_URL",
+        default="OPENAI_BASE_URL",
+    )
+    model = str(os.environ.get(model_env) or "")
     if not model:
-        raise PilotSmokeViolation("OPENAI_MODEL is not configured")
+        raise PilotSmokeViolation(
+            "OPENAI_MODEL/DEEPSEEK_MODEL/LLM_MODEL is not configured"
+        )
     config = OpenAICompatibleClientConfig.from_dict({
         "schema_version": "r3e-openai-compatible-client-config-v1",
         "provider_id": str(
-            os.environ.get("LLM_PROVIDER") or "openai-compatible"
+            os.environ.get("LLM_PROVIDER")
+            or ("deepseek" if model_env == "DEEPSEEK_MODEL" else "openai-compatible")
         ),
         "provider_version": "pilot-entry-v1",
         "endpoint_id": "environment-bound-openai-compatible",
         "model_id": model,
         "model_version": model,
-        "api_key_env": "OPENAI_API_KEY",
-        "base_url_env": "OPENAI_BASE_URL",
+        "api_key_env": api_key_env,
+        "base_url_env": base_url_env,
         "timeout_seconds": 120,
         "maximum_output_tokens": 4096,
         "temperature": 0,
@@ -161,7 +188,7 @@ def _client_from_environment() -> OpenAICompatibleJSONClient:
     client = OpenAICompatibleJSONClient(config)
     if not client.readiness()["ready"]:
         raise PilotSmokeViolation(
-            "OPENAI_API_KEY/OPENAI_BASE_URL are not configured"
+            "configured API key/base URL environment variables are not ready"
         )
     return client
 

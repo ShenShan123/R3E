@@ -672,6 +672,12 @@ configured Python client when available and a standard-library HTTP fallback
 otherwise; neither path retries. Credentials and endpoint values remain in
 environment variables and never enter receipts.
 
+The pilot entry resolves `OPENAI_MODEL`/`OPENAI_API_KEY`/`OPENAI_BASE_URL`
+first, then accepts the equivalent `DEEPSEEK_MODEL`/`DEEPSEEK_API_KEY`/
+`DEEPSEEK_BASE_URL` names (with `LLM_MODEL` as a model fallback). Only the
+selected environment-variable names are bound into the client configuration;
+secret values are never persisted.
+
 An injected-transport smoke test exercises exactly four calls: one GRD target
 choice and three ACP candidates. It proves the local authority pipeline,
 including the GRD clean/poison/revert formal triplet and ACP verifier-guided
