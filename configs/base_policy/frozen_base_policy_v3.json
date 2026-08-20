@@ -1,0 +1,47 @@
+{
+  "base_policy_hash": "sha256:5cea5c620a21937d79c56333f63dc7884b410a80f2d3086977a6c37b7ea24ae3",
+  "budgets": {
+    "max_llm_calls_per_case": 3,
+    "max_tokens_per_case": 48000,
+    "max_wall_seconds_per_case": 360
+  },
+  "candidate_portfolio_binding": {
+    "allocator_hash": "sha256:2fa2be300e8326403b9bad7f3a61968117c50b6bd8df974dd9bfc2f06ca12faf",
+    "effective_portfolio_hash": "sha256:1ed10d64d8f0f2aeb6acd2d366cd84b17bc3ce23b89fdc7201dbc988e3534126",
+    "lens_registry_hash": "sha256:f120a0374c864b097008ef40033030a42b1486101d7240fcf6cb6eb2e520ae88",
+    "portfolio_hash": "sha256:5f13ad0a9d8c232222eb0b3134a9eaf80fce8c9cdbeb297cee26dfa6a53cd51e",
+    "router_hash": "sha256:d1d84d77f09f33c26142a2e5bed2be3a6a49ff277adf89e17ae45bb062fb9aa8",
+    "selector_hash": "sha256:5007b04ecc4e9eac902e54fe9f1dd206ae98c1dab9391190d83cb81499d12024",
+    "semantic_signature_provider_hash": "sha256:c9974065d5a3bcce77c23cceb3e3cd967464f85c4225fbe8e4b912ca6aac6404"
+  },
+  "configuration": {
+    "blue_population": 1,
+    "candidate_selection": "verifier_guided",
+    "evidence_k": 1,
+    "evidence_mode": "raw",
+    "model_route_id": "single_default",
+    "n_candidates": 3,
+    "patch_scope": "local_block",
+    "prompt_lens_id": "generic_v1",
+    "repair_loop": "one-shot",
+    "verifier_order": [
+      "simulation"
+    ]
+  },
+  "created_from_residual_manifest_hash": "",
+  "created_round": 0,
+  "frozen_assets": {
+    "prompt_templates/control_v1.txt": "sha256:8f3d264dd38e9cf483c64b6481fa3b1c39578e49ea0b263ebeb63af196277161",
+    "prompt_templates/dataflow_v1.txt": "sha256:643c9b945008a3c99b535214f0b364b5c51e2ccb126aea81596da1e51d7ff10a",
+    "prompt_templates/generic_v1.txt": "sha256:17da4c75c2e574f9d60dc519c1fe8db15569818595290f958cd073d23d9185a2",
+    "prompt_templates/temporal_v1.txt": "sha256:1f0d21a5540c2635f51d44682c65f40bcb236e972d53f5786c9bf0dcc01497d2"
+  },
+  "parent_policy_hash": "",
+  "parent_policy_id": "",
+  "policy_id": "B0",
+  "promotion_decision_hash": "",
+  "rollback_policy_id": "",
+  "schema_version": "r3e-policy-v3",
+  "status": "active",
+  "validation_manifest_hash": ""
+}

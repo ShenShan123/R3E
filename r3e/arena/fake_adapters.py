@@ -61,7 +61,41 @@ class FakeRedAdapter:
             row for row in red_search_context["archive_summary"]
             if row["archive_kind"] == "residual"
         ]
-        for index in range(4):
+        proposal_plan = red_search_context.get(
+            "grounded_proposal_plan"
+        )
+        population_schedule = red_search_context.get(
+            "grounded_population_schedule"
+        )
+        population_by_intent = {
+            assignment["intent_id"]: assignment
+            for assignment in (
+                population_schedule.get("assignments", [])
+                if population_schedule is not None
+                else []
+            )
+        }
+        proposal_intents = []
+        if proposal_plan is not None:
+            selected = set(proposal_plan["selected_intent_ids"])
+            proposal_intents = [
+                intent
+                for intent in proposal_plan["candidate_intents"]
+                if intent["intent_id"] in selected
+            ]
+            proposal_intents.sort(
+                key=lambda intent: proposal_plan[
+                    "selected_intent_ids"
+                ].index(intent["intent_id"])
+            )
+        count = len(proposal_intents) if proposal_intents else 4
+        generation_tag = str(
+            red_search_context["context_hash"]
+        ).split(":", 1)[-1][:12]
+        for index in range(count):
+            intent = (
+                proposal_intents[index] if proposal_intents else None
+            )
             golden = rtl_dir / f"golden_{index}.v"
             buggy = rtl_dir / f"buggy_{index}.v"
             golden.write_text(
@@ -87,31 +121,65 @@ class FakeRedAdapter:
             )
             policy_tag = parent.policy_hash.split(":", 1)[-1][:12]
             row = {
-                "poison_id": f"fake_{policy_tag}_{index}",
-                "case_id": f"fake_{policy_tag}_{index}",
+                "poison_id": (
+                    f"fake_{policy_tag}_{generation_tag}_{index}"
+                ),
+                "case_id": (
+                    f"fake_{policy_tag}_{generation_tag}_{index}"
+                ),
                 "design": case["design_id"],
                 "golden_rtl": str(golden),
                 "buggy_rtl": str(buggy),
                 "challenged_policy_id": parent.policy_id,
                 "challenged_policy_hash": parent.policy_hash,
                 "capability_packet_hash": packet["packet_hash"],
-                "family": "constant_error",
-                "effect": f"policy_{policy_tag}_effect_{index}",
-                "affected_role": "control" if index % 2 == 0 else "data",
+                "family": (
+                    intent["family_id"]
+                    if intent is not None else "constant_error"
+                ),
+                "effect": (
+                    intent["expected_runtime_effect_id"]
+                    if intent is not None
+                    else f"policy_{policy_tag}_effect_{index}"
+                ),
+                "affected_role": (
+                    intent["target_role"]
+                    if intent is not None
+                    else ("control" if index % 2 == 0 else "data")
+                ),
                 "edit_scope": "expression",
                 "composition_depth": 1,
                 "changed_modules": 1,
                 "changed_blocks": 1,
-                "sequential_depth": index % 2,
+                "sequential_depth": (
+                    int(intent["difficulty_target"][
+                        "temporal_depth_delta"
+                    ])
+                    if intent is not None else index % 2
+                ),
+                "dependency_depth": (
+                    int(intent["difficulty_target"][
+                        "dependency_depth_delta"
+                    ])
+                    if intent is not None else 0
+                ),
                 "first_divergence_signal": "y",
                 "first_divergence_cycle_bucket": "combinational",
                 "failure_signature": f"{policy_tag}:y:{index}",
                 "normalized_diff_hash": hash_payload({
                     "policy": parent.policy_hash,
+                    "generation": generation_tag,
                     "index": index,
                 }),
             }
-            lineage_parent = residual_parents[index % len(residual_parents)] if residual_parents else None
+            lineage_parent = (
+                None
+                if proposal_plan is not None
+                else (
+                    residual_parents[index % len(residual_parents)]
+                    if residual_parents else None
+                )
+            )
             if lineage_parent is None:
                 operator = "fresh"
             else:
@@ -140,6 +208,56 @@ class FakeRedAdapter:
                 ),
             )
             generated = {**row, **materialized}
+            if intent is not None:
+                generated.update({
+                    "grounded_proposal_intent_id": (
+                        intent["intent_id"]
+                    ),
+                    "grounded_proposal_intent_hash": (
+                        intent["intent_hash"]
+                    ),
+                    "grounded_dispatch_kind": (
+                        intent["dispatch_kind"]
+                    ),
+                    "grounded_difficulty_target": dict(
+                        intent["difficulty_target"]
+                    ),
+                    "grounded_proposal_parent_poison_ids": list(
+                        intent["parent_poison_ids"]
+                    ),
+                    "grounded_proposal_target_memory_ids": list(
+                        intent["target_memory_ids"]
+                    ),
+                    "grounded_proposal_memory_operator": (
+                        intent["memory_operator"]
+                    ),
+                })
+                assignment = population_by_intent.get(
+                    intent["intent_id"]
+                )
+                if assignment is not None:
+                    generated.update({
+                        "grounded_population_assignment_id": (
+                            assignment["assignment_id"]
+                        ),
+                        "grounded_population_assignment_hash": (
+                            assignment["assignment_hash"]
+                        ),
+                        "grounded_generator_provider_id": (
+                            assignment["provider_id"]
+                        ),
+                        "grounded_generator_role": (
+                            assignment["provider_role"]
+                        ),
+                        "grounded_population_arm": (
+                            assignment["population_arm"]
+                        ),
+                        "grounded_generation_usage": {
+                            "input_tokens": 0,
+                            "output_tokens": 0,
+                            "wall_time_ms": 0,
+                        },
+                    })
             portfolio_packet = red_search_context.get(
                 "portfolio_capability"
             )
@@ -161,7 +279,9 @@ class FakeRedAdapter:
                 portfolio_plan = make_portfolio_challenge_plan(
                     policy=parent,
                     packet=portfolio_packet,
-                    operator=portfolio_operators[index],
+                    operator=portfolio_operators[
+                        index % len(portfolio_operators)
+                    ],
                     poison_id=row["poison_id"],
                     target_region_hashes=targets,
                 )

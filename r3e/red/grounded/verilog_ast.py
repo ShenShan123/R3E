@@ -103,6 +103,15 @@ def normalized_ast_hash(source: str) -> str:
     })
 
 
+def module_names(source: str) -> tuple[str, ...]:
+    """Return parser-backed module declarations in source order."""
+    return tuple(
+        name for name, _start, _end in _module_ranges(
+            tokenize_verilog(source)
+        )
+    )
+
+
 def _module_ranges(tokens: list[VerilogToken]) -> list[tuple[str, int, int]]:
     ranges = []
     index = 0

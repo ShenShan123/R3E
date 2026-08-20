@@ -1,0 +1,14 @@
+{
+  "schema_version": "r3e-openai-compatible-client-config-v1",
+  "provider_id": "__REQUIRED__",
+  "provider_version": "__REQUIRED__",
+  "endpoint_id": "__REQUIRED__",
+  "model_id": "__REQUIRED__",
+  "model_version": "__REQUIRED__",
+  "api_key_env": "R3E_PILOT_API_KEY",
+  "base_url_env": "R3E_PILOT_BASE_URL",
+  "timeout_seconds": 120,
+  "maximum_output_tokens": 4096,
+  "temperature": 0,
+  "require_seed": true
+}

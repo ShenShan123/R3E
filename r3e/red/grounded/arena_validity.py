@@ -9,6 +9,7 @@ from r3e.grounded.failure_descriptor import (
 )
 from r3e.grounded.yosys_formal import verify_formal_proof_triplet
 from r3e.protocol.hashing import hash_payload
+from .execution import execution_materialization_bounds
 
 
 ARENA_GROUNDED_AUTHORITY = "runner_owned_grounded_execution"
@@ -125,6 +126,7 @@ def build_grounded_arena_validity(
     ]
     decision = execution["admission_decision"]
     evidence = execution["evidence"]
+    bounds = execution_materialization_bounds(execution)
     record = {
         "proven_valid": bool(decision["admitted"]),
         "checks": deepcopy(dict(decision["checks"])),
@@ -142,12 +144,8 @@ def build_grounded_arena_validity(
             ],
             "admission_decision_hash": decision["decision_hash"],
             "plan_hash": execution["plan"]["plan_hash"],
-            "clean_rtl_hash": execution["materialization_receipt"][
-                "clean_rtl_hash"
-            ],
-            "poison_rtl_hash": execution["materialization_receipt"][
-                "poison_rtl_hash"
-            ],
+            "clean_rtl_hash": bounds["clean_rtl_hash"],
+            "poison_rtl_hash": bounds["poison_rtl_hash"],
             "semantic_diff_receipt_hash": evidence["semantic_diff"][
                 "receipt_hash"
             ],
@@ -204,14 +202,14 @@ def verify_grounded_arena_validity(
             raise GroundedArenaValidityViolation(
                 "grounded formal or descriptor authority is invalid"
             ) from exc
-        materialization = execution.get("materialization_receipt") or {}
+        bounds = execution_materialization_bounds(execution)
         if (
             formal["clean"]["rtl_hash"]
-            != materialization.get("clean_rtl_hash")
+            != bounds["clean_rtl_hash"]
             or formal["poison"]["rtl_hash"]
-            != materialization.get("poison_rtl_hash")
+            != bounds["poison_rtl_hash"]
             or formal["revert"]["rtl_hash"]
-            != materialization.get("clean_rtl_hash")
+            != bounds["revert_rtl_hash"]
         ):
             raise GroundedArenaValidityViolation(
                 "formal proof triplet is not bound to materialization"
@@ -220,7 +218,6 @@ def verify_grounded_arena_validity(
         descriptor_receipt = dict(descriptor_receipt)
         decision = execution.get("admission_decision") or {}
         grounded_evidence = execution.get("evidence") or {}
-        materialization = execution.get("materialization_receipt") or {}
         expected = {
             "authority_mode": ARENA_GROUNDED_AUTHORITY,
             "authority_bundle_hash": authority.get("authority_hash"),
@@ -236,8 +233,8 @@ def verify_grounded_arena_validity(
             "plan_hash": (execution.get("plan") or {}).get(
                 "plan_hash"
             ),
-            "clean_rtl_hash": materialization.get("clean_rtl_hash"),
-            "poison_rtl_hash": materialization.get("poison_rtl_hash"),
+            "clean_rtl_hash": bounds["clean_rtl_hash"],
+            "poison_rtl_hash": bounds["poison_rtl_hash"],
             "semantic_diff_receipt_hash": (
                 grounded_evidence.get("semantic_diff") or {}
             ).get("receipt_hash"),

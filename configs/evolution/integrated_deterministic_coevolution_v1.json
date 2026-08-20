@@ -1,0 +1,55 @@
+{
+  "schema_version": "r3e-integrated-deterministic-coevolution-milestone-v1",
+  "milestone_id": "integrated-deterministic-coevolution-v1",
+  "status": "frozen",
+  "parent_milestone": {
+    "milestone_id": "grounded-deterministic-population-v1",
+    "milestone_hash": "sha256:3359be62d1d7c078cd308eb8ee0ba657ebafa24b3f240ba4bb01f748c7557353"
+  },
+  "completed_scope": [
+    "policy-v3-registry-initialization-preserves-base-schema-authority",
+    "macro-round-preauthorizes-collect-memory-or-policy-promotion-lane",
+    "at-most-one-registry-promotion-per-macro-round",
+    "memory-lane-consumes-previous-arena-verified-episodes",
+    "arena-challenges-post-memory-active-policy",
+    "policy-lane-disables-memory-promotion",
+    "collect-lane-accumulates-policy-bound-episodes-without-promotion",
+    "historical-round-audit-reconstructs-from-frozen-registry-snapshots",
+    "renewed-challenge-binds-macro-round-final-policy",
+    "hash-bound-checkpoint-event-ledger-and-resume",
+    "deterministic-four-round-collect-memory-collect-policy-conformance"
+  ],
+  "frozen_interfaces": [
+    "r3e-integrated-coevolution-config-v1",
+    "r3e-integrated-coevolution-state-v1",
+    "r3e-integrated-coevolution-audit-v1",
+    "r3e-integrated-coevolution-summary-v1"
+  ],
+  "frozen_assets": {
+    "configs/base_policy/frozen_base_policy_v3.json": "sha256:2471514186ab54e658696219d84146256cd35411e074e7a3e6a41d7fa25d668b",
+    "configs/evolution/round_integrated_deterministic_v1.json": "sha256:23e18ad7c57f38d9078ea9573d13f2dd420c712345c4e8f91b2b9b399a77a56e",
+    "r3e/policy/registry_v2.py": "sha256:625a83aafa211a8f9c4b4971cd732921e7e8001501db1f2f97747c642d328adf",
+    "r3e/red/fitness.py": "sha256:98606902547eae23a60a92b542e42f68e11c82d7314d638cb433deab876e1187",
+    "r3e/arena/fake_adapters.py": "sha256:53b83e08fc76c589d4521ac53e6ac94d7c432e821ff38529feaa390151cd015b",
+    "r3e/arena/runner.py": "sha256:e4f932dd223eaafebd551d65f4d2efc87966ac1ac8d9a06ddf429c08515ac2fd",
+    "r3e/arena/audit.py": "sha256:b18f597b1b2f36487b2191e5127fe38a7d6c8ebcbdea175884a683829ab231cb",
+    "r3e/arena/integrated_loop.py": "sha256:2250f25c88b86d2548cc98744dabedc45d92bbd3e7b96a980de26872222b0176",
+    "r3e/arena/integrated_fake_system.py": "sha256:c424c8ea4f04bb8fd2f392450d25116feb661f310f4233f436ec1451d5b50da4",
+    "tests/test_integrated_coevolution_loop.py": "sha256:2eaae518caaeb410099330cda3963b2f212a7413aac82b2d8341fc7aad97a1e6"
+  },
+  "required_validation": [
+    "pytest -q -p no:cacheprovider tests/test_integrated_coevolution_loop.py",
+    "python -m r3e.arena.integrated_fake_system --workspace /tmp/r3e-integrated --rounds 4",
+    "pytest -q -p no:cacheprovider",
+    "python scripts/check_release.py",
+    "python scripts/verify_datasets.py"
+  ],
+  "deferred_scope": [
+    "real-model-calls",
+    "real-model-promotion-evidence",
+    "grd8-empirical-yield",
+    "acp7-repair-gain"
+  ],
+  "claim_boundary": "Frozen integrated deterministic Arena and RAAM scheduler authority only. The four-round fixture uses fake adapters and is not real-model coevolution evidence.",
+  "milestone_hash": "sha256:62ed1ae571c173cb9f306075107b4f8463591a7ab53df66a4d56339d33166f10"
+}

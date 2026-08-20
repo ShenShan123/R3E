@@ -1,0 +1,75 @@
+{
+  "schema_version": "r3e-round-interface-v1",
+  "phase": "system_upgrade",
+  "executable": false,
+  "authority": {
+    "active_policy": "formal_registry_v2",
+    "runtime_input": "PolicyState",
+    "red_proposal": "r3e-grounded-proposal-authority-v1",
+    "red_population": "r3e-red-population-schedule-v1",
+    "validity": "grounded_runtime_authority_v1",
+    "promotion": "atomic_registry_commit"
+  },
+  "validity_authority": "grounded_runtime_authority_v1",
+  "adapter_interface": "r3e.arena.adapter.EvolutionAdapter",
+  "grounded_pre_generation_planner": true,
+  "grounded_population_scheduler": true,
+  "grounded_population_config": "configs/red/deterministic_population_v1.json",
+  "grounded_red_proposal_budget": 8,
+  "grounded_family_quota": 2,
+  "grounded_archive_quota": 2,
+  "grounded_maximum_difficulty_band": "D3",
+  "grounded_allow_controlled_composition": true,
+  "grounded_coverage_state": "runtime/red/grounded_coverage_state.json",
+  "formal_protocols": {
+    "red_search_context": "r3e-red-search-context-v7",
+    "proposal_intent": "r3e-grounded-proposal-intent-v1",
+    "proposal_authority": "r3e-grounded-proposal-authority-v1",
+    "population_config": "r3e-red-population-config-v1",
+    "population_assignment": "r3e-red-population-assignment-v1",
+    "population_schedule": "r3e-red-population-schedule-v1",
+    "population_execution": "r3e-red-population-execution-v1",
+    "grounded_execution": [
+      "r3e-grounded-red-execution-bundle-v1",
+      "r3e-grounded-sequential-execution-bundle-v1"
+    ],
+    "formal_proof": "r3e-formal-proof-triplet-v1",
+    "round_audit": "r3e-round-audit-v1"
+  },
+  "population_permissions": {
+    "generator_may": [
+      "select-bounded-plan-parameters",
+      "select-design-and-node-within-intent",
+      "return-independent-provider-provenance"
+    ],
+    "runner_owns": [
+      "operator-execution",
+      "parser-and-elaboration",
+      "compile-and-simulation",
+      "oracle-verdict",
+      "structural-minimization",
+      "formal-proof",
+      "admission"
+    ],
+    "forbids": [
+      "multi-provider-shared-rtl-rewrite",
+      "generator-validity-decision",
+      "generator-minimization-authority",
+      "budget-overrun",
+      "unassigned-candidate"
+    ]
+  },
+  "ablation_modes": [
+    "generalist_only",
+    "routed_population"
+  ],
+  "deferred_experiment_bindings": [
+    "real_model_name",
+    "real_provider_credentials",
+    "experiment_seeds",
+    "promotion_thresholds",
+    "non_target_manifest",
+    "empirical_population_budget"
+  ],
+  "note": "Deterministic GRD-6 protocol fixture only. It validates population routing, independent provenance, budgets, separation of authority, resume, and audit. It does not claim multi-model population gain."
+}

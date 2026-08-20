@@ -110,8 +110,31 @@ def test_grounded_authority_milestone_is_hash_bound():
         "milestone_id": closure["milestone_id"],
         "milestone_hash": closure["milestone_hash"],
     }
+    sequential_successor = json.loads(
+        (
+            ROOT
+            / (
+                "configs/evolution/"
+                "grounded_sequential_runtime_gate_v1.json"
+            )
+        ).read_text(encoding="utf-8")
+    )
+    population_successor = json.loads(
+        (
+            ROOT
+            / (
+                "configs/evolution/"
+                "grounded_deterministic_population_v1.json"
+            )
+        ).read_text(encoding="utf-8")
+    )
     for relative, expected in waveform["frozen_assets"].items():
-        assert hash_file(ROOT / relative) == expected
+        current = hash_file(ROOT / relative)
+        if current != expected:
+            assert current in {
+                sequential_successor["frozen_assets"].get(relative),
+                population_successor["frozen_assets"].get(relative),
+            }
 
 
 def test_grounded_authority_requires_formal_property(tmp_path):
@@ -194,7 +217,32 @@ class GroundedRoundAdapter(DeterministicEvolutionAdapter):
         rows = []
         source_root = self.workspace / "grounded_sources"
         source_root.mkdir(parents=True, exist_ok=True)
-        for index, limit in enumerate((4, 5)):
+        proposal = _red_search_context.get("grounded_proposal_plan")
+        selected_intents = []
+        if proposal is not None:
+            selected = set(proposal["selected_intent_ids"])
+            selected_intents = [
+                row for row in proposal["candidate_intents"]
+                if row["intent_id"] in selected
+            ]
+            selected_intents.sort(
+                key=lambda row: proposal["selected_intent_ids"].index(
+                    row["intent_id"]
+                )
+            )
+        limits = tuple(
+            4 + index for index in range(len(selected_intents))
+        ) if selected_intents else (4, 5)
+        population = _red_search_context.get(
+            "grounded_population_schedule"
+        )
+        assignments = {
+            row["intent_id"]: row
+            for row in (
+                population["assignments"] if population else []
+            )
+        }
+        for index, limit in enumerate(limits):
             poison_id = f"grounded_arena_{index}"
             clean = source_root / f"clean_{index}.v"
             poison = source_root / f"poison_{index}.v"
@@ -332,6 +380,52 @@ endmodule
                 poison_id=poison_id,
             )
             row = materialize_fresh(lineage, descriptor)
+            if selected_intents:
+                intent = selected_intents[index]
+                row.update({
+                    "family": intent["family_id"],
+                    "effect": intent["expected_runtime_effect_id"],
+                    "affected_role": intent["target_role"],
+                    "grounded_proposal_intent_id": intent["intent_id"],
+                    "grounded_proposal_intent_hash": intent["intent_hash"],
+                    "grounded_dispatch_kind": intent["dispatch_kind"],
+                    "grounded_difficulty_target": dict(
+                        intent["difficulty_target"]
+                    ),
+                    "grounded_proposal_parent_poison_ids": list(
+                        intent["parent_poison_ids"]
+                    ),
+                    "grounded_proposal_target_memory_ids": list(
+                        intent["target_memory_ids"]
+                    ),
+                    "grounded_proposal_memory_operator": intent[
+                        "memory_operator"
+                    ],
+                })
+                assignment = assignments.get(intent["intent_id"])
+                if assignment is not None:
+                    row.update({
+                        "grounded_population_assignment_id": (
+                            assignment["assignment_id"]
+                        ),
+                        "grounded_population_assignment_hash": (
+                            assignment["assignment_hash"]
+                        ),
+                        "grounded_generator_provider_id": (
+                            assignment["provider_id"]
+                        ),
+                        "grounded_generator_role": (
+                            assignment["provider_role"]
+                        ),
+                        "grounded_population_arm": (
+                            assignment["population_arm"]
+                        ),
+                        "grounded_generation_usage": {
+                            "input_tokens": 0,
+                            "output_tokens": 0,
+                            "wall_time_ms": 0,
+                        },
+                    })
             rows.append(bind_adapter_output(
                 row,
                 "generate_red",
@@ -808,5 +902,108 @@ def test_formal_inconclusive_routes_to_rejected_archive(tmp_path):
     with pytest.raises(
         RoundAuditViolation,
         match="rejection|Grounded",
+    ):
+        verify_frozen_round(round_dir)
+
+
+@pytest.mark.skipif(
+    not (HAS_ICARUS and HAS_YOSYS),
+    reason="Icarus or Yosys is unavailable",
+)
+def test_population_schedule_is_reconstructed_by_completed_round_audit(
+    tmp_path,
+):
+    (tmp_path / "configs").mkdir()
+    (tmp_path / "runtime/registry").mkdir(parents=True)
+    base_copy = tmp_path / "configs/base.json"
+    search_copy = tmp_path / "configs/search.json"
+    base_copy.write_text(
+        (
+            ROOT / "configs/base_policy/frozen_base_policy_v1.json"
+        ).read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    search_copy.write_text(
+        (
+            ROOT / "configs/base_policy/policy_search_space_v1.json"
+        ).read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    initialize_registry(
+        base_copy,
+        tmp_path / "runtime/registry/policy_registry.json",
+    )
+    atomic_write_json(
+        tmp_path / "non_target.json",
+        make_manifest(
+            [{"case_id": "n0", "design": "non_target_0"}],
+            split="non_target",
+        ),
+    )
+    config = {
+        "policy_registry": "runtime/registry/policy_registry.json",
+        "policy_search_space": "configs/search.json",
+        "non_target_manifest": "non_target.json",
+        "validity_authority": "grounded_runtime_authority_v1",
+        "grounded_family_registry": str(
+            ROOT / "configs/red/grounded_family_registry_v1.json"
+        ),
+        "grounded_operator_registry": str(
+            ROOT / "configs/red/grounded_operator_registry_v1.json"
+        ),
+        "grounded_effect_registry": str(
+            ROOT / "configs/red/grounded_effect_registry_v1.json"
+        ),
+        "grounded_pre_generation_planner": True,
+        "grounded_population_scheduler": True,
+        "grounded_population_config": str(
+            ROOT / "configs/red/deterministic_population_v1.json"
+        ),
+        "grounded_red_proposal_budget": 1,
+        "grounded_family_quota": 1,
+        "grounded_archive_quota": 0,
+        "grounded_allow_controlled_composition": False,
+        "challenge_seeds": [1, 2, 3],
+        "promotion_seeds": [11],
+        "split_seed": 4,
+        "policy_search_seed": 5,
+        "code_version": "grounded-population-audit-test",
+    }
+    summary = EvolutionRoundRunner(
+        config,
+        round_id="R_POPULATION_AUDIT",
+        adapter=GroundedRoundAdapter(tmp_path / "adapter"),
+        project_root=tmp_path,
+    ).run()
+    assert not summary["promotion_eligible"]
+    round_dir = (
+        tmp_path / "runtime/rounds/R_POPULATION_AUDIT"
+    )
+    audit = verify_frozen_round(round_dir)
+    schedule = json.loads((
+        round_dir / "grounded_population_schedule.json"
+    ).read_text(encoding="utf-8"))
+    execution = json.loads((
+        round_dir / "grounded_population_execution.json"
+    ).read_text(encoding="utf-8"))
+    assert audit["grounded_population_schedule_hash"] == schedule[
+        "schedule_hash"
+    ]
+    assert audit["grounded_population_execution_hash"] == execution[
+        "execution_hash"
+    ]
+    assert audit["grounded_population_arm"] == "routed_population"
+
+    tampered = deepcopy(execution)
+    tampered["provider_usage"][
+        next(iter(tampered["provider_usage"]))
+    ]["assignments"] += 1
+    atomic_write_json(
+        round_dir / "grounded_population_execution.json",
+        tampered,
+    )
+    with pytest.raises(
+        RoundAuditViolation,
+        match="population",
     ):
         verify_frozen_round(round_dir)

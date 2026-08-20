@@ -15,7 +15,10 @@ from r3e.protocol.hashing import canonical_json, hash_payload, utc_now
 from r3e.protocol.ledger import writer_lock
 from r3e.red.poison_payload import verify_poison_payload
 
-from .execution import verify_grounded_execution_bundle
+from .execution import (
+    execution_materialization_bounds,
+    verify_grounded_execution_bundle,
+)
 from .registry import GroundedRegistryBundle
 
 
@@ -64,8 +67,13 @@ def _verify_rejection_bindings(
         payload["formal_proof_assessment"]
     )
     plan = execution["plan"]
-    materialization = execution["materialization_receipt"]
+    bounds = execution_materialization_bounds(execution)
     decision = execution["admission_decision"]
+    plan_payload = (
+        poison.get("grounded_sequential_plan")
+        or poison.get("grounded_mutation_plan")
+        or {}
+    )
     if (
         not decision["admitted"]
         or assessment["proof_satisfied"]
@@ -74,23 +82,28 @@ def _verify_rejection_bindings(
             != "completed"
             for phase in ("clean", "poison", "revert")
         )
-        or poison.get("poison_id") != plan["plan_id"]
+        or poison.get("poison_id")
+        != (plan.get("plan_id") or plan.get("poison_id"))
         or poison.get("grounded_plan_hash") != plan["plan_hash"]
-        or (poison.get("grounded_mutation_plan") or {}).get(
-            "plan_hash"
-        )
-        != plan["plan_hash"]
+        or plan_payload.get("plan_hash") != plan["plan_hash"]
         or poison.get("challenged_policy_hash") != policy.policy_hash
-        or plan["challenged_policy_instance_hash"]
-        != policy.policy_instance_hash
+        or (
+            (
+                plan.get("challenged_policy_hash")
+                != policy.policy_hash
+            )
+            if plan.get("schema_version") in {
+                "r3e-parser-memory-operator-plan-v1",
+                "r3e-controlled-composition-plan-v1",
+            }
+            else plan.get("challenged_policy_instance_hash")
+            != policy.policy_instance_hash
+        )
         or plan["challenged_effective_policy_hash"]
         != policy.effective_policy_hash
-        or assessment["clean"]["rtl_hash"]
-        != materialization["clean_rtl_hash"]
-        or assessment["poison"]["rtl_hash"]
-        != materialization["poison_rtl_hash"]
-        or assessment["revert"]["rtl_hash"]
-        != materialization["clean_rtl_hash"]
+        or assessment["clean"]["rtl_hash"] != bounds["clean_rtl_hash"]
+        or assessment["poison"]["rtl_hash"] != bounds["poison_rtl_hash"]
+        or assessment["revert"]["rtl_hash"] != bounds["revert_rtl_hash"]
         or assessment["clean"]["top_module"]
         != poison.get("grounded_formal_top_module")
         or assessment["clean"]["depth"]

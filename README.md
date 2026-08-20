@@ -55,8 +55,9 @@ export PYTHONPATH="$PWD:$PWD/r3e:$PWD/experiments/public_external_benchmarks"
 ```
 
 Provider credentials, if used by library clients, are read only from
-environment variables. No credential or provider response is stored in this
-release.
+environment variables. Runtime rounds keep hash-bound proposal/usage artifacts
+for audit, while this public release contains neither credentials nor generated
+provider responses.
 
 ## Legacy R³E
 
@@ -168,7 +169,14 @@ The formal portfolio executor deterministically derives candidate slots and
 seeds from the effective policy, Grounded `FailureDescriptor`, portfolio, and
 run seed. A candidate provider may return only a patch proposal and usage
 receipt; it cannot report parse/formal/oracle success, rank candidates, or
-select a winner. The runner owns candidate verification, deterministic
+select a winner. For artifact-bound formal providers, the proposal contains
+only replacement RTL and an edit description; the runner derives module,
+block, node, signal-role, operator-class, and normalized patch metadata from a
+bounded buggy/candidate token-AST diff. Model-supplied semantic metadata is
+rejected. A candidate with an unavailable/no-op AST diff receives a
+runner-owned rejection signature and cannot pass scope/oracle admission, while
+the remaining planned slots still execute. The runner owns candidate
+verification, deterministic
 oracle-backed selection, aggregate call/Token/post-call wall-time gates,
 BlueEvaluation V2, and per-slot/lens ExecutionTrace V2. Offline audit rebuilds
 the complete provider→generation→semantic-signature→verification→diversity
@@ -407,6 +415,17 @@ V1**, is frozen in
 `configs/evolution/grounded_planner_raam_cross_round_v1.json`. Its round
 interface is `configs/evolution/round_grounded_runtime_v3.json`.
 
+Its later **Grounded Proposal Authority V1** child moves coverage and
+curriculum decisions in front of red generation. Before calling an adapter,
+the runner freezes a sanitized archive view and deterministic proposal intents
+that bind family, AST operator, runtime effect, specialist role, difficulty
+target, lineage class, archive quota, and dispatch kind. The adapter must
+return exactly one candidate for each selected intent and cannot widen those
+fields. Proposal plan/execution hashes are bound into Red Search Context V6,
+the round toolchain, RED_GENERATE checkpoint/event, and offline audit. This is
+deterministic planning authority, not evidence of real-model proposal quality
+or bug yield.
+
 The current child protocol records the first divergent signal and cycle,
 cycle offset, temporal relation, assignment class, cone-depth bucket, and
 mismatch pattern from two deterministic poison simulations. The oracle parser
@@ -583,6 +602,158 @@ python -m r3e.arena.audit \
 
 The idempotent `runtime/rounds/round_ledger.jsonl` binds each completed round's
 audit hash into a hash chain.
+
+### Sequential Grounded Red authority
+
+Parser-backed RAAM operators (`memory_bypass`, `memory_deepening`,
+`memory_conflict`, and `memory_transfer`) and two-parent controlled
+composition use a runner-owned sequential authority. The adapter may select a
+hash-bound plan and output path, but it may not author the RTL. The runner:
+
+1. reconstructs every AST edit and intermediate parser admission;
+2. materializes the final poison and verifies exact reverse restoration;
+3. runs a clean baseline, two deterministic poison simulations, and the
+   restored baseline through Icarus and the stdout oracle;
+4. admits only a stable functional mismatch with complete provider receipts;
+5. binds the same clean/poison/revert hashes into the Yosys proof triplet and
+   the failure descriptor.
+
+The frozen execution schema is
+`r3e-grounded-sequential-execution-bundle-v1`. It coexists with the single-AST
+execution schema so historical rounds remain reconstructable. A failed
+compile, simulation, oracle, intermediate admission, inverse, or formal gate
+cannot obtain arena authority.
+
+### Deterministic Red Population
+
+GRD-6 adds a deterministic scheduling authority between the frozen proposal
+plan and candidate generation. Each selected intent is assigned to exactly one
+generalist, family-specialist, coverage, hardness, memory, or composition
+generator lane with an immutable model/toolchain/budget envelope. Candidate
+usage and provider provenance are checked against the assignment before
+validity begins.
+
+Generators cannot return validity, minimization, oracle, or formal decisions.
+AST execution, structural minimization, Icarus/Yosys validation, and admission
+remain runner-owned. `generalist_only` and `routed_population` schedules retain
+the same proposal-plan hash, making the routing factor independently
+auditable. The deterministic providers are protocol fixtures and do not
+constitute evidence of real multi-model population gain.
+
+### Integrated deterministic coevolution
+
+`Integrated Deterministic Coevolution V1` serializes Arena and RAAM under one
+macro-round promotion epoch. A round pre-authorizes exactly one of `collect`,
+`memory`, or `policy`; memory and whole-policy search therefore cannot both
+commit a child in the same macro round. The renewed challenge binds the final
+active policy recorded by that round's frozen registry snapshot.
+
+```bash
+python -m r3e.arena.integrated_fake_system \
+  --workspace /tmp/r3e-integrated \
+  --rounds 4
+```
+
+The expected schedule is `collect → memory → collect → policy`, with promotion
+counts `0, 1, 0, 1`. This proves scheduler, persistence, resume, cross-round
+memory binding, and audit behavior only; it is not a model experiment.
+
+### Real adapter pilot entry
+
+The real-provider boundary now has two proposal-only adapters. Grounded Red
+may select one node from a runner-enumerated parser AST set but cannot change
+the frozen family, operator, effect, validator, or budget. ACP receives only
+the current buggy RTL and observable failure descriptor. Golden RTL,
+testbenches, Yosys elaboration, Icarus differential simulation, oracle
+judgement, selection, archive, and promotion remain runner-owned.
+
+The transport is one-call, strict-JSON, and OpenAI-compatible. It uses the
+configured Python client when available and a standard-library HTTP fallback
+otherwise; neither path retries. Credentials and endpoint values remain in
+environment variables and never enter receipts.
+
+An injected-transport smoke test exercises exactly four calls: one GRD target
+choice and three ACP candidates. It proves the local authority pipeline,
+including the GRD clean/poison/revert formal triplet and ACP verifier-guided
+selection, but it is not model evidence:
+
+```bash
+pytest -q -p no:cacheprovider tests/test_grd8_acp7_pilot_smoke.py
+```
+
+The frozen **Shadow Pilot Matrix V1** is the next call-matched boundary: for
+one smoke case and one seed it runs the four ACP arms A/B/C/D with three
+candidates each (12 ACP calls), plus one manifest-backed Grounded Red target
+choice (1 call). The Red request is bound to
+`configs/pilot/real_integrated_shadow_manifest_v1.jsonl`; parser-node choice,
+materialization, Icarus/Yosys formal triplet, and all promotion/qualification
+decisions remain runner-owned. Resume must not add calls, and both promotion
+and RAAM qualification remain disabled.
+
+```bash
+pytest -q -p no:cacheprovider tests/test_shadow_pilot_runner.py
+```
+
+The combined admission wrapper is available as:
+
+```bash
+python -m r3e.pilot.shadow_admission \
+  --workspace runtime/pilots/shadow-admission-v1
+```
+
+It records the expected 12+1 provider budget and keeps all detailed receipts
+under the ignored `runtime/` tree. The checked-in test uses an injected
+transport and is the reproducible no-network conformance path:
+
+```bash
+pytest -q -p no:cacheprovider tests/test_shadow_admission.py
+```
+
+With an explicitly authorized third-party endpoint, a one-case real-provider
+smoke can be launched with:
+
+```bash
+python -m r3e.pilot.grd8_acp7_smoke \
+  --project-root . \
+  --workspace runtime/pilots/grd8-acp7-smoke \
+  --manifest datasets/manifests/strider14.jsonl \
+  --case-id strider:mux_4_1_1 \
+  --seed 17
+```
+
+This sends the small public GRD pilot RTL and the current public buggy RTL,
+observable evidence, and prompt-lens instruction to the configured provider.
+It does not send golden RTL or the testbench. Detailed outputs stay under the
+ignored `runtime/` tree.
+
+`configs/evolution/grd8_acp7_pilot_v1.json` remains intentionally
+non-executable because the comparative pilot still requires frozen target and
+non-target manifests, the eight-family set, three run seeds, promotion
+thresholds, and experiment budgets. No third-party model result, GRD-8 yield,
+ACP-7 gain, multi-round result, or promotion evidence is included in this
+repository.
+
+### Real Integrated Coevolution Shadow V1
+
+The next engineering lane connects the real provider boundary to the formal
+Arena data path without enabling evolution. `RealGroundedArenaAdapter` consumes
+an eligible manifest row, enumerates parser-backed AST nodes, and accepts only
+the provider's target-choice receipt. The runner then owns AST materialization,
+Icarus/Yosys admission, FailureDescriptor construction, ACP three-slot
+verification/selection, VerifiedEpisode creation, archive updates, and the
+checkpoint/event/audit DAG. `promotion_enabled` and
+`memory_qualification_enabled` are hard-disabled in this lane.
+
+The deterministic integration fixture is runnable without network access:
+
+```bash
+pytest -q -p no:cacheprovider tests/test_real_integrated_shadow.py
+```
+
+The test uses an injected OpenAI-compatible transport (one Grounded choice and
+three ACP calls), proves the formal poison triplet, and resumes the same round
+without another provider call. It is protocol/shadow evidence only; it does
+not claim real-model repair gain, multi-round coevolution, or promotion.
 
 ## Offline validation
 

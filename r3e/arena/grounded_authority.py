@@ -26,8 +26,12 @@ from r3e.red.grounded.arena_validity import (
     build_grounded_arena_validity,
 )
 from r3e.red.grounded.execution import (
+    execution_materialization_bounds,
     execute_grounded_icarus_admission,
     verify_grounded_execution_bundle,
+)
+from r3e.red.grounded.sequential_execution import (
+    execute_grounded_sequential_admission,
 )
 from r3e.red.grounded.formal_rejection import (
     build_formal_rejection,
@@ -102,6 +106,26 @@ def _under_root(path: str | Path, root: Path, *, label: str) -> Path:
     return value
 
 
+def _output_under_root(
+    path: str | Path,
+    root: Path,
+    *,
+    label: str,
+) -> Path:
+    value = Path(path).resolve()
+    try:
+        value.relative_to(root)
+    except ValueError as exc:
+        raise GroundedAuthorityIntegrationViolation(
+            f"{label} escapes the project root"
+        ) from exc
+    if value.exists() and not value.is_file():
+        raise GroundedAuthorityIntegrationViolation(
+            f"{label} is not a regular file"
+        )
+    return value
+
+
 def verify_arena_grounded_authority(
     authority_bundle: Mapping[str, Any],
     *,
@@ -140,14 +164,14 @@ def verify_arena_grounded_authority(
             formal_proof_triplet=formal,
         )
     )
-    materialization = execution["materialization_receipt"]
+    bounds = execution_materialization_bounds(execution)
     if (
         formal["clean"]["rtl_hash"]
-        != materialization["clean_rtl_hash"]
+        != bounds["clean_rtl_hash"]
         or formal["poison"]["rtl_hash"]
-        != materialization["poison_rtl_hash"]
+        != bounds["poison_rtl_hash"]
         or formal["revert"]["rtl_hash"]
-        != materialization["clean_rtl_hash"]
+        != bounds["revert_rtl_hash"]
     ):
         raise GroundedAuthorityIntegrationViolation(
             "formal proof triplet is not bound to materialized RTL"
@@ -173,20 +197,35 @@ def _cross_bind(
     execution = authority_bundle["execution_bundle"]
     formal = authority_bundle["formal_proof_triplet"]
     plan = execution["plan"]
-    materialization = execution["materialization_receipt"]
+    bounds = execution_materialization_bounds(execution)
     decision = execution["admission_decision"]
+    plan_payload = (
+        poison.get("grounded_sequential_plan")
+        or poison.get("grounded_mutation_plan")
+        or {}
+    )
     if (
         poison.get("grounded_plan_hash") != plan["plan_hash"]
-        or (poison.get("grounded_mutation_plan") or {}).get("plan_hash")
-        != plan["plan_hash"]
-        or poison.get("poison_id") != plan["plan_id"]
+        or plan_payload.get("plan_hash") != plan["plan_hash"]
+        or poison.get("poison_id")
+        != (plan.get("plan_id") or plan.get("poison_id"))
         or poison.get("challenged_policy_hash") != policy.policy_hash
-        or plan["challenged_policy_instance_hash"]
-        != policy.policy_instance_hash
+        or (
+            (
+                plan.get("challenged_policy_hash")
+                != policy.policy_hash
+            )
+            if plan.get("schema_version") in {
+                "r3e-parser-memory-operator-plan-v1",
+                "r3e-controlled-composition-plan-v1",
+            }
+            else plan.get("challenged_policy_instance_hash")
+            != policy.policy_instance_hash
+        )
         or plan["challenged_effective_policy_hash"]
         != policy.effective_policy_hash
-        or materialization["clean_rtl_hash"] != hash_file(clean_path)
-        or materialization["poison_rtl_hash"] != hash_file(poison_path)
+        or bounds["clean_rtl_hash"] != hash_file(clean_path)
+        or bounds["poison_rtl_hash"] != hash_file(poison_path)
         or formal["property_hash"] != hash_file(formal_property_path)
         or formal["clean"]["top_module"]
         != poison.get("grounded_formal_top_module")
@@ -211,12 +250,12 @@ def _cross_bind_rejection(
 ) -> None:
     execution = rejection["execution_bundle"]
     assessment = rejection["formal_proof_assessment"]
-    materialization = execution["materialization_receipt"]
+    bounds = execution_materialization_bounds(execution)
     if (
         rejection["poison_payload"] != dict(poison)
         or poison.get("challenged_policy_hash") != policy.policy_hash
-        or materialization["clean_rtl_hash"] != hash_file(clean_path)
-        or materialization["poison_rtl_hash"] != hash_file(poison_path)
+        or bounds["clean_rtl_hash"] != hash_file(clean_path)
+        or bounds["poison_rtl_hash"] != hash_file(poison_path)
         or assessment["property_hash"] != hash_file(
             formal_property_path
         )
@@ -278,10 +317,20 @@ def execute_grounded_arena_validity(
         root,
         label="clean RTL",
     )
-    poison_source = _under_root(
-        str(poison.get("buggy_rtl") or ""),
-        root,
-        label="poison RTL",
+    sequential_plan = poison.get("grounded_sequential_plan")
+    mutation_plan = poison.get("grounded_mutation_plan")
+    poison_source = (
+        _output_under_root(
+            str(poison.get("buggy_rtl") or ""),
+            root,
+            label="poison RTL output",
+        )
+        if isinstance(sequential_plan, Mapping)
+        else _under_root(
+            str(poison.get("buggy_rtl") or ""),
+            root,
+            label="poison RTL",
+        )
     )
     testbench = _under_root(
         str(poison.get("grounded_testbench") or ""),
@@ -293,11 +342,15 @@ def execute_grounded_arena_validity(
         root,
         label="grounded formal property",
     )
-    plan = poison.get("grounded_mutation_plan")
-    if not isinstance(plan, Mapping):
+    if isinstance(sequential_plan, Mapping) == isinstance(
+        mutation_plan, Mapping
+    ):
         raise GroundedAuthorityIntegrationViolation(
-            "arena poison lacks a Grounded MutationPlan"
+            "arena poison must declare exactly one Grounded plan"
         )
+    plan = sequential_plan if isinstance(
+        sequential_plan, Mapping
+    ) else mutation_plan
     if poison.get("grounded_plan_hash") != plan.get("plan_hash"):
         raise GroundedAuthorityIntegrationViolation(
             "arena poison Grounded plan hash mismatch"
@@ -392,27 +445,45 @@ def execute_grounded_arena_validity(
         "formal_property_hash": hash_file(staged_property),
         "plan_hash": plan["plan_hash"],
     })
-    execution = execute_grounded_icarus_admission(
-        plan=plan,
-        policy=policy,
-        registries=registries,
-        clean_rtl_path=staged_clean,
-        testbench_path=staged_testbench,
-        top_module=top_module,
-        workspace=workspace,
-        run_context_hash=run_context_hash,
-        frozen_clean_rtl_hash=hash_file(staged_clean),
-        frozen_testbench_hash=hash_file(staged_testbench),
-        allowed_file_manifest_hash=allowed_manifest_hash,
-        timeout_seconds=timeout_seconds,
-    )
+    execution_arguments = {
+        "plan": plan,
+        "policy": policy,
+        "registries": registries,
+        "clean_rtl_path": staged_clean,
+        "testbench_path": staged_testbench,
+        "top_module": top_module,
+        "workspace": workspace,
+        "run_context_hash": run_context_hash,
+        "frozen_clean_rtl_hash": hash_file(staged_clean),
+        "frozen_testbench_hash": hash_file(staged_testbench),
+        "allowed_file_manifest_hash": allowed_manifest_hash,
+        "timeout_seconds": timeout_seconds,
+    }
+    if isinstance(sequential_plan, Mapping):
+        execution = execute_grounded_sequential_admission(
+            **execution_arguments,
+            publish_poison_path=poison_source,
+        )
+    else:
+        execution = execute_grounded_icarus_admission(
+            **execution_arguments,
+        )
+    if not execution["admission_decision"]["admitted"]:
+        raise GroundedAuthorityIntegrationViolation(
+            "compile/simulation/oracle admission gate rejected poison: "
+            + ", ".join(
+                execution["admission_decision"]["rejection_reasons"]
+            )
+        )
     formal_provider = YosysFormalProvider(
         workspace=workspace,
         run_context_hash=run_context_hash,
         timeout_seconds=formal_timeout_seconds,
     )
     assessment = formal_provider.execute_proof_assessment(
-        receipt_prefix=str(plan["plan_id"]),
+        receipt_prefix=str(
+            plan.get("plan_id") or plan.get("poison_id")
+        ),
         clean_rtl_path=staged_clean,
         poison_rtl_path=workspace / "materialized/poison.v",
         revert_rtl_path=workspace / "materialized/reverted.v",
@@ -420,9 +491,9 @@ def execute_grounded_arena_validity(
         top_module=formal_top_module,
         depth=formal_depth,
         frozen_clean_rtl_hash=hash_file(staged_clean),
-        frozen_poison_rtl_hash=execution[
-            "materialization_receipt"
-        ]["poison_rtl_hash"],
+        frozen_poison_rtl_hash=execution_materialization_bounds(
+            execution
+        )["poison_rtl_hash"],
         frozen_revert_rtl_hash=hash_file(staged_clean),
         frozen_property_hash=hash_file(staged_property),
     )

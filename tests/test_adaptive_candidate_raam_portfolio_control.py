@@ -327,6 +327,21 @@ def test_raam_portfolio_control_milestone_is_frozen():
         ROOT
         / "configs/evolution/portfolio_aware_red_challenge_v1.json"
     ).read_text(encoding="utf-8"))
+    proposal_successor = json.loads((
+        ROOT
+        / "configs/evolution/grounded_proposal_authority_v1.json"
+    ).read_text(encoding="utf-8"))
+    runtime_successor = json.loads((
+        ROOT
+        / "configs/evolution/grounded_sequential_runtime_gate_v1.json"
+    ).read_text(encoding="utf-8"))
+    population_successor = json.loads((
+        ROOT
+        / "configs/evolution/grounded_deterministic_population_v1.json"
+    ).read_text(encoding="utf-8"))
+    pilot_successor = json.loads((
+        ROOT / "configs/evolution/real_adapter_pilot_entry_v1.json"
+    ).read_text(encoding="utf-8"))
     assert milestone["status"] == "frozen"
     assert milestone["parent_milestone"] == {
         "milestone_id": parent["milestone_id"],
@@ -343,7 +358,13 @@ def test_raam_portfolio_control_milestone_is_frozen():
     for relative, expected in milestone["frozen_assets"].items():
         current = hash_file(ROOT / relative)
         if current != expected:
-            assert successor["frozen_assets"].get(relative) == current
+            assert current in {
+                    successor["frozen_assets"].get(relative),
+                    proposal_successor["frozen_assets"].get(relative),
+                    runtime_successor["frozen_assets"].get(relative),
+                    population_successor["frozen_assets"].get(relative),
+                    pilot_successor["frozen_assets"].get(relative),
+                }
 
 
 @pytest.mark.parametrize(

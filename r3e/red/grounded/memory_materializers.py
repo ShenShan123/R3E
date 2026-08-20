@@ -61,6 +61,94 @@ def _require_hash(value: Mapping[str, Any], field: str) -> None:
         )
 
 
+def verify_sequential_plan(
+    plan: Mapping[str, Any],
+    *,
+    policy: PolicyState,
+    registries: GroundedRegistryBundle,
+) -> dict[str, Any]:
+    """Verify the immutable envelope shared by memory and composition plans."""
+    payload = deepcopy(dict(plan))
+    schema = payload.get("schema_version")
+    if schema not in {
+        MEMORY_OPERATOR_PLAN_SCHEMA,
+        CONTROLLED_COMPOSITION_SCHEMA,
+    }:
+        raise ParserMemoryMaterializationViolation(
+            "sequential materialization plan schema mismatch"
+        )
+    _require_hash(payload, "plan_hash")
+    if (
+        payload.get("challenged_policy_hash") != policy.policy_hash
+        or payload.get("challenged_effective_policy_hash")
+        != policy.effective_policy_hash
+        or payload.get("registry_bundle_hash")
+        != registries.registry_bundle_hash
+    ):
+        raise ParserMemoryMaterializationViolation(
+            "sequential materialization authority binding mismatch"
+        )
+    subplans = [
+        verify_mutation_plan(
+            value,
+            policy=policy,
+            registries=registries,
+        )
+        for value in list(payload.get("subplans") or [])
+    ]
+    expected_hashes = list(
+        payload.get("expected_stage_source_hashes") or []
+    )
+    if (
+        not subplans
+        or len(expected_hashes) != len(subplans) + 1
+        or payload.get("clean_source_hash") != expected_hashes[0]
+    ):
+        raise ParserMemoryMaterializationViolation(
+            "sequential source checkpoints are incomplete"
+        )
+    if schema == MEMORY_OPERATOR_PLAN_SCHEMA:
+        operator = payload.get("operator")
+        targets = list(payload.get("target_memory_ids") or [])
+        if (
+            operator not in MEMORY_OPERATORS
+            or len(targets) != (2 if operator == "memory_conflict" else 1)
+            or len(subplans) != (
+                2 if operator == "memory_conflict" else 1
+            )
+            or not payload.get("active_memory_bank_hash")
+            or not payload.get("capability_packet_hash")
+            or not payload.get("parent_poison_id")
+        ):
+            raise ParserMemoryMaterializationViolation(
+                "parser memory plan authority is incomplete"
+            )
+    else:
+        parents = list(payload.get("parent_poison_ids") or [])
+        authorities = dict(
+            payload.get("parent_authority_hashes") or {}
+        )
+        if (
+            len(parents) != 2
+            or len(set(parents)) != 2
+            or set(authorities) != set(parents)
+            or len(subplans) != 2
+            or any(
+                not str(authorities[parent]).startswith("sha256:")
+                or len(str(authorities[parent])) != 71
+                for parent in parents
+            )
+            or payload.get("family_id")
+            != "composition.controlled_pair"
+            or payload.get("lineage_operator") != "composes_with"
+            or payload.get("composition_depth") != 2
+        ):
+            raise ParserMemoryMaterializationViolation(
+                "controlled composition authority is incomplete"
+            )
+    return {**payload, "subplans": subplans}
+
+
 def _validate_targets(
     *,
     operator: str,
@@ -382,22 +470,13 @@ def materialize_sequential_plan(
     clean_source: str,
 ) -> dict[str, Any]:
     """Execute and verify every AST stage, including exact reverse restoration."""
-    payload = deepcopy(dict(plan))
-    if payload.get("schema_version") not in {
-        MEMORY_OPERATOR_PLAN_SCHEMA,
-        CONTROLLED_COMPOSITION_SCHEMA,
-    }:
-        raise ParserMemoryMaterializationViolation(
-            "sequential materialization plan schema mismatch"
-        )
-    _require_hash(payload, "plan_hash")
+    payload = verify_sequential_plan(
+        plan,
+        policy=policy,
+        registries=registries,
+    )
     if (
-        payload["challenged_policy_hash"] != policy.policy_hash
-        or payload["challenged_effective_policy_hash"]
-        != policy.effective_policy_hash
-        or payload["registry_bundle_hash"]
-        != registries.registry_bundle_hash
-        or payload["clean_source_hash"] != source_hash(clean_source)
+        payload["clean_source_hash"] != source_hash(clean_source)
     ):
         raise ParserMemoryMaterializationViolation(
             "sequential materialization authority binding mismatch"

@@ -8,6 +8,12 @@ from typing import Any, Mapping
 
 from r3e.protocol.hashing import hash_payload
 
+from .rtl_ast_materializer import (
+    RtlAstMaterializationViolation,
+    materialize_rtl_ast_rejection_patch,
+    materialize_rtl_ast_semantic_patch,
+)
+
 
 SIGNATURE_SCHEMA = "r3e-semantic-patch-signature-v1"
 SIGNATURE_RECEIPT_SCHEMA = "r3e-candidate-semantic-signature-v1"
@@ -235,6 +241,7 @@ class StructuredSemanticSignatureProvider:
         patch_hash: str,
         patch_payload: Mapping[str, Any],
         expected_patch_scope: str,
+        current_case_artifact: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         if not isinstance(patch_payload, Mapping):
             raise SemanticSignatureViolation(
@@ -274,6 +281,101 @@ class StructuredSemanticSignatureProvider:
             raise SemanticSignatureViolation("lens_id must be non-empty")
         payload["receipt_hash"] = hash_payload(payload)
         return payload
+
+
+class ParserBackedSemanticSignatureProvider(
+    StructuredSemanticSignatureProvider
+):
+    """Derive semantic metadata from runner-owned buggy/candidate RTL."""
+
+    runner_derives_semantic_patch = True
+
+    def derive_semantic_patch(
+        self,
+        *,
+        patch_payload: Mapping[str, Any],
+        current_case_artifact: Mapping[str, Any],
+        expected_patch_scope: str,
+    ) -> dict[str, Any]:
+        if not isinstance(patch_payload, Mapping):
+            raise SemanticSignatureViolation(
+                "candidate patch payload must be an object"
+            )
+        if "semantic_patch" in patch_payload:
+            raise SemanticSignatureViolation(
+                "provider-supplied semantic patch has no formal authority"
+            )
+        replacement = patch_payload.get("replacement_rtl")
+        buggy_source = current_case_artifact.get("buggy_rtl_source")
+        if not isinstance(replacement, str) or not replacement:
+            raise SemanticSignatureViolation(
+                "candidate replacement RTL must be non-empty"
+            )
+        if not isinstance(buggy_source, str) or not buggy_source:
+            raise SemanticSignatureViolation(
+                "runner-owned buggy RTL must be non-empty"
+            )
+        try:
+            return materialize_rtl_ast_semantic_patch(
+                buggy_source=buggy_source,
+                candidate_source=replacement,
+                expected_patch_scope=expected_patch_scope,
+                top_module=str(
+                    current_case_artifact.get("top_module") or ""
+                ),
+            )
+        except RtlAstMaterializationViolation:
+            try:
+                return materialize_rtl_ast_rejection_patch(
+                    buggy_source=buggy_source,
+                    candidate_source=replacement,
+                    expected_patch_scope=expected_patch_scope,
+                    top_module=str(
+                        current_case_artifact.get("top_module") or ""
+                    ),
+                )
+            except RtlAstMaterializationViolation as rejection_exc:
+                raise SemanticSignatureViolation(
+                    "runner-owned RTL AST materialization failed"
+                ) from rejection_exc
+
+    def materialize(
+        self,
+        *,
+        candidate_id: str,
+        lens_id: str,
+        patch_hash: str,
+        patch_payload: Mapping[str, Any],
+        expected_patch_scope: str,
+        current_case_artifact: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        if not isinstance(current_case_artifact, Mapping):
+            raise SemanticSignatureViolation(
+                "parser-backed materializer requires current RTL artifact"
+            )
+        supplied = patch_payload.get("semantic_patch")
+        proposal_without_semantic = {
+            key: deepcopy(value)
+            for key, value in patch_payload.items()
+            if key != "semantic_patch"
+        }
+        derived = self.derive_semantic_patch(
+            patch_payload=proposal_without_semantic,
+            current_case_artifact=current_case_artifact,
+            expected_patch_scope=expected_patch_scope,
+        )
+        if supplied != derived:
+            raise SemanticSignatureViolation(
+                "semantic patch differs from runner-owned RTL AST diff"
+            )
+        return super().materialize(
+            candidate_id=candidate_id,
+            lens_id=lens_id,
+            patch_hash=patch_hash,
+            patch_payload=patch_payload,
+            expected_patch_scope=expected_patch_scope,
+            current_case_artifact=current_case_artifact,
+        )
 
 
 def verify_semantic_signature_receipt(

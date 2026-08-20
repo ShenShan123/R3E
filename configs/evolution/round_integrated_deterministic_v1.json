@@ -1,0 +1,38 @@
+{
+  "schema_version": "r3e-integrated-coevolution-interface-v1",
+  "phase": "system_upgrade",
+  "executable": false,
+  "promotion_lane_schedule": [
+    "collect",
+    "memory",
+    "collect",
+    "policy"
+  ],
+  "macro_round_protocol": "r3e-integrated-coevolution-config-v1",
+  "promotion_rule": "at-most-one-registry-commit-per-macro-round",
+  "memory_lane": {
+    "input": "previous-arena-verified-episode-manifest",
+    "arena_policy_promotion_enabled": false,
+    "renewed_challenge": "post-memory-active-policy"
+  },
+  "policy_lane": {
+    "memory_promotion_enabled": false,
+    "arena_policy_promotion_enabled": true,
+    "renewed_challenge": "post-policy-active-policy"
+  },
+  "collect_lane": {
+    "memory_promotion_enabled": false,
+    "arena_policy_promotion_enabled": false,
+    "purpose": "accumulate-policy-bound-episodes"
+  },
+  "formal_artifacts": [
+    "registry_before.json",
+    "memory_epoch_summary.json",
+    "arena_epoch_summary.json",
+    "registry_after.json",
+    "integrated_audit.json",
+    "macro_state.json",
+    "macro_ledger.jsonl"
+  ],
+  "claim_boundary": "Deterministic scheduler interface only; fake adapters are not model-driven evidence."
+}

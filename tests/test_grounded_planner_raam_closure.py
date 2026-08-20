@@ -86,6 +86,25 @@ def test_grounded_planner_raam_cross_round_milestone_is_frozen():
         ROOT
         / "configs/evolution/portfolio_aware_red_challenge_v1.json"
     ).read_text(encoding="utf-8"))
+    proposal_successor = json.loads((
+        ROOT
+        / "configs/evolution/grounded_proposal_authority_v1.json"
+    ).read_text(encoding="utf-8"))
+    runtime_successor = json.loads((
+        ROOT
+        / "configs/evolution/grounded_sequential_runtime_gate_v1.json"
+    ).read_text(encoding="utf-8"))
+    population_successor = json.loads((
+        ROOT
+        / "configs/evolution/grounded_deterministic_population_v1.json"
+    ).read_text(encoding="utf-8"))
+    integrated_successor = json.loads((
+        ROOT
+        / "configs/evolution/integrated_deterministic_coevolution_v1.json"
+    ).read_text(encoding="utf-8"))
+    pilot_successor = json.loads((
+        ROOT / "configs/evolution/real_adapter_pilot_entry_v1.json"
+    ).read_text(encoding="utf-8"))
     assert acp0["parent_milestone"] == {
         "milestone_id": milestone["milestone_id"],
         "milestone_hash": milestone["milestone_hash"],
@@ -118,8 +137,13 @@ def test_grounded_planner_raam_cross_round_milestone_is_frozen():
                     acp3["frozen_assets"].get(relative),
                     acp4["frozen_assets"].get(relative),
                     acp5["frozen_assets"].get(relative),
-                    acp6["frozen_assets"].get(relative),
-                }
+                        acp6["frozen_assets"].get(relative),
+                        proposal_successor["frozen_assets"].get(relative),
+                        runtime_successor["frozen_assets"].get(relative),
+                            population_successor["frozen_assets"].get(relative),
+                            integrated_successor["frozen_assets"].get(relative),
+                            pilot_successor["frozen_assets"].get(relative),
+                        }
 
 
 @pytest.fixture

@@ -172,7 +172,11 @@ def candidate_coverage_cell(
     policy: PolicyState,
 ) -> dict[str, Any]:
     plan = dict(poison.get("grounded_mutation_plan") or {})
-    difficulty = dict(plan.get("difficulty_target") or {})
+    difficulty = dict(
+        plan.get("difficulty_target")
+        or poison.get("grounded_difficulty_target")
+        or {}
+    )
     family_id = str(
         plan.get("family_id") or poison.get("family") or ""
     )

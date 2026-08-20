@@ -1,0 +1,70 @@
+{
+  "schema_version": "r3e-grounded-sequential-runtime-milestone-v1",
+  "milestone_id": "grounded-sequential-runtime-gate-v1",
+  "status": "frozen",
+  "parent_milestone": {
+    "milestone_id": "grounded-proposal-authority-v1",
+    "milestone_hash": "sha256:811c178f7f07577cee926334c6b18957b8c77738d9d57c9af688270317a27a96"
+  },
+  "completed_scope": [
+    "parser-memory-and-controlled-composition-unified-sequential-dispatch",
+    "runner-owned-final-rtl-materialization",
+    "per-stage-parser-semantic-intermediate-admission",
+    "exact-sequential-inverse-restoration",
+    "clean-poison-twice-revert-icarus-provider-chain",
+    "compile-simulation-oracle-fail-closed-admission",
+    "stable-effect-and-waveform-determinism-gate",
+    "bounded-one-or-two-ast-edit-structural-minimization",
+    "clean-poison-revert-yosys-proof-triplet",
+    "sequential-failure-descriptor-and-formal-rejection-compatibility",
+    "round-checkpoint-event-resume-and-offline-audit-compatibility",
+    "adapter-authored-rtl-rejection"
+  ],
+  "frozen_interfaces": [
+    "r3e-parser-memory-operator-plan-v1",
+    "r3e-controlled-composition-plan-v1",
+    "r3e-parser-sequential-materialization-v1",
+    "r3e-red-sequential-admission-evidence-v1",
+    "r3e-red-sequential-admission-decision-v1",
+    "r3e-grounded-sequential-execution-bundle-v1",
+    "r3e-arena-grounded-authority-v2"
+  ],
+  "frozen_assets": {
+    "README.md": "sha256:c5e67bdbc9346930cb22d26b3e4cd5afe09a309c4a8f7e970ad03714b34a7a63",
+    "r3e/red/grounded/memory_materializers.py": "sha256:f71aa5990e4c0a53c42be4770d35fd31f305c65a318a0960f69342a418b5a0c4",
+    "r3e/red/grounded/sequential_execution.py": "sha256:4380590f64debd1764bcf75b56534198848dd80ff005484bc8d9c1f183a0e4e7",
+    "r3e/grounded/provider_receipts.py": "sha256:5bb8778083be758623bc7d5a47ad334485a4369a471b22e7a0a7b8c6100e90a6",
+    "r3e/red/grounded/execution.py": "sha256:49f59fbacba3ffc72381b437f51adcacfb0071126308ee031c6a103e6ff970b2",
+    "r3e/red/grounded/arena_validity.py": "sha256:f60823be150083dcc7bbc29cf8fb85e07bca7fb8deb7bbc0f8a79eedf1885e59",
+    "r3e/red/grounded/formal_rejection.py": "sha256:30c8454343cdc6cff716b7153fb8e26b9a52a54b1152b95beaede14331b23acf",
+    "r3e/arena/grounded_authority.py": "sha256:5e5ff84e1428b636fa3394c8f11a140babd3dbe0ac2bf4a2e04a15b4ecc38143",
+    "r3e/arena/runner.py": "sha256:00d57fe2260a09c382a0b3b2a00dee689723715d866ad4cf345b8b7a0d95b6fc",
+    "r3e/arena/audit.py": "sha256:7160d629a20ce3b886a99414a35ff881a4a68b701f46d1c0412529425e21672b",
+    "tests/test_grounded_sequential_execution.py": "sha256:cd02829d0c9fb5f3ab53ebf7f9fae3b44975bb57f24768ff660814c0050d0c04",
+    "tests/test_grounded_planner_raam_closure.py": "sha256:13857fc79a7611cc3f710baa1fb4bd1a7e3dc30c2c5bd16371c871a6deb64a28",
+    "tests/test_grounded_authority_integration.py": "sha256:d41bb58dfaeefac20450b04aec910a1d203a189cfd4360f65aa77eb060902caa",
+    "tests/test_grounded_pre_generation_planner.py": "sha256:d871f97547df2abadb8021943ec0507ca782661bc06b7e76699846945b47bbc9",
+    "tests/test_adaptive_candidate_descriptor_routed.py": "sha256:a1a0128299d02f8b6155ea61b3318ac45e7c5de5bc13f4778f9bc784f8f29224",
+    "tests/test_adaptive_candidate_fixed_mixed.py": "sha256:768ae9aa3cb5a46f38649b9352136026216f21a13e278154a86c6be866921c7d",
+    "tests/test_adaptive_candidate_offline_allocator.py": "sha256:ba0624c91c2aedbec58e85c35dfec468e6e2f288c327f6b51e1af123fe0a19a1",
+    "tests/test_adaptive_candidate_portfolio_red_challenge.py": "sha256:3f2300d99230162e517cc31028048a565da6f2d4a86b887d5305649af19cb88a",
+    "tests/test_adaptive_candidate_protocol.py": "sha256:f2b185aa35c19dcaf17d0abdecf1dcde763231fa202fcf412606ce518b3787b5",
+    "tests/test_adaptive_candidate_raam_portfolio_control.py": "sha256:451961bb391d9b5b85f15072656f38649d4d7a0dd6581302137c5479c7397da0",
+    "tests/test_adaptive_candidate_semantic_diversity.py": "sha256:aa139a3aea7bdad5b32c73d38b8253397c6b090e33eec6e153005f1594bbcdba"
+  },
+  "required_validation": [
+    "pytest -q -p no:cacheprovider tests/test_grounded_sequential_execution.py",
+    "pytest -q -p no:cacheprovider",
+    "python scripts/check_release.py",
+    "python scripts/verify_datasets.py"
+  ],
+  "deferred_scope": [
+    "real-model-stale-memory-discovery-yield",
+    "grd6-red-population-scheduler",
+    "real-provider-routing",
+    "grd8-real-model-pilot",
+    "empirical-cross-design-memory-gain"
+  ],
+  "claim_boundary": "Frozen deterministic parser-memory and controlled-composition final execution authority only. No real-model discovery yield, population gain, cross-design memory gain, or GRD-8 result is claimed.",
+  "milestone_hash": "sha256:af1980bc638a524360f2a776f6c7ff2878044d07cf9c7f9765b0d6da21603b26"
+}

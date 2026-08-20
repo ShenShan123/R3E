@@ -46,12 +46,33 @@ def test_raam_protocol_skeleton_milestone_is_frozen_and_reconstructable():
             / "configs/evolution/portfolio_aware_red_challenge_v1.json"
         ).read_text(encoding="utf-8")
     )
+    proposal_successor = json.loads(
+        (
+            ROOT
+            / "configs/evolution/grounded_proposal_authority_v1.json"
+        ).read_text(encoding="utf-8")
+    )
+    runtime_successor = json.loads(
+        (
+            ROOT
+            / "configs/evolution/grounded_sequential_runtime_gate_v1.json"
+        ).read_text(encoding="utf-8")
+    )
+    population_successor = json.loads(
+        (
+            ROOT
+            / "configs/evolution/grounded_deterministic_population_v1.json"
+        ).read_text(encoding="utf-8")
+    )
     for relative, expected in milestone["frozen_assets"].items():
         current = hash_file(ROOT / relative)
         if current != expected:
             assert current in {
                 acp5["frozen_assets"].get(relative),
                 acp6["frozen_assets"].get(relative),
+                proposal_successor["frozen_assets"].get(relative),
+                runtime_successor["frozen_assets"].get(relative),
+                population_successor["frozen_assets"].get(relative),
             }
     assert set(milestone["phase_scope"]) == {
         f"phase-{number}-{name}"

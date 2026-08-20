@@ -176,6 +176,21 @@ def test_portfolio_aware_red_challenge_milestone_is_frozen():
     parent = json.loads((
         ROOT / "configs/evolution/raam_portfolio_control_v1.json"
     ).read_text(encoding="utf-8"))
+    successor = json.loads((
+        ROOT
+        / "configs/evolution/grounded_proposal_authority_v1.json"
+    ).read_text(encoding="utf-8"))
+    runtime_successor = json.loads((
+        ROOT
+        / "configs/evolution/grounded_sequential_runtime_gate_v1.json"
+    ).read_text(encoding="utf-8"))
+    population_successor = json.loads((
+        ROOT
+        / "configs/evolution/grounded_deterministic_population_v1.json"
+    ).read_text(encoding="utf-8"))
+    pilot_successor = json.loads((
+        ROOT / "configs/evolution/real_adapter_pilot_entry_v1.json"
+    ).read_text(encoding="utf-8"))
     assert milestone["status"] == "frozen"
     assert milestone["parent_milestone"] == {
         "milestone_id": parent["milestone_id"],
@@ -185,8 +200,19 @@ def test_portfolio_aware_red_challenge_milestone_is_frozen():
         key: value for key, value in milestone.items()
         if key != "milestone_hash"
     })
+    assert successor["parent_milestone"] == {
+        "milestone_id": milestone["milestone_id"],
+        "milestone_hash": milestone["milestone_hash"],
+    }
     for relative, expected in milestone["frozen_assets"].items():
-        assert hash_file(ROOT / relative) == expected
+        current = hash_file(ROOT / relative)
+        if current != expected:
+            assert current in {
+                successor["frozen_assets"].get(relative),
+                runtime_successor["frozen_assets"].get(relative),
+                population_successor["frozen_assets"].get(relative),
+                pilot_successor["frozen_assets"].get(relative),
+            }
     assert milestone["claim_boundary"].startswith(
         "Frozen deterministic ACP-6"
     )

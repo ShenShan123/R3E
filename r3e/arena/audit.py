@@ -55,6 +55,19 @@ from r3e.red.portfolio_challenge import (
     PortfolioChallengeViolation,
     build_portfolio_red_authority,
 )
+from r3e.red.grounded.proposal_planner import (
+    GroundedProposalViolation,
+    grounded_proposal_protocol_hash,
+    verify_grounded_proposal_plan,
+    verify_proposal_candidates,
+)
+from r3e.red.grounded.population_scheduler import (
+    GroundedPopulationViolation,
+    load_population_config,
+    population_protocol_hash,
+    verify_population_candidates,
+    verify_population_schedule,
+)
 from r3e.red.learnability import verify_learnability_result
 from r3e.red.selection import select_residual_elites
 from r3e.red.poison_payload import verify_poison_payload
@@ -135,6 +148,7 @@ def reconstruct_round(round_dir: str | Path) -> dict[str, Any]:
         if formal_rejections_path.is_file()
         else []
     )
+    registries = None
     if validity_authority in GROUNDED_ARENA_AUTHORITIES:
         registries = load_arena_grounded_registries(
             project_root, config
@@ -202,7 +216,11 @@ def reconstruct_round(round_dir: str | Path) -> dict[str, Any]:
             if (
                 row.get("grounded_plan_hash")
                 != bundle["plan"]["plan_hash"]
-                or row.get("poison_id") != bundle["plan"]["plan_id"]
+                or row.get("poison_id")
+                != (
+                    bundle["plan"].get("plan_id")
+                    or bundle["plan"].get("poison_id")
+                )
             ):
                 raise RoundAuditViolation(
                     "Grounded validity row is not cross-bound"
@@ -654,6 +672,162 @@ def reconstruct_round(round_dir: str | Path) -> dict[str, Any]:
     )
     if red_context["challenged_policy_hash"] != parent.policy_hash:
         raise RoundAuditViolation("red search context policy binding mismatch")
+    grounded_proposal_audit: dict[str, Any] = {}
+    grounded_population_audit: dict[str, Any] = {}
+    proposal_path = root / "grounded_proposal_plan.json"
+    proposal_execution_path = (
+        root / "grounded_proposal_execution.json"
+    )
+    proposal_archive_path = (
+        root / "grounded_proposal_archive_view.json"
+    )
+    if config.get("grounded_pre_generation_planner"):
+        if (
+            registries is None
+            or not proposal_path.is_file()
+            or not proposal_execution_path.is_file()
+            or not proposal_archive_path.is_file()
+            or red_context.get("grounded_proposal_plan")
+            != read_json(proposal_path)
+        ):
+            raise RoundAuditViolation(
+                "Grounded proposal authority artifacts are missing"
+            )
+        try:
+            proposal = verify_grounded_proposal_plan(
+                read_json(proposal_path),
+                policy=parent,
+                registries=registries,
+                coverage_state=read_json(
+                    root / "coverage_state_before.json"
+                ),
+                archive_view=read_json(proposal_archive_path),
+                memory_capability=red_context.get(
+                    "memory_capability"
+                ),
+            )
+            proposal_execution = verify_proposal_candidates(
+                proposal,
+                _read_jsonl(root / "red_candidates.jsonl"),
+                policy=parent,
+            )
+        except GroundedProposalViolation as exc:
+            raise RoundAuditViolation(
+                "Grounded proposal authority cannot be reconstructed"
+            ) from exc
+        if (
+            proposal_execution
+            != read_json(proposal_execution_path)
+            or context["toolchain_fingerprint"].get(
+                "grounded_proposal_authority_hash"
+            )
+            != grounded_proposal_protocol_hash(registries)
+        ):
+            raise RoundAuditViolation(
+                "Grounded proposal execution/toolchain mismatch"
+            )
+        grounded_proposal_audit = {
+            "grounded_proposal_plan_hash": proposal["plan_hash"],
+            "grounded_proposal_execution_hash": (
+                proposal_execution["execution_hash"]
+            ),
+            "grounded_proposal_selected_count": len(
+                proposal["selected_intent_ids"]
+            ),
+        }
+    elif (
+        red_context.get("grounded_proposal_plan") is not None
+        or proposal_path.exists()
+        or proposal_execution_path.exists()
+    ):
+        raise RoundAuditViolation(
+            "Grounded proposal authority exists without config permission"
+        )
+    population_schedule_path = (
+        root / "grounded_population_schedule.json"
+    )
+    population_execution_path = (
+        root / "grounded_population_execution.json"
+    )
+    if config.get("grounded_population_scheduler"):
+        if (
+            not config.get("grounded_pre_generation_planner")
+            or not population_schedule_path.is_file()
+            or not population_execution_path.is_file()
+            or grounded_proposal_audit == {}
+        ):
+            raise RoundAuditViolation(
+                "Grounded population authority artifacts are missing"
+            )
+        population_config_path = project_root / config.get(
+            "grounded_population_config",
+            "configs/red/deterministic_population_v1.json",
+        )
+        if (
+            not population_config_path.is_file()
+            and "grounded_population_config" not in config
+        ):
+            population_config_path = (
+                Path(__file__).resolve().parents[2]
+                / "configs/red/deterministic_population_v1.json"
+            )
+        try:
+            population_config = load_population_config(
+                population_config_path
+            )
+            schedule = verify_population_schedule(
+                read_json(population_schedule_path),
+                policy=parent,
+                proposal_plan=proposal,
+                config=population_config,
+            )
+            execution = verify_population_candidates(
+                schedule,
+                _read_jsonl(root / "red_candidates.jsonl"),
+                policy=parent,
+            )
+        except GroundedPopulationViolation as exc:
+            raise RoundAuditViolation(
+                "Grounded population authority cannot be reconstructed"
+            ) from exc
+        if (
+            red_context.get("grounded_population_schedule") != schedule
+            or read_json(population_execution_path) != execution
+            or context["toolchain_fingerprint"].get(
+                "grounded_population_authority_hash"
+            )
+            != population_protocol_hash(population_config)
+            or context["toolchain_fingerprint"].get(
+                "grounded_population_config_hash"
+            )
+            != population_config["config_hash"]
+        ):
+            raise RoundAuditViolation(
+                "Grounded population execution/toolchain mismatch"
+            )
+        grounded_population_audit = {
+            "grounded_population_schedule_hash": schedule[
+                "schedule_hash"
+            ],
+            "grounded_population_execution_hash": execution[
+                "execution_hash"
+            ],
+            "grounded_population_config_hash": population_config[
+                "config_hash"
+            ],
+            "grounded_population_arm": schedule["scheduler_mode"],
+            "grounded_population_provider_usage_hash": hash_payload(
+                execution["provider_usage"]
+            ),
+        }
+    elif (
+        red_context.get("grounded_population_schedule") is not None
+        or population_schedule_path.exists()
+        or population_execution_path.exists()
+    ):
+        raise RoundAuditViolation(
+            "Grounded population authority exists without config permission"
+        )
     portfolio_red_audit: dict[str, Any] = {}
     portfolio_capability = red_context.get("portfolio_capability")
     portfolio_authority_path = root / "portfolio_red_authority.json"
@@ -911,6 +1085,12 @@ def reconstruct_round(round_dir: str | Path) -> dict[str, Any]:
     renewed = read_json(root / "renewed_challenge_binding.json")
     if renewed.get("challenged_policy_hash") != active_after.policy_hash:
         raise RoundAuditViolation("renewed challenge is not bound to final active policy")
+    promotion_enabled = bool(
+        config.get("policy_promotion_enabled", True)
+    )
+    promotion_eligible = (
+        promotion_enabled and target["row_count"] > 0
+    )
     record = {
         "schema_version": ROUND_AUDIT_SCHEMA_VERSION,
         "round_id": context["round_id"],
@@ -947,9 +1127,15 @@ def reconstruct_round(round_dir: str | Path) -> dict[str, Any]:
         "decisions_hash": hash_payload(decisions),
         "winner_decision_hash": str(winner.get("decision_hash") or ""),
         "promoted": active_after.policy_hash != parent.policy_hash,
-        "promotion_eligible": target["row_count"] > 0,
+        "promotion_eligible": promotion_eligible,
         "defer_reason": (
-            "" if target["row_count"] > 0 else "insufficient_residual_designs"
+            ""
+            if promotion_eligible
+            else (
+                "promotion_epoch_reserved"
+                if not promotion_enabled
+                else "insufficient_residual_designs"
+            )
         ),
     }
     if formal_rejections_path.is_file():
@@ -962,6 +1148,8 @@ def reconstruct_round(round_dir: str | Path) -> dict[str, Any]:
     record.update(coverage_audit)
     record.update(blue_portfolio_audit)
     record.update(portfolio_red_audit)
+    record.update(grounded_proposal_audit)
+    record.update(grounded_population_audit)
     record["audit_record_hash"] = hash_payload(record)
     return record
 

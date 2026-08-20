@@ -61,6 +61,7 @@ class BlueCandidateProvider(Protocol):
         *,
         policy: PolicyState,
         current_case_evidence: dict[str, Any],
+        current_case_artifact: dict[str, Any],
         slot: dict[str, Any],
         prompt_asset: str,
         prompt_hash: str,

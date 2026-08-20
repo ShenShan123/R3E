@@ -18,6 +18,7 @@ from r3e.blue.portfolio.portfolio_control import (
     load_portfolio_template_registry,
 )
 from r3e.blue.portfolio.semantic_signature import (
+    ParserBackedSemanticSignatureProvider,
     StructuredSemanticSignatureProvider,
 )
 from r3e.blue.portfolio.schema import (
@@ -218,7 +219,18 @@ class ArenaCandidatePortfolioAuthority:
         self.provider = provider
         self.verifier = verifier
         if semantic_signature_provider is None:
-            semantic_signature_provider = StructuredSemanticSignatureProvider(
+            provider_type = (
+                ParserBackedSemanticSignatureProvider
+                if bool(
+                    getattr(
+                        provider,
+                        "requires_current_case_artifact",
+                        False,
+                    )
+                )
+                else StructuredSemanticSignatureProvider
+            )
+            semantic_signature_provider = provider_type(
                 provider_hash=(
                     self.portfolio.semantic_signature_provider_hash
                 )
@@ -314,13 +326,57 @@ class ArenaCandidatePortfolioAuthority:
     ) -> dict[str, Any]:
         self.assert_policy_authorized(policy)
         descriptor = extract_grounded_failure_descriptor(poison)
+        case = {"case_id": str(
+            poison.get("case_id")
+            or poison.get("poison_id")
+            or ""
+        )}
+        # Grounded Red is the authority that freezes the public manifest
+        # facts for this challenge.  Carry only the verifier-owned case
+        # fields across the Arena boundary; model output never contributes
+        # to this mapping.  This lets the formal poison and ACP oracle use
+        # the same case without falling back to a fixed comparator fixture.
+        case_fields = {
+            "golden_rtl",
+            "deps",
+            "tb_sources",
+            "tb_output",
+            "top_module",
+            "sim_timeout",
+            "manifest_file_hashes",
+        }
+        for field in case_fields:
+            if field in poison:
+                case[field] = deepcopy(poison[field])
+        buggy_path = Path(str(poison.get("buggy_rtl") or ""))
+        requires_artifact = bool(getattr(
+            self.provider, "requires_current_case_artifact", False
+        ))
+        if buggy_path.is_file():
+            buggy_source = buggy_path.read_text(encoding="utf-8")
+            if not buggy_source:
+                raise ArenaPortfolioViolation(
+                    "candidate portfolio current buggy RTL is empty"
+                )
+            authority = poison.get("grounded_authority_bundle") or {}
+            execution_bundle = authority.get("execution_bundle") or {}
+            case.update({
+                "buggy_rtl_source": buggy_source,
+                "buggy_rtl_hash": hash_payload(buggy_source),
+                "buggy_rtl_path": str(buggy_path),
+                "top_module": str(
+                    poison.get("top_module")
+                    or execution_bundle.get("top_module")
+                    or "top"
+                ),
+            })
+        elif requires_artifact:
+            raise ArenaPortfolioViolation(
+                "real candidate provider requires current buggy RTL"
+            )
         result = self.executor.execute(
             policy=policy,
-            case={"case_id": str(
-                poison.get("case_id")
-                or poison.get("poison_id")
-                or ""
-            )},
+            case=case,
             descriptor=descriptor,
             run_seed=seed,
             execution_plan=execution_plan,

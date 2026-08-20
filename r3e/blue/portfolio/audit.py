@@ -271,6 +271,15 @@ def verify_blue_evaluation(
         ]
     except Exception as exc:
         raise PortfolioAuditViolation("provider receipt is invalid") from exc
+    if bool(
+        getattr(provider, "requires_current_case_artifact", False)
+    ) and any(
+        "semantic_patch" in row.get("patch_payload", {})
+        for row in verified_provider_receipts
+    ):
+        raise PortfolioAuditViolation(
+            "formal provider receipt carries semantic patch authority"
+        )
     for index, (
         provider_row,
         generation,

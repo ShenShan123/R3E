@@ -33,6 +33,7 @@ from .portfolio_control import (
     PortfolioTemplateRegistry,
 )
 from .semantic_signature import (
+    ParserBackedSemanticSignatureProvider,
     StructuredSemanticSignatureProvider,
     verify_semantic_signature_receipt,
 )
@@ -114,9 +115,24 @@ class CandidatePortfolioExecutor:
                 "candidate verifier must declare verifier_hash"
             )
         if semantic_signature_provider is None:
-            semantic_signature_provider = StructuredSemanticSignatureProvider(
-                provider_hash=portfolio.semantic_signature_provider_hash
-            )
+            if bool(
+                getattr(provider, "requires_current_case_artifact", False)
+            ):
+                semantic_signature_provider = (
+                    ParserBackedSemanticSignatureProvider(
+                        provider_hash=(
+                            portfolio.semantic_signature_provider_hash
+                        )
+                    )
+                )
+            else:
+                semantic_signature_provider = (
+                    StructuredSemanticSignatureProvider(
+                        provider_hash=(
+                            portfolio.semantic_signature_provider_hash
+                        )
+                    )
+                )
         if not callable(
             getattr(semantic_signature_provider, "materialize", None)
         ):
@@ -133,6 +149,20 @@ class CandidatePortfolioExecutor:
         ):
             raise CandidatePortfolioExecutionViolation(
                 "semantic signature provider/portfolio binding mismatch"
+            )
+        if (
+            bool(
+                getattr(provider, "requires_current_case_artifact", False)
+            )
+            and getattr(
+                semantic_signature_provider,
+                "runner_derives_semantic_patch",
+                False,
+            )
+            is not True
+        ):
+            raise CandidatePortfolioExecutionViolation(
+                "formal candidate provider requires parser-backed semantics"
             )
         self.project_root = Path(project_root).resolve()
         self.clock = clock
@@ -171,6 +201,39 @@ class CandidatePortfolioExecutor:
             "slot_index": slot_index,
         }).split(":", 1)[1][:16]
         return f"C_{suffix}_{slot_index}"
+
+    @staticmethod
+    def _current_case_artifact(
+        case: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Expose only the current buggy RTL needed to propose a patch."""
+        allowed = {"buggy_rtl_source", "buggy_rtl_hash", "top_module"}
+        artifact = {
+            key: deepcopy(case[key]) for key in allowed if key in case
+        }
+        if "buggy_rtl_source" in artifact:
+            source = artifact["buggy_rtl_source"]
+            if not isinstance(source, str) or not source:
+                raise CandidatePortfolioExecutionViolation(
+                    "current buggy RTL source must be non-empty"
+                )
+            expected = hash_payload(source)
+            if artifact.get("buggy_rtl_hash") != expected:
+                raise CandidatePortfolioExecutionViolation(
+                    "current buggy RTL source hash mismatch"
+                )
+        elif "buggy_rtl_hash" in artifact:
+            raise CandidatePortfolioExecutionViolation(
+                "buggy RTL hash cannot be supplied without source"
+            )
+        if "top_module" in artifact and (
+            not isinstance(artifact["top_module"], str)
+            or not artifact["top_module"]
+        ):
+            raise CandidatePortfolioExecutionViolation(
+                "top module must be a non-empty string"
+            )
+        return artifact
 
     def _wall_gate(self, started: float, maximum: int) -> None:
         elapsed = self.clock() - started
@@ -319,6 +382,10 @@ class CandidatePortfolioExecutor:
         semantic_signature_receipts: list[dict[str, Any]] = []
         verification_receipts: list[dict[str, Any]] = []
         expected_budget_hash = hash_payload(policy.budgets)
+        current_case_artifact = self._current_case_artifact(case)
+        current_case_artifact_hash = hash_payload(
+            current_case_artifact
+        )
 
         for slot in plan.slots:
             lens = self.registry.lenses[slot["lens_id"]]
@@ -330,6 +397,9 @@ class CandidatePortfolioExecutor:
             prompt_hash = hash_payload({
                 "prompt_asset_hash": lens.prompt_asset_hash,
                 "current_case_evidence": evidence,
+                "current_case_artifact_hash": (
+                    current_case_artifact_hash
+                ),
                 "effective_policy_hash": policy.effective_policy_hash,
                 "case_id": case_id,
             })
@@ -347,6 +417,9 @@ class CandidatePortfolioExecutor:
                     self.provider.generate_candidate(
                         policy=policy,
                         current_case_evidence=deepcopy(evidence),
+                        current_case_artifact=deepcopy(
+                            current_case_artifact
+                        ),
                         slot=deepcopy(slot),
                         prompt_asset=prompt_asset,
                         prompt_hash=prompt_hash,
@@ -369,6 +442,9 @@ class CandidatePortfolioExecutor:
                 expected_slot=slot,
                 expected_prompt_hash=prompt_hash,
                 current_case_evidence_hash=evidence_hash,
+                current_case_artifact_hash=(
+                    current_case_artifact_hash
+                ),
             )
             total_tokens += (
                 generation["input_tokens"] + generation["output_tokens"]
@@ -380,6 +456,33 @@ class CandidatePortfolioExecutor:
             generation_receipts.append(generation)
             trace.record_generation(generation)
 
+            authoritative_patch_payload = deepcopy(
+                provider_output["patch_payload"]
+            )
+            derive_semantic_patch = getattr(
+                self.semantic_signature_provider,
+                "derive_semantic_patch",
+                None,
+            )
+            if callable(derive_semantic_patch):
+                try:
+                    authoritative_patch_payload["semantic_patch"] = (
+                        derive_semantic_patch(
+                            patch_payload=deepcopy(
+                                provider_output["patch_payload"]
+                            ),
+                            current_case_artifact=deepcopy(
+                                current_case_artifact
+                            ),
+                            expected_patch_scope=policy.configuration[
+                                "patch_scope"
+                            ],
+                        )
+                    )
+                except Exception as exc:
+                    raise CandidatePortfolioExecutionViolation(
+                        "runner failed to derive semantic patch from RTL AST"
+                    ) from exc
             try:
                 signature_receipt = verify_semantic_signature_receipt(
                     self.semantic_signature_provider.materialize(
@@ -387,11 +490,14 @@ class CandidatePortfolioExecutor:
                         lens_id=slot["lens_id"],
                         patch_hash=generation["patch_payload_hash"],
                         patch_payload=deepcopy(
-                            provider_output["patch_payload"]
+                            authoritative_patch_payload
                         ),
                         expected_patch_scope=policy.configuration[
                             "patch_scope"
                         ],
+                        current_case_artifact=deepcopy(
+                            current_case_artifact
+                        ),
                     ),
                     expected_provider_hash=(
                         self.semantic_signature_provider_hash
@@ -406,11 +512,13 @@ class CandidatePortfolioExecutor:
 
             verifier_output = self.verifier(
                 policy=policy,
-                case={"case_id": case_id},
+                # The provider receives only _current_case_artifact above.
+                # Golden/testbench assets remain runner-owned verifier state.
+                case=deepcopy(dict(case)),
                 current_case_evidence=deepcopy(evidence),
                 slot=deepcopy(slot),
                 candidate_id=candidate_id,
-                patch_payload=deepcopy(provider_output["patch_payload"]),
+                patch_payload=deepcopy(authoritative_patch_payload),
             )
             self._wall_gate(started, max_wall)
             if not isinstance(verifier_output, Mapping):

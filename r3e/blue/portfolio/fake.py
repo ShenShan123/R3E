@@ -27,6 +27,7 @@ class DeterministicFakeCandidateProvider:
     """Return slot-bound patch proposals without correctness authority."""
 
     toolchain_fingerprint = FAKE_CANDIDATE_TOOLCHAIN
+    requires_current_case_artifact = False
 
     def __init__(
         self,
@@ -50,6 +51,7 @@ class DeterministicFakeCandidateProvider:
         *,
         policy: PolicyState,
         current_case_evidence: dict[str, Any],
+        current_case_artifact: dict[str, Any],
         slot: dict[str, Any],
         prompt_asset: str,
         prompt_hash: str,
@@ -59,6 +61,9 @@ class DeterministicFakeCandidateProvider:
             "candidate_id": candidate_id,
             "slot": dict(slot),
             "current_case_evidence": dict(current_case_evidence),
+            "current_case_artifact_hash": hash_payload(
+                current_case_artifact
+            ),
         })
         semantic_group = self.semantic_groups.get(
             int(slot["slot_index"]), f"slot-{slot['slot_index']}"
@@ -90,6 +95,9 @@ class DeterministicFakeCandidateProvider:
             "prompt_hash": prompt_hash,
             "current_case_evidence_hash": hash_payload(
                 current_case_evidence
+            ),
+            "current_case_artifact_hash": hash_payload(
+                current_case_artifact
             ),
             "raw_response_hash": hash_payload({
                 "prompt_asset": prompt_asset,

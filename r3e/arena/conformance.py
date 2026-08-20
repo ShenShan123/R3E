@@ -229,6 +229,7 @@ def _validate_operation_payload(operation: str, payload: Mapping[str, Any]) -> N
                 "candidate_seed",
                 "prompt_hash",
                 "current_case_evidence_hash",
+                "current_case_artifact_hash",
                 "raw_response_hash",
                 "patch_payload",
                 "patch_payload_hash",
@@ -265,6 +266,7 @@ def _validate_operation_payload(operation: str, payload: Mapping[str, Any]) -> N
             "lens_hash",
             "prompt_hash",
             "current_case_evidence_hash",
+            "current_case_artifact_hash",
             "raw_response_hash",
             "patch_payload_hash",
         ):

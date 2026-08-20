@@ -46,6 +46,12 @@ def provider_implementation_hash(
             red_grounded_root / "operator_ast.py",
             red_grounded_root / "materializers.py",
         ],
+        ("semantic_parser", "r3e-verilog-sequential-ast", "3"): [
+            red_grounded_root / "verilog_ast.py",
+            red_grounded_root / "operator_ast.py",
+            red_grounded_root / "materializers.py",
+            red_grounded_root / "memory_materializers.py",
+        ],
         ("formal_parser", "r3e-yosys-sat-formal", "1"): [
             grounded_root / "yosys_formal.py",
         ],

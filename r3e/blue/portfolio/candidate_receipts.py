@@ -8,7 +8,7 @@ from typing import Any, Mapping
 from r3e.protocol.hashing import hash_payload
 
 
-GENERATION_SCHEMA = "r3e-blue-candidate-generation-v1"
+GENERATION_SCHEMA = "r3e-blue-candidate-generation-v2"
 VERIFICATION_SCHEMA = "r3e-blue-candidate-verification-v1"
 SELECTION_SCHEMA = "r3e-blue-candidate-selection-v1"
 SELECTION_POLICY = "oracle_then_minimality_v1"
@@ -51,6 +51,7 @@ def build_generation_receipt(
     expected_slot: Mapping[str, Any],
     expected_prompt_hash: str,
     current_case_evidence_hash: str,
+    current_case_artifact_hash: str,
 ) -> dict[str, Any]:
     if provider_output.get("candidate_id") != expected_candidate_id:
         raise CandidateReceiptViolation("provider candidate ID mismatch")
@@ -66,6 +67,8 @@ def build_generation_receipt(
         raise CandidateReceiptViolation("provider prompt hash mismatch")
     if provider_output.get("current_case_evidence_hash") != current_case_evidence_hash:
         raise CandidateReceiptViolation("provider current-case evidence mismatch")
+    if provider_output.get("current_case_artifact_hash") != current_case_artifact_hash:
+        raise CandidateReceiptViolation("provider current-case artifact mismatch")
     patch_payload = provider_output.get("patch_payload")
     if not isinstance(patch_payload, Mapping):
         raise CandidateReceiptViolation("provider patch payload must be an object")
@@ -80,6 +83,9 @@ def build_generation_receipt(
         "prompt_hash": _digest(expected_prompt_hash, "prompt_hash"),
         "current_case_evidence_hash": _digest(
             current_case_evidence_hash, "current_case_evidence_hash"
+        ),
+        "current_case_artifact_hash": _digest(
+            current_case_artifact_hash, "current_case_artifact_hash"
         ),
         "provider_receipt_hash": _digest(
             provider_output.get("result_hash"), "provider_receipt_hash"
@@ -113,6 +119,7 @@ def verify_generation_receipt(raw: Mapping[str, Any]) -> dict[str, Any]:
             "lens_hash",
             "prompt_hash",
             "current_case_evidence_hash",
+            "current_case_artifact_hash",
             "provider_receipt_hash",
             "raw_response_hash",
             "patch_payload_hash",
@@ -134,6 +141,7 @@ def verify_generation_receipt(raw: Mapping[str, Any]) -> dict[str, Any]:
         "lens_hash",
         "prompt_hash",
         "current_case_evidence_hash",
+        "current_case_artifact_hash",
         "provider_receipt_hash",
         "raw_response_hash",
         "patch_payload_hash",

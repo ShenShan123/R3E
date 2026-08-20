@@ -64,6 +64,8 @@ def build_red_search_context(
     covered_archive: list[dict[str, Any]],
     memory_capability: dict[str, Any] | None = None,
     portfolio_capability: dict[str, Any] | None = None,
+    grounded_proposal_plan: dict[str, Any] | None = None,
+    grounded_population_schedule: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Expose only a hash-bound archive summary to conditioned red search."""
     summaries = []
@@ -118,7 +120,11 @@ def build_red_search_context(
         row["archive_cell"],
         row["poison_id"],
     ))
-    if memory_capability is not None and portfolio_capability is not None:
+    if grounded_population_schedule is not None:
+        schema_version = "r3e-red-search-context-v7"
+    elif grounded_proposal_plan is not None:
+        schema_version = "r3e-red-search-context-v6"
+    elif memory_capability is not None and portfolio_capability is not None:
         schema_version = "r3e-red-search-context-v5"
     elif portfolio_capability is not None:
         schema_version = "r3e-red-search-context-v4"
@@ -160,6 +166,43 @@ def build_red_search_context(
             raise CapabilityPacketViolation(
                 "portfolio capability is invalid"
             ) from exc
+    if grounded_proposal_plan is not None:
+        plan = dict(grounded_proposal_plan)
+        if (
+            plan.get("schema_version")
+            != "r3e-grounded-proposal-authority-v1"
+            or plan.get("challenged_policy_hash")
+            != policy.policy_hash
+            or plan.get("challenged_effective_policy_hash")
+            != policy.effective_policy_hash
+            or plan.get("plan_hash") != hash_payload({
+                key: value for key, value in plan.items()
+                if key != "plan_hash"
+            })
+        ):
+            raise CapabilityPacketViolation(
+                "grounded proposal plan is invalid"
+            )
+        context["grounded_proposal_plan"] = plan
+    if grounded_population_schedule is not None:
+        schedule = dict(grounded_population_schedule)
+        if (
+            grounded_proposal_plan is None
+            or schedule.get("schema_version")
+            != "r3e-red-population-schedule-v1"
+            or schedule.get("challenged_policy_hash")
+            != policy.policy_hash
+            or schedule.get("proposal_plan_hash")
+            != grounded_proposal_plan["plan_hash"]
+            or schedule.get("schedule_hash") != hash_payload({
+                key: value for key, value in schedule.items()
+                if key != "schedule_hash"
+            })
+        ):
+            raise CapabilityPacketViolation(
+                "grounded population schedule is invalid"
+            )
+        context["grounded_population_schedule"] = schedule
     context["context_hash"] = hash_payload(context)
     return context
 
@@ -171,6 +214,8 @@ def verify_red_search_context(context: dict[str, Any]) -> dict[str, Any]:
         "r3e-red-search-context-v3",
         "r3e-red-search-context-v4",
         "r3e-red-search-context-v5",
+        "r3e-red-search-context-v6",
+        "r3e-red-search-context-v7",
     }:
         raise CapabilityPacketViolation("red search context schema mismatch")
     required_fields = {
@@ -182,16 +227,30 @@ def verify_red_search_context(context: dict[str, Any]) -> dict[str, Any]:
         "covered_count",
         "context_hash",
     }
+    has_memory = "memory_capability" in context
+    has_portfolio = "portfolio_capability" in context
+    has_proposal = "grounded_proposal_plan" in context
+    has_population = "grounded_population_schedule" in context
     if schema in {
         "r3e-red-search-context-v3",
         "r3e-red-search-context-v5",
-    }:
+    } or (
+        schema in {"r3e-red-search-context-v6", "r3e-red-search-context-v7"}
+        and has_memory
+    ):
         required_fields.add("memory_capability")
     if schema in {
         "r3e-red-search-context-v4",
         "r3e-red-search-context-v5",
-    }:
+    } or (
+        schema in {"r3e-red-search-context-v6", "r3e-red-search-context-v7"}
+        and has_portfolio
+    ):
         required_fields.add("portfolio_capability")
+    if schema in {"r3e-red-search-context-v6", "r3e-red-search-context-v7"}:
+        required_fields.add("grounded_proposal_plan")
+    if schema == "r3e-red-search-context-v7":
+        required_fields.add("grounded_population_schedule")
     if set(context) != required_fields:
         raise CapabilityPacketViolation(
             "red search context fields mismatch"
@@ -199,7 +258,10 @@ def verify_red_search_context(context: dict[str, Any]) -> dict[str, Any]:
     if schema in {
         "r3e-red-search-context-v3",
         "r3e-red-search-context-v5",
-    }:
+    } or (
+        schema in {"r3e-red-search-context-v6", "r3e-red-search-context-v7"}
+        and has_memory
+    ):
         memory_capability = context.get("memory_capability")
         if (
             not isinstance(memory_capability, dict)
@@ -209,12 +271,15 @@ def verify_red_search_context(context: dict[str, Any]) -> dict[str, Any]:
             raise CapabilityPacketViolation(
                 "red search memory capability binding mismatch"
             )
-    elif "memory_capability" in context:
+    elif has_memory:
         raise CapabilityPacketViolation("v2 red search cannot carry memory capability")
     if schema in {
         "r3e-red-search-context-v4",
         "r3e-red-search-context-v5",
-    }:
+    } or (
+        schema in {"r3e-red-search-context-v6", "r3e-red-search-context-v7"}
+        and has_portfolio
+    ):
         portfolio_capability = context.get("portfolio_capability")
         if (
             not isinstance(portfolio_capability, dict)
@@ -235,9 +300,48 @@ def verify_red_search_context(context: dict[str, Any]) -> dict[str, Any]:
             raise CapabilityPacketViolation(
                 "red search portfolio capability hash mismatch"
             )
-    elif "portfolio_capability" in context:
+    elif has_portfolio:
         raise CapabilityPacketViolation(
             "red search context cannot carry portfolio capability"
+        )
+    if schema in {"r3e-red-search-context-v6", "r3e-red-search-context-v7"}:
+        proposal = context.get("grounded_proposal_plan")
+        if (
+            not isinstance(proposal, dict)
+            or proposal.get("challenged_policy_hash")
+            != context.get("challenged_policy_hash")
+            or proposal.get("plan_hash") != hash_payload({
+                key: value for key, value in proposal.items()
+                if key != "plan_hash"
+            })
+        ):
+            raise CapabilityPacketViolation(
+                "red search proposal plan binding mismatch"
+            )
+    elif has_proposal:
+        raise CapabilityPacketViolation(
+            "red search context cannot carry proposal authority"
+        )
+    if schema == "r3e-red-search-context-v7":
+        population = context.get("grounded_population_schedule")
+        proposal = context["grounded_proposal_plan"]
+        if (
+            not isinstance(population, dict)
+            or population.get("challenged_policy_hash")
+            != context.get("challenged_policy_hash")
+            or population.get("proposal_plan_hash")
+            != proposal.get("plan_hash")
+            or population.get("schedule_hash") != hash_payload({
+                key: value for key, value in population.items()
+                if key != "schedule_hash"
+            })
+        ):
+            raise CapabilityPacketViolation(
+                "red search population schedule binding mismatch"
+            )
+    elif has_population:
+        raise CapabilityPacketViolation(
+            "red search context cannot carry population authority"
         )
     summaries = context.get("archive_summary")
     if not isinstance(summaries, list):

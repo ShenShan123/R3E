@@ -209,6 +209,21 @@ def test_adaptive_candidate_protocol_milestone_is_frozen():
         ROOT
         / "configs/evolution/portfolio_aware_red_challenge_v1.json"
     ).read_text(encoding="utf-8"))
+    proposal_successor = json.loads((
+        ROOT
+        / "configs/evolution/grounded_proposal_authority_v1.json"
+    ).read_text(encoding="utf-8"))
+    runtime_successor = json.loads((
+        ROOT
+        / "configs/evolution/grounded_sequential_runtime_gate_v1.json"
+    ).read_text(encoding="utf-8"))
+    population_successor = json.loads((
+        ROOT
+        / "configs/evolution/grounded_deterministic_population_v1.json"
+    ).read_text(encoding="utf-8"))
+    pilot_successor = json.loads((
+        ROOT / "configs/evolution/real_adapter_pilot_entry_v1.json"
+    ).read_text(encoding="utf-8"))
     assert acp1["parent_milestone"] == {
         "milestone_id": milestone["milestone_id"],
         "milestone_hash": milestone["milestone_hash"],
@@ -238,8 +253,12 @@ def test_adaptive_candidate_protocol_milestone_is_frozen():
                 acp3["frozen_assets"].get(relative),
                 acp4["frozen_assets"].get(relative),
                 acp5["frozen_assets"].get(relative),
-                acp6["frozen_assets"].get(relative),
-            }
+                    acp6["frozen_assets"].get(relative),
+                    proposal_successor["frozen_assets"].get(relative),
+                    runtime_successor["frozen_assets"].get(relative),
+                    population_successor["frozen_assets"].get(relative),
+                    pilot_successor["frozen_assets"].get(relative),
+                }
 
 
 def test_lens_definition_rejects_history_and_red_truth_fields():

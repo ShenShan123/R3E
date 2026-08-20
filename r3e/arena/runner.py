@@ -88,6 +88,20 @@ from r3e.red.grounded.coverage import (
 from r3e.red.grounded.difficulty import (
     difficulty_profile_from_challenge,
 )
+from r3e.red.grounded.proposal_planner import (
+    GroundedProposalViolation,
+    build_grounded_proposal_plan,
+    build_proposal_archive_view,
+    grounded_proposal_protocol_hash,
+    verify_proposal_candidates,
+)
+from r3e.red.grounded.population_scheduler import (
+    GroundedPopulationViolation,
+    build_population_schedule,
+    load_population_config,
+    population_protocol_hash,
+    verify_population_candidates,
+)
 
 from .audit import append_round_ledger, freeze_round_audit
 from .grounded_authority import (
@@ -394,6 +408,71 @@ class EvolutionRoundRunner:
             if self.validity_authority in GROUNDED_ARENA_AUTHORITIES
             else None
         )
+        if self.config.get("grounded_pre_generation_planner"):
+            if self.grounded_registries is None:
+                raise RoundRunnerViolation(
+                    "pre-generation planner requires Grounded validity"
+                )
+            proposal_hash = grounded_proposal_protocol_hash(
+                self.grounded_registries
+            )
+            if (
+                self.round_toolchain_fingerprint.get("schema_version")
+                == "r3e-arena-composite-toolchain-v1"
+            ):
+                self.round_toolchain_fingerprint[
+                    "grounded_proposal_authority_hash"
+                ] = proposal_hash
+            else:
+                self.round_toolchain_fingerprint = {
+                    "schema_version": (
+                        "r3e-arena-grounded-planner-toolchain-v1"
+                    ),
+                    "evolution_adapter": adapter_toolchain,
+                    "grounded_proposal_authority_hash": proposal_hash,
+                }
+        self.population_config = None
+        if self.config.get("grounded_population_scheduler"):
+            if not self.config.get("grounded_pre_generation_planner"):
+                raise RoundRunnerViolation(
+                    "population scheduler requires proposal authority"
+                )
+            population_path = self.root / self.config.get(
+                "grounded_population_config",
+                "configs/red/deterministic_population_v1.json",
+            )
+            if (
+                not population_path.is_file()
+                and "grounded_population_config" not in self.config
+            ):
+                population_path = (
+                    Path(__file__).resolve().parents[2]
+                    / "configs/red/deterministic_population_v1.json"
+                )
+            try:
+                self.population_config = load_population_config(
+                    population_path
+                )
+            except GroundedPopulationViolation as exc:
+                raise RoundRunnerViolation(str(exc)) from exc
+            self.round_toolchain_fingerprint.update({
+                "schema_version": (
+                    "r3e-arena-grounded-population-toolchain-v1"
+                ),
+                "grounded_population_authority_hash": (
+                    population_protocol_hash(self.population_config)
+                ),
+                "grounded_population_config_hash": (
+                    self.population_config["config_hash"]
+                ),
+            })
+            # Population scheduling enriches the composite Arena binding; it
+            # must not erase the ACP authority envelope that the offline
+            # round auditor reconstructs.
+            if self.candidate_portfolio_authority is not None:
+                self.round_toolchain_fingerprint[
+                    "schema_version"
+                ] = "r3e-arena-composite-toolchain-v1"
         self.code_version = str(
             config.get("code_version") or detect_code_version(self.root)
         )
@@ -578,7 +657,21 @@ class EvolutionRoundRunner:
         authority_path = (
             self.round_dir / "portfolio_red_authority.json"
         )
-        if not coverage_path.is_file() and not authority_path.is_file():
+        proposal_path = self.round_dir / "grounded_proposal_plan.json"
+        execution_path = (
+            self.round_dir / "grounded_proposal_execution.json"
+        )
+        population_schedule_path = (
+            self.round_dir / "grounded_population_schedule.json"
+        )
+        population_execution_path = (
+            self.round_dir / "grounded_population_execution.json"
+        )
+        if (
+            not coverage_path.is_file()
+            and not authority_path.is_file()
+            and not proposal_path.is_file()
+        ):
             return generated
         output: dict[str, Any] = {"generated": generated}
         if coverage_path.is_file():
@@ -592,6 +685,20 @@ class EvolutionRoundRunner:
         if authority_path.is_file():
             output["portfolio_red_authority"] = read_json(
                 authority_path
+            )
+        if proposal_path.is_file():
+            output["grounded_proposal_plan"] = read_json(
+                proposal_path
+            )
+            output["grounded_proposal_execution"] = read_json(
+                execution_path
+            )
+        if population_schedule_path.is_file():
+            output["grounded_population_schedule"] = read_json(
+                population_schedule_path
+            )
+            output["grounded_population_execution"] = read_json(
+                population_execution_path
             )
         return output
 
@@ -815,6 +922,11 @@ class EvolutionRoundRunner:
         if self.state.next_stage() == "RED_GENERATE":
             memory_capability = None
             portfolio_capability = None
+            grounded_proposal_plan = None
+            grounded_proposal_execution = None
+            grounded_population_schedule = None
+            grounded_population_execution = None
+            coverage_before = None
             if parent.memory_binding:
                 memory_root = (
                     self.root
@@ -837,6 +949,72 @@ class EvolutionRoundRunner:
                 )
             residual_archive = load_archive(self.archive_path)
             covered_archive = load_archive(self.covered_archive_path)
+            if self.validity_authority in GROUNDED_ARENA_AUTHORITIES:
+                coverage_before = load_coverage_state(
+                    self.coverage_state_path
+                )
+                atomic_write_json(
+                    self.round_dir / "coverage_state_before.json",
+                    coverage_before,
+                )
+            if self.config.get("grounded_pre_generation_planner"):
+                if (
+                    coverage_before is None
+                    or self.grounded_registries is None
+                ):
+                    raise RoundRunnerViolation(
+                        "Grounded proposal authority is unavailable"
+                    )
+                proposal_archive_view = build_proposal_archive_view(
+                    residual_archive=residual_archive,
+                    covered_archive=covered_archive,
+                )
+                atomic_write_json(
+                    self.round_dir / "grounded_proposal_archive_view.json",
+                    proposal_archive_view,
+                )
+                grounded_proposal_plan = build_grounded_proposal_plan(
+                    policy=parent,
+                    registries=self.grounded_registries,
+                    coverage_state=coverage_before,
+                    archive_view=proposal_archive_view,
+                    budget=int(self.config.get(
+                        "grounded_red_proposal_budget", 1
+                    )),
+                    family_quota=int(self.config.get(
+                        "grounded_family_quota", 1
+                    )),
+                    archive_quota=int(self.config.get(
+                        "grounded_archive_quota", 1
+                    )),
+                    maximum_difficulty_band=str(self.config.get(
+                        "grounded_maximum_difficulty_band", "D3"
+                    )),
+                    memory_capability=memory_capability,
+                    allow_composition=bool(self.config.get(
+                        "grounded_allow_controlled_composition", True
+                    )),
+                )
+                atomic_write_json(
+                    self.round_dir / "grounded_proposal_plan.json",
+                    grounded_proposal_plan,
+                )
+                if self.population_config is not None:
+                    try:
+                        grounded_population_schedule = (
+                            build_population_schedule(
+                                policy=parent,
+                                proposal_plan=grounded_proposal_plan,
+                                config=self.population_config,
+                            )
+                        )
+                    except GroundedPopulationViolation as exc:
+                        raise RoundRunnerViolation(str(exc)) from exc
+                    atomic_write_json(
+                        self.round_dir
+                        / "grounded_population_schedule.json",
+                        grounded_population_schedule,
+                    )
             portfolio_capability = self._build_portfolio_red_capability(
                 parent,
                 residual_archive=residual_archive,
@@ -848,6 +1026,10 @@ class EvolutionRoundRunner:
                 covered_archive=covered_archive,
                 memory_capability=memory_capability,
                 portfolio_capability=portfolio_capability,
+                grounded_proposal_plan=grounded_proposal_plan,
+                grounded_population_schedule=(
+                    grounded_population_schedule
+                ),
             )
             atomic_write_json(
                 self.round_dir / "red_search_context.json",
@@ -864,6 +1046,38 @@ class EvolutionRoundRunner:
                 raise RoundRunnerViolation("red candidate is missing poison_id")
             if len(poison_ids) != len(set(poison_ids)):
                 raise RoundRunnerViolation("red candidate poison_id must be unique")
+            if grounded_proposal_plan is not None:
+                try:
+                    grounded_proposal_execution = (
+                        verify_proposal_candidates(
+                            grounded_proposal_plan,
+                            candidates,
+                            policy=parent,
+                        )
+                    )
+                except GroundedProposalViolation as exc:
+                    raise RoundRunnerViolation(str(exc)) from exc
+                atomic_write_json(
+                    self.round_dir
+                    / "grounded_proposal_execution.json",
+                    grounded_proposal_execution,
+                )
+            if grounded_population_schedule is not None:
+                try:
+                    grounded_population_execution = (
+                        verify_population_candidates(
+                            grounded_population_schedule,
+                            candidates,
+                            policy=parent,
+                        )
+                    )
+                except GroundedPopulationViolation as exc:
+                    raise RoundRunnerViolation(str(exc)) from exc
+                atomic_write_json(
+                    self.round_dir
+                    / "grounded_population_execution.json",
+                    grounded_population_execution,
+                )
             for row in candidates:
                 if row.get("challenged_policy_hash") != parent.policy_hash:
                     raise RoundRunnerViolation("red candidate is not bound to active parent")
@@ -928,14 +1142,20 @@ class EvolutionRoundRunner:
                 if portfolio_red_authority is not None
                 else candidates
             )
+            if grounded_proposal_plan is not None:
+                if not isinstance(red_stage_output, dict):
+                    red_stage_output = {"generated": candidates}
+                red_stage_output.update({
+                    "grounded_proposal_plan": grounded_proposal_plan,
+                    "grounded_proposal_execution": (
+                        grounded_proposal_execution
+                    ),
+                })
             if self.validity_authority in GROUNDED_ARENA_AUTHORITIES:
-                coverage_before = load_coverage_state(
-                    self.coverage_state_path
-                )
-                atomic_write_json(
-                    self.round_dir / "coverage_state_before.json",
-                    coverage_before,
-                )
+                if coverage_before is None:
+                    raise RoundRunnerViolation(
+                        "Grounded coverage state was not frozen"
+                    )
                 coverage_plan = build_coverage_plan(
                     candidates,
                     coverage_state=coverage_before,
@@ -988,6 +1208,24 @@ class EvolutionRoundRunner:
                     red_stage_output["portfolio_red_authority"] = (
                         portfolio_red_authority
                     )
+                if grounded_proposal_plan is not None:
+                    red_stage_output.update({
+                        "grounded_proposal_plan": (
+                            grounded_proposal_plan
+                        ),
+                        "grounded_proposal_execution": (
+                            grounded_proposal_execution
+                        ),
+                    })
+                if grounded_population_schedule is not None:
+                    red_stage_output.update({
+                        "grounded_population_schedule": (
+                            grounded_population_schedule
+                        ),
+                        "grounded_population_execution": (
+                            grounded_population_execution
+                        ),
+                    })
                 self.events.emit(
                     "red",
                     "grounded_coverage_plan_frozen",
@@ -1017,6 +1255,31 @@ class EvolutionRoundRunner:
                     len(portfolio_capability["coverage_regions"])
                     if portfolio_capability is not None
                     else 0
+                ),
+                grounded_proposal_plan_hash=(
+                    grounded_proposal_plan["plan_hash"]
+                    if grounded_proposal_plan is not None
+                    else ""
+                ),
+                grounded_proposal_execution_hash=(
+                    grounded_proposal_execution["execution_hash"]
+                    if grounded_proposal_execution is not None
+                    else ""
+                ),
+                grounded_population_schedule_hash=(
+                    grounded_population_schedule["schedule_hash"]
+                    if grounded_population_schedule is not None
+                    else ""
+                ),
+                grounded_population_execution_hash=(
+                    grounded_population_execution["execution_hash"]
+                    if grounded_population_execution is not None
+                    else ""
+                ),
+                grounded_population_provider_usage=(
+                    grounded_population_execution["provider_usage"]
+                    if grounded_population_execution is not None
+                    else {}
                 ),
             )
             self._checkpoint(
@@ -1185,6 +1448,13 @@ class EvolutionRoundRunner:
                     row["grounded_authority_bundle"][
                         "failure_descriptor"
                     ]["descriptor_hash"]
+                    for row in validity_rows
+                    if row.get("grounded_authority_bundle")
+                ],
+                grounded_execution_schema_versions=[
+                    row["grounded_authority_bundle"][
+                        "execution_bundle"
+                    ]["schema_version"]
                     for row in validity_rows
                     if row.get("grounded_authority_bundle")
                 ],
@@ -1676,7 +1946,12 @@ class EvolutionRoundRunner:
         adaptation = verify_manifest(read_json(self.round_dir / "adaptation_manifest.json"))
         target = verify_manifest(read_json(self.round_dir / "target_manifest.json"))
         if self.state.next_stage() == "PROPOSE_CHILDREN":
-            if target["row_count"] == 0:
+            if (
+                target["row_count"] == 0
+                or not bool(
+                    self.config.get("policy_promotion_enabled", True)
+                )
+            ):
                 children = []
             else:
                 search_space = read_json(self.root / self.config["policy_search_space"])
@@ -1905,6 +2180,12 @@ class EvolutionRoundRunner:
 
         if self.state.next_stage() == "COMPLETE":
             audit = freeze_round_audit(self.round_dir)
+            promotion_enabled = bool(
+                self.config.get("policy_promotion_enabled", True)
+            )
+            promotion_eligible = (
+                promotion_enabled and target["row_count"] > 0
+            )
             summary = {
                 "round_id": self.round_id,
                 "parent_policy_id": parent.policy_id,
@@ -1917,11 +2198,15 @@ class EvolutionRoundRunner:
                 "registry_hash_after": registry_after["registry_hash"],
                 "run_context_hash": run_context["run_context_hash"],
                 "audit_record_hash": audit["audit_record_hash"],
-                "promotion_eligible": target["row_count"] > 0,
+                "promotion_eligible": promotion_eligible,
                 "defer_reason": (
                     ""
-                    if target["row_count"] > 0
-                    else "insufficient_residual_designs"
+                    if promotion_eligible
+                    else (
+                        "promotion_epoch_reserved"
+                        if not promotion_enabled
+                        else "insufficient_residual_designs"
+                    )
                 ),
             }
             atomic_write_json(self.round_dir / "round_summary.json", summary)

@@ -61,6 +61,18 @@ def verify_grounded_execution_bundle(
     registries: GroundedRegistryBundle,
 ) -> dict[str, Any]:
     payload = deepcopy(dict(bundle))
+    if payload.get("schema_version") == (
+        "r3e-grounded-sequential-execution-bundle-v1"
+    ):
+        from .sequential_execution import (
+            verify_grounded_sequential_execution_bundle,
+        )
+
+        return verify_grounded_sequential_execution_bundle(
+            payload,
+            policy=policy,
+            registries=registries,
+        )
     if set(payload) != _EXECUTION_BUNDLE_FIELDS:
         raise GroundedRedExecutionViolation(
             "grounded execution bundle fields mismatch"
@@ -138,6 +150,28 @@ def verify_grounded_execution_bundle(
         "toolchain_fingerprint": toolchain,
         "evidence": evidence,
         "admission_decision": decision,
+    }
+
+
+def execution_materialization_bounds(
+    bundle: Mapping[str, Any],
+) -> dict[str, str]:
+    """Project either execution schema onto formal clean/poison/revert hashes."""
+    materialization = dict(
+        dict(bundle).get("materialization_receipt") or {}
+    )
+    if dict(bundle).get("schema_version") == (
+        "r3e-grounded-sequential-execution-bundle-v1"
+    ):
+        clean_hash = str(materialization.get("clean_source_hash") or "")
+        poison_hash = str(materialization.get("poison_source_hash") or "")
+    else:
+        clean_hash = str(materialization.get("clean_rtl_hash") or "")
+        poison_hash = str(materialization.get("poison_rtl_hash") or "")
+    return {
+        "clean_rtl_hash": clean_hash,
+        "poison_rtl_hash": poison_hash,
+        "revert_rtl_hash": clean_hash,
     }
 
 

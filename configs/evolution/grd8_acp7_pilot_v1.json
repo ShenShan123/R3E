@@ -1,0 +1,51 @@
+{
+  "schema_version": "r3e-grd8-acp7-pilot-config-v1",
+  "phase": "real_model_pilot",
+  "status": "configuration_required",
+  "executable": false,
+  "authority": {
+    "macro_round": "r3e-integrated-coevolution-config-v1",
+    "red_validity": "grounded_runtime_authority_v1",
+    "red_population": "r3e-red-population-schedule-v1",
+    "blue_evaluation": "candidate_portfolio_v1",
+    "promotion": "atomic_registry_commit"
+  },
+  "experiment_arms": [
+    "homogeneous_best_of_3",
+    "fixed_mixed_portfolio",
+    "descriptor_routed_portfolio",
+    "adaptive_candidate_portfolio"
+  ],
+  "deferred_arm": "adaptive_plus_raam_until_adaptive_gain_is_stable",
+  "experiment_bindings": {
+    "red_model_id": "__REQUIRED__",
+    "blue_model_id": "__REQUIRED__",
+    "red_provider_config": "__REQUIRED__",
+    "blue_provider_config": "__REQUIRED__",
+    "candidate_verifier_config": "__REQUIRED__",
+    "red_api_key_env": "R3E_RED_API_KEY",
+    "red_base_url_env": "R3E_RED_BASE_URL",
+    "blue_api_key_env": "R3E_BLUE_API_KEY",
+    "blue_base_url_env": "R3E_BLUE_BASE_URL",
+    "target_manifest": "__REQUIRED__",
+    "non_target_manifest": "__REQUIRED__",
+    "promotion_thresholds": "__REQUIRED__",
+    "run_seeds": [],
+    "rounds": 0,
+    "design_ids": [],
+    "family_ids": [],
+    "red_proposal_budget_per_round": 0,
+    "maximum_active_memories": 3,
+    "maximum_llm_calls_per_case": 3
+  },
+  "required_gates": [
+    "real-provider-output-conformance",
+    "runner-owned-parser-compile-simulation-formal-oracle",
+    "runner-owned-candidate-verification-and-selection",
+    "target-non-target-split-isolation",
+    "single-promotion-epoch-per-macro-round",
+    "renewed-challenge-binds-final-active-policy",
+    "privacy-and-release-audit"
+  ],
+  "claim_boundary": "Pilot scaffold only. No real model was called and no GRD-8 or ACP-7 empirical result is claimed."
+}

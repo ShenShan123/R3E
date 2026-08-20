@@ -1,0 +1,67 @@
+{
+  "schema_version": "r3e-grounded-deterministic-population-milestone-v1",
+  "milestone_id": "grounded-deterministic-population-v1",
+  "status": "frozen",
+  "parent_milestone": {
+    "milestone_id": "grounded-sequential-runtime-gate-v1",
+    "milestone_hash": "sha256:af1980bc638a524360f2a776f6c7ff2878044d07cf9c7f9765b0d6da21603b26"
+  },
+  "completed_scope": [
+    "pre-generation-one-provider-per-selected-intent-schedule",
+    "deterministic-specialist-and-generalist-role-routing",
+    "generator-validator-minimizer-authority-separation",
+    "provider-model-toolchain-budget-and-assignment-provenance",
+    "per-provider-and-aggregate-resource-budget-fail-closed-gates",
+    "routed-population-versus-generalist-only-single-factor-arm",
+    "red-search-context-v7-population-binding",
+    "runner-checkpoint-event-resume-and-offline-audit-reconstruction",
+    "provider-usage-and-schedule-tamper-rejection",
+    "completed-grounded-round-population-audit"
+  ],
+  "frozen_interfaces": [
+    "r3e-red-population-config-v1",
+    "r3e-red-population-assignment-v1",
+    "r3e-red-population-schedule-v1",
+    "r3e-red-population-execution-v1",
+    "r3e-red-search-context-v7",
+    "r3e-arena-grounded-population-toolchain-v1",
+    "r3e-round-audit-v1"
+  ],
+  "frozen_assets": {
+    "README.md": "sha256:eb3919779a6feb09ac3dd583c161856b7f45c27de9d4a5bc9d66c33035cd6f34",
+    "configs/evolution/round_deterministic_population_v1.json": "sha256:bc9fd7329ace4c6d634472a4003a8a5301ec292ca2d2b4818a65cd520fbb8ce1",
+    "configs/red/deterministic_population_v1.json": "sha256:48a76dd7aa4b897150e0809c65526b745eafa730f32812270be985cb4c5f9063",
+    "r3e/red/grounded/population_scheduler.py": "sha256:9fda22f73af92e21a0ef257f1ea56c69140acb5a7bbf728b07cbc0aa9a15dac7",
+    "r3e/red/feedback_packet.py": "sha256:238df6a40c626b6a94555f843824eff2b60cc22e0911dc1f1a980fe10aaee351",
+    "r3e/arena/fake_adapters.py": "sha256:7bd82b3bf11f0fc0e1337e2d5c011b23d3a90ca00b802b143f20c6fc6931d075",
+    "r3e/arena/runner.py": "sha256:10565fdb4071f8dfb1fe34ea1792e61905fa2ebf0ae2cd6af3ccfa3aa103e47b",
+    "r3e/arena/audit.py": "sha256:0fe85a689e0aaa94626ccc34e854aaab1e6664bbb3046dc695a58836cf3f571f",
+    "tests/test_grounded_population_scheduler.py": "sha256:84e74c3becf05240f476729675623bdc9809639119ad2a9c16218febe4e930a7",
+    "tests/test_grounded_authority_integration.py": "sha256:7084988fc08b546d2686ea6e0f6f5c7a45ab3d9b9d75cc264f7290593e97676f",
+    "tests/test_grounded_pre_generation_planner.py": "sha256:dc7a49d4de25ebbebb2076ff059f43c979bcef2d9008c50c80e74486af1ad6d8",
+    "tests/test_grounded_sequential_execution.py": "sha256:7ce39a74d24f2cbb2219de57cfa1f708c45e31416bb75d31b57c520982b797c2",
+    "tests/test_grounded_planner_raam_closure.py": "sha256:ee10d6ebba123f015e3dd072d4fcbdd307033791438b5b5137f60c5fadd9a72d",
+    "tests/test_raam_system_upgrade_milestone.py": "sha256:444a4416cb97386982ab9ec103cc7f5ea1886a502b3fe8333f70da5ab99605e6",
+    "tests/test_adaptive_candidate_descriptor_routed.py": "sha256:cba83dc2e89716cc0c0e3a488010972bdb4763c99678072428783b62bdc3f7ed",
+    "tests/test_adaptive_candidate_fixed_mixed.py": "sha256:fffe5322d4eda0f4aa9f41b2de814b5e63c93e57406e794c1888a983b41765ad",
+    "tests/test_adaptive_candidate_offline_allocator.py": "sha256:3e98aeca0e5d22b965b442b4efeaf5276f24ccd154e0226c75e13ec7475f482c",
+    "tests/test_adaptive_candidate_portfolio_red_challenge.py": "sha256:4b84bfc12c4de035175cdebb6d3e64063e9188358aa9a6d11080f7bd301761dc",
+    "tests/test_adaptive_candidate_protocol.py": "sha256:66923687a2fbcef9b6255cd908a0f679ea809abf3c7d1428ea83adf5fd09ae2b",
+    "tests/test_adaptive_candidate_raam_portfolio_control.py": "sha256:e2bdb6dc903fdc6bf9e8a61bd05340fa664213d2b16417ed061fe102061d010e",
+    "tests/test_adaptive_candidate_semantic_diversity.py": "sha256:aa4631ebf401d0dec005f6347082d1c36f9c87064f8d4ff141f1c170efdd5f73"
+  },
+  "required_validation": [
+    "pytest -q -p no:cacheprovider tests/test_grounded_population_scheduler.py",
+    "pytest -q -p no:cacheprovider",
+    "python scripts/check_release.py",
+    "python scripts/verify_datasets.py"
+  ],
+  "deferred_scope": [
+    "real-provider-population",
+    "real-model-specialist-routing",
+    "empirical-population-gain",
+    "grd8-real-model-pilot"
+  ],
+  "claim_boundary": "Frozen deterministic GRD-6 population scheduling, provenance, budget, checkpoint, event, and audit authority only. Provider roles are deterministic fixtures; no real multi-model population gain or GRD-8 result is claimed.",
+  "milestone_hash": "sha256:3359be62d1d7c078cd308eb8ee0ba657ebafa24b3f240ba4bb01f748c7557353"
+}

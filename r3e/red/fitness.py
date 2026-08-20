@@ -19,14 +19,14 @@ def hardness(repair_successes: int, repair_attempts: int) -> float:
 
 
 def hardness_class(repair_successes: int, repair_attempts: int) -> str:
-    if repair_attempts != 3:
-        return "hard" if hardness(repair_successes, repair_attempts) >= 2 / 3 else "covered"
-    return {
-        0: "hard_residual",
-        1: "borderline_residual",
-        2: "mostly_covered",
-        3: "covered",
-    }[repair_successes]
+    failure_ratio = hardness(repair_successes, repair_attempts)
+    if repair_successes == 0:
+        return "hard_residual"
+    if failure_ratio >= 2 / 3:
+        return "borderline_residual"
+    if repair_successes < repair_attempts:
+        return "mostly_covered"
+    return "covered"
 
 
 def score(

@@ -16,7 +16,7 @@ from r3e.protocol.hashing import atomic_write_json, hash_payload, read_json, utc
 from r3e.protocol.ledger import append_ledger, read_ledger, writer_lock
 from r3e.protocol.events import EventLogger
 
-from .schema import POLICY_SCHEMA_VERSION, PolicyState, PolicyValidationError
+from .schema import PolicyState, PolicyValidationError
 from .promotion import PromotionViolation, verify_policy_promotion_bundle
 
 
@@ -137,7 +137,6 @@ def initialize_registry(
 ) -> dict[str, Any]:
     base_source = Path(base_policy_path)
     base_raw = read_json(base_source)
-    base_raw["schema_version"] = POLICY_SCHEMA_VERSION
     base_raw["status"] = "active"
     policy = PolicyState.from_dict(base_raw)
     if policy.policy_id != "B0":

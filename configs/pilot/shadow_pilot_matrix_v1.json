@@ -1,0 +1,85 @@
+{
+  "arms": [
+    {
+      "arm_id": "A",
+      "name": "homogeneous_best_of_3",
+      "portfolio_file_hash": "sha256:bd40fc6d40f1318ab746c68499e52bfcd3edea5b0238736db1b2ff3c1583f4db",
+      "portfolio_path": "configs/blue/homogeneous_generic_portfolio_v1.json"
+    },
+    {
+      "arm_id": "B",
+      "name": "fixed_mixed",
+      "portfolio_file_hash": "sha256:c61e0b4efc19223d3d69a6139aa3d1fb808ce07f70df9d4e21ca79debe0394f0",
+      "portfolio_path": "configs/blue/fixed_mixed_portfolio_v1.json"
+    },
+    {
+      "arm_id": "C",
+      "name": "descriptor_routed",
+      "portfolio_file_hash": "sha256:2dcc2bdaf9e764c1a1909f4d2e7dd207c2d3a87ecd78552bcef0babb3291d9ba",
+      "portfolio_path": "configs/blue/descriptor_routed_portfolio_v1.json"
+    },
+    {
+      "arm_id": "D",
+      "name": "adaptive",
+      "portfolio_file_hash": "sha256:285ca54ffa228f35fa5d0dd9352d80214ba56ed4e4c543f02d18729e6e8d706e",
+      "portfolio_path": "configs/blue/adaptive_portfolio_v1.json"
+    }
+  ],
+  "case_ids": [
+    "strider:first_counter_overflow_1",
+    "strider:flip_flop_1",
+    "strider:fsm_full_1",
+    "strider:mux_4_1_1"
+  ],
+  "controls": {
+    "call_budget_per_cell": 3,
+    "candidate_budget": 3,
+    "early_stop_mode": "all_candidates",
+    "evidence_bundle": "grounded_failure_descriptor_v1",
+    "maximum_tokens_per_cell": 48000,
+    "maximum_wall_seconds_per_cell": 360,
+    "oracle_authority": "public_manifest_differential_oracle",
+    "patch_scope": "local_block",
+    "promotion_enabled": false,
+    "raam_execution_enabled": false,
+    "verifier_id": "runner-owned-public-oracle-gate"
+  },
+  "execution_mode": "shadow_no_promotion",
+  "matrix_hash": "sha256:0bce8d3cc75907aefd8b0ed283a331dbdc18524c522963fa07598d5a0f00d149",
+  "matrix_id": "grd8-acp7-shadow-pilot-matrix-v1",
+  "model_binding": {
+    "model_id": "deepseek-v4-pro",
+    "model_version": "deepseek-v4-pro",
+    "provider_id": "deepseek"
+  },
+  "red_shadow": {
+    "case_id": "r3e:real_integrated_shadow_comparator",
+    "enabled": true,
+    "manifest_file_hash": "sha256:f2bae3e93453aea2fcf040cf755e41b95cf0070c6b20ecb03740de8c99e3beed",
+    "manifest_path": "configs/pilot/real_integrated_shadow_manifest_v1.jsonl",
+    "maximum_input_tokens": 4096,
+    "maximum_output_tokens": 1024,
+    "maximum_wall_time_ms": 60000,
+    "memory_qualification_enabled": false,
+    "promotion_enabled": false,
+    "provider_calls_per_round": 1
+  },
+  "schema_version": "r3e-shadow-pilot-matrix-v1",
+  "seeds": [
+    17,
+    29,
+    43
+  ],
+  "smoke_subset": {
+    "case_ids": [
+      "strider:mux_4_1_1"
+    ],
+    "seeds": [
+      17
+    ]
+  },
+  "target_manifest": {
+    "file_hash": "sha256:60315b1c2f2a5f719b3bcd84bd32f4ae8b39c396cae1722c1e5b97da91d44f21",
+    "path": "datasets/manifests/strider14.jsonl"
+  }
+}
