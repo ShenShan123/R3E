@@ -755,6 +755,26 @@ three ACP calls), proves the formal poison triplet, and resumes the same round
 without another provider call. It is protocol/shadow evidence only; it does
 not claim real-model repair gain, multi-round coevolution, or promotion.
 
+### Policy-only promotion rehearsal
+
+After shadow admission, the deterministic rehearsal freezes the smallest
+policy-transition unit in
+`configs/evolution/policy_promotion_rehearsal_v1.json`: two rounds (`R000`,
+`R001`), one challenge seed, at least two residual designs, one independent
+non-target design, fixed fake model/toolchain/budgets, and a single
+`collect → policy` lane. The second round performs exactly one runner-owned
+atomic policy promotion and renewed challenge; RAAM promotion and memory
+qualification remain disabled.
+
+```bash
+python -m r3e.pilot.policy_promotion_rehearsal \
+  --workspace runtime/pilots/policy-promotion-rehearsal-v1
+pytest -q -p no:cacheprovider tests/test_policy_promotion_rehearsal.py
+```
+
+This is a deterministic interface/recovery rehearsal, not evidence from a
+real provider and not a multi-seed experiment.
+
 ## Offline validation
 
 The complete upload preflight is:

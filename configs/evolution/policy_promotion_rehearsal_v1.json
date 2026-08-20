@@ -1,0 +1,56 @@
+{
+  "schema_version": "r3e-policy-promotion-rehearsal-config-v1",
+  "milestone_id": "policy-promotion-rehearsal-v1",
+  "status": "frozen_deterministic_rehearsal",
+  "execution_mode": "deterministic_fake",
+  "round_ids": [
+    "R000",
+    "R001"
+  ],
+  "promotion_lane_schedule": [
+    "collect",
+    "policy"
+  ],
+  "residual_requirement": {
+    "minimum_designs": 2,
+    "minimum_rows": 2
+  },
+  "target_requirement": {
+    "minimum_rows": 1,
+    "renewed_challenge_must_bind_child": true
+  },
+  "non_target_requirement": {
+    "independent_design_count": 1,
+    "manifest_split": "non_target"
+  },
+  "fixed_binding": {
+    "model_id": "deterministic-fake-model",
+    "model_version": "1",
+    "toolchain_fingerprint_hash": "sha256:c58071a8af0a50b57b03dd555b9be0889e79341ee8bdad235cd58887b924b76f",
+    "challenge_seeds": [
+      17
+    ],
+    "promotion_seeds": [
+      17
+    ],
+    "maximum_llm_calls_per_case": 0,
+    "maximum_input_tokens_per_case": 0,
+    "maximum_output_tokens_per_case": 0,
+    "maximum_wall_time_ms_per_case": 10000
+  },
+  "promotion_thresholds": {
+    "min_prior_failure_recovery": 2,
+    "min_target_recovery_ratio": 0.5,
+    "min_covered_designs": 2,
+    "non_target_epsilon": 0.02,
+    "max_cost_ratio": 1.5
+  },
+  "policy_lane": {
+    "policy_promotion_enabled": true,
+    "memory_promotion_enabled": false,
+    "memory_qualification_enabled": false,
+    "at_most_one_registry_commit": true
+  },
+  "claim_boundary": "Deterministic policy-only promotion rehearsal. It proves residual split, paired replay, atomic registry promotion, renewed challenge binding, and resume behavior; it is not real-provider or multi-seed evidence.",
+  "config_hash": "sha256:5af4345daf5465f88381957b107bb5dda92feda5bcdc3c4c0cc1868ad5d364e6"
+}
