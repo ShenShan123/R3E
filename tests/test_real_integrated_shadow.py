@@ -8,6 +8,10 @@ import uuid
 import pytest
 
 from r3e.pilot.real_integrated_shadow import run_real_integrated_shadow
+from r3e.arena.real_grounded_adapter import (
+    RealGroundedArenaAdapter,
+    RealGroundedArenaAdapterViolation,
+)
 from r3e.providers.openai_compatible import (
     OpenAICompatibleClientConfig,
     OpenAICompatibleJSONClient,
@@ -117,3 +121,24 @@ def test_real_integrated_shadow_is_runner_owned_and_resumable(tmp_path):
         assert hash_file(registry_path) == registry_hash_after_first
     finally:
         shutil.rmtree(tmp_path / "shadow", ignore_errors=True)
+
+
+def test_grounded_adapter_runtime_workspace_boundary():
+    """The documented ignored runtime child is valid, broad roots are not."""
+    client = _client([])
+    RealGroundedArenaAdapter(
+        project_root=ROOT,
+        manifest_path=ROOT / "configs/pilot/real_integrated_shadow_manifest_v1.jsonl",
+        client=client,
+        artifact_root=ROOT / "runtime" / "adapter-boundary-test",
+        round_id="boundary",
+    )
+    for path in (ROOT, ROOT.parent):
+        with pytest.raises(RealGroundedArenaAdapterViolation):
+            RealGroundedArenaAdapter(
+                project_root=ROOT,
+                manifest_path=ROOT / "configs/pilot/real_integrated_shadow_manifest_v1.jsonl",
+                client=client,
+                artifact_root=path,
+                round_id="boundary",
+            )
