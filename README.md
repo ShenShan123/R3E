@@ -775,6 +775,30 @@ pytest -q -p no:cacheprovider tests/test_policy_promotion_rehearsal.py
 This is a deterministic interface/recovery rehearsal, not evidence from a
 real provider and not a multi-seed experiment.
 
+### Deterministic B0→B1→B2 pilot scaffold
+
+The next engineering fixture freezes the shape of the first real dynamic
+experiment in `configs/evolution/b0_b1_b2_pilot_v1.json`: three isolated
+repetitions (seeds 17/29/43), four target designs, eight declared family
+slots, design-disjoint non-target and held-out manifests, and the lane
+schedule `collect → policy → policy`. Each repetition must produce exactly
+`0, 1, 1` policy promotions, bind every renewed challenge to the preceding
+active hash, and pass a two-step exact-parent rollback probe. Memory
+qualification and promotion remain disabled.
+
+Run the model-free scaffold with:
+
+```bash
+python -m r3e.pilot.b0_b1_b2_pilot \
+  --workspace runtime/pilots/b0-b1-b2-v1
+pytest -q -p no:cacheprovider tests/test_b0_b1_b2_pilot.py
+```
+
+This freezes the state machine, split isolation, resume, audit and rollback
+interfaces only. The fake adapter does not provide real-model yield, policy
+gain, held-out generalization, or evidence for the eventual B0→B1→B2
+experiment.
+
 ## Offline validation
 
 The complete upload preflight is:

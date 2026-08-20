@@ -1,0 +1,97 @@
+{
+  "schema_version": "r3e-b0-b1-b2-pilot-config-v1",
+  "milestone_id": "b0-b1-b2-deterministic-pilot-v1",
+  "status": "frozen_deterministic_pilot",
+  "execution_mode": "deterministic_fake",
+  "round_ids": [
+    "R000",
+    "R001",
+    "R002"
+  ],
+  "promotion_lane_schedule": [
+    "collect",
+    "policy",
+    "policy"
+  ],
+  "repetitions": [
+    {
+      "repetition_id": "rep_000",
+      "challenge_seed": 17,
+      "promotion_seed": 17,
+      "non_target_design_id": "b012_rep000_non_target",
+      "held_out_design_id": "b012_rep000_held_out"
+    },
+    {
+      "repetition_id": "rep_001",
+      "challenge_seed": 29,
+      "promotion_seed": 29,
+      "non_target_design_id": "b012_rep001_non_target",
+      "held_out_design_id": "b012_rep001_held_out"
+    },
+    {
+      "repetition_id": "rep_002",
+      "challenge_seed": 43,
+      "promotion_seed": 43,
+      "non_target_design_id": "b012_rep002_non_target",
+      "held_out_design_id": "b012_rep002_held_out"
+    }
+  ],
+  "design_ids": [
+    "fake_design_0",
+    "fake_design_1",
+    "fake_design_2",
+    "fake_design_3"
+  ],
+  "family_ids": [
+    "constant_error",
+    "control_boundary",
+    "dataflow_boundary",
+    "temporal_offset",
+    "state_transition",
+    "protocol_handshake",
+    "dependency_slice",
+    "composition_relocation"
+  ],
+  "split_contract": {
+    "target_split": "target",
+    "non_target_split": "non_target",
+    "held_out_split": "held_out",
+    "design_disjoint": true,
+    "non_target_count": 1,
+    "held_out_count": 1,
+    "target_must_be_nonempty": true
+  },
+  "residual_requirement": {
+    "minimum_designs": 2,
+    "minimum_rows": 2
+  },
+  "promotion_thresholds": {
+    "min_prior_failure_recovery": 2,
+    "min_target_recovery_ratio": 0.5,
+    "min_covered_designs": 2,
+    "non_target_epsilon": 0.02,
+    "max_cost_ratio": 1.5
+  },
+  "fixed_binding": {
+    "model_id": "deterministic-fake-model",
+    "model_version": "1",
+    "toolchain_fingerprint_hash": "sha256:c58071a8af0a50b57b03dd555b9be0889e79341ee8bdad235cd58887b924b76f",
+    "maximum_llm_calls_per_case": 0,
+    "maximum_input_tokens_per_case": 0,
+    "maximum_output_tokens_per_case": 0,
+    "maximum_wall_time_ms_per_case": 10000
+  },
+  "policy_lane": {
+    "policy_promotion_enabled": true,
+    "memory_promotion_enabled": false,
+    "memory_qualification_enabled": false,
+    "at_most_one_registry_commit_per_round": true
+  },
+  "rollback_contract": {
+    "exact_parent_snapshot": true,
+    "probe_depth": 2,
+    "stale_child_rejected": true
+  },
+  "claim_boundary": "Deterministic three-repetition B0→B1→B2 state-machine pilot. It proves fixed lane scheduling, design-disjoint split binding, renewed challenges, exact rollback and resume/audit behavior; it is not real-provider, multi-model, or empirical gain evidence.",
+  "config_hash": "sha256:7938ac38fa918b0236907cf7349601274296f150d1411639b75644f9b4349e06"
+}
