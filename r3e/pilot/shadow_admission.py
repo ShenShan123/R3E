@@ -16,7 +16,7 @@ from r3e.pilot.grd8_acp7_smoke import _client_from_environment
 from r3e.pilot.grounded_red_shadow import run_grounded_red_shadow
 from r3e.pilot.shadow_matrix import load_shadow_pilot_matrix
 from r3e.pilot.shadow_runner import run_shadow_matrix
-from r3e.protocol.hashing import atomic_write_json, hash_payload
+from r3e.protocol.hashing import atomic_write_json, hash_payload, read_json
 
 
 SHADOW_ADMISSION_SCHEMA = "r3e-real-provider-shadow-admission-v1"
@@ -24,6 +24,41 @@ SHADOW_ADMISSION_SCHEMA = "r3e-real-provider-shadow-admission-v1"
 
 class ShadowAdmissionViolation(RuntimeError):
     """Raised when the combined shadow budget or authority is invalid."""
+
+
+def _verify_frozen_summary(
+    summary: Any,
+    *,
+    matrix: Any,
+    execution_mode: str,
+    expected_blue_calls: int,
+    expected_red_calls: int,
+) -> dict[str, Any]:
+    """Validate a completed wrapper summary before any provider call."""
+    if not isinstance(summary, dict):
+        raise ShadowAdmissionViolation("shadow admission summary is not an object")
+    expected_hash = hash_payload({
+        key: value for key, value in summary.items() if key != "summary_hash"
+    })
+    if summary.get("summary_hash") != expected_hash:
+        raise ShadowAdmissionViolation("shadow admission summary hash mismatch")
+    expected = {
+        "schema_version": SHADOW_ADMISSION_SCHEMA,
+        "matrix_id": matrix.matrix_id,
+        "matrix_hash": matrix.matrix_hash,
+        "execution_mode": execution_mode,
+        "expected_blue_provider_calls": expected_blue_calls,
+        "expected_red_provider_calls": expected_red_calls,
+        "expected_total_provider_calls": expected_blue_calls + expected_red_calls,
+        "promotion_executed": False,
+        "memory_qualification_executed": False,
+        "resume_additional_calls": 0,
+    }
+    if any(summary.get(key) != value for key, value in expected.items()):
+        raise ShadowAdmissionViolation(
+            "shadow admission summary does not match frozen execution"
+        )
+    return summary
 
 
 def run_shadow_admission(
@@ -49,6 +84,19 @@ def run_shadow_admission(
         * int(matrix.controls["call_budget_per_cell"])
     )
     expected_red_calls = int(matrix.red_shadow["provider_calls_per_round"])
+    summary_path = output / "summary.json"
+    if summary_path.exists():
+        if not resume:
+            raise ShadowAdmissionViolation(
+                "completed shadow admission cannot be overwritten"
+            )
+        _verify_frozen_summary(
+            read_json(summary_path),
+            matrix=matrix,
+            execution_mode="smoke" if smoke_only else "full_matrix",
+            expected_blue_calls=expected_blue_calls,
+            expected_red_calls=expected_red_calls,
+        )
     blue = run_shadow_matrix(
         project_root=root,
         workspace=output / "blue_matrix",
@@ -100,7 +148,20 @@ def run_shadow_admission(
         ),
     }
     summary["summary_hash"] = hash_payload(summary)
-    atomic_write_json(output / "summary.json", summary)
+    if summary_path.exists():
+        existing = _verify_frozen_summary(
+            read_json(summary_path),
+            matrix=matrix,
+            execution_mode="smoke" if smoke_only else "full_matrix",
+            expected_blue_calls=expected_blue_calls,
+            expected_red_calls=expected_red_calls,
+        )
+        if existing != summary:
+            raise ShadowAdmissionViolation(
+                "resumed shadow admission summary differs from reconstruction"
+            )
+        return existing
+    atomic_write_json(summary_path, summary)
     return summary
 
 

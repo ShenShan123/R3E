@@ -42,12 +42,12 @@
     "r3e/pilot/shadow_matrix.py": "sha256:2fd4ce26b77fa5c5e0a13a55c91450bf335d1b7c0ef62d52e975d990815429e5",
     "r3e/pilot/shadow_runner.py": "sha256:a780f3ac64743d79af86faadc1431d6b9275bde966d62f29554f4dde4544d84e",
     "r3e/pilot/real_integrated_shadow.py": "sha256:95c0770616acfc5c7e06a95ceac889bfbe4453bf2c52b5bd01624d5be37aa0d4",
-    "r3e/pilot/shadow_admission.py": "sha256:13b6c250cda05f5d36323f47c3581434710aa3828f2de444729c9c23776fe840",
+    "r3e/pilot/shadow_admission.py": "sha256:6bd4f280895bea16ef07c0784cf9f23bcd0ec46516d6c41d014fb92d58c15912",
     "tests/test_shadow_pilot_matrix.py": "sha256:baf00bbbda3be6820503e1ea1b45efaa3269d70ef13c32be6537533cb2f6ea4a",
     "tests/test_shadow_pilot_milestone.py": "sha256:82252908f95bd314c3014ed75bdd6a8b2163ad2d5d04a182e64b31c53d4f233b",
     "tests/test_shadow_pilot_runner.py": "sha256:acd80d0cae85676a52bec8c0170a9cd4cf92aa388a4b58a5d5d22e588fea1787",
     "tests/test_real_integrated_shadow.py": "sha256:879a759cff6b9b3dd767a0c089da1b3504a98af00d1b15632b7058f0a3b5625a",
-    "tests/test_shadow_admission.py": "sha256:7066ca3ddd8b2ce70d29488877c4fcb1f2cb4ca70318cdf9db8a117d9bf292fa"
+    "tests/test_shadow_admission.py": "sha256:f3dc39f8c3a8ff776782e6b27f3bc1882487cf0ff67916eeed8d01627e446d4e"
   },
   "required_validation": [
     "pytest -q -p no:cacheprovider tests/test_shadow_pilot_matrix.py tests/test_shadow_pilot_runner.py",
@@ -56,5 +56,5 @@
     "python scripts/check_release.py ."
   ],
   "claim_boundary": "The frozen Shadow Pilot Matrix and injected-transport execution prove call cardinality, authority binding, deterministic aggregation, checkpoint recovery, and one bounded Grounded Red formal round. They do not establish a real-provider ACP-7 gain, GRD-8 yield, causal portfolio advantage, multi-round co-evolution result, memory benefit, or promotion evidence.",
-  "milestone_hash": "sha256:f9f09250ac594faacfddf12a06631063cc4a40b50b86afa419f44bb38a828a86"
+  "milestone_hash": "sha256:76b8a9affe92f7d88e8da94e6bc7fa7602f460d203860d6cb5f906df01cf1256"
 }

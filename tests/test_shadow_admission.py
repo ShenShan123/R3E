@@ -6,7 +6,10 @@ import shutil
 
 import pytest
 
-from r3e.pilot.shadow_admission import run_shadow_admission
+from r3e.pilot.shadow_admission import (
+    ShadowAdmissionViolation,
+    run_shadow_admission,
+)
 from r3e.providers.openai_compatible import (
     OpenAICompatibleClientConfig,
     OpenAICompatibleJSONClient,
@@ -92,6 +95,18 @@ def test_shadow_admission_is_exactly_twelve_plus_one_and_resumable(tmp_path):
             smoke_only=True,
         )
         assert resumed["summary_hash"] == first["summary_hash"]
+        assert len(calls) == 13
+        summary_path = workspace / "summary.json"
+        tampered = json.loads(summary_path.read_text(encoding="utf-8"))
+        tampered["expected_total_provider_calls"] = 999
+        summary_path.write_text(json.dumps(tampered), encoding="utf-8")
+        with pytest.raises(ShadowAdmissionViolation, match="summary hash"):
+            run_shadow_admission(
+                project_root=ROOT,
+                workspace=workspace,
+                client=_client(transport),
+                smoke_only=True,
+            )
         assert len(calls) == 13
         summary_text = (workspace / "summary.json").read_text(encoding="utf-8")
         assert "replacement_rtl" not in summary_text
