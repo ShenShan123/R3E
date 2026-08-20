@@ -739,6 +739,16 @@ thresholds, and experiment budgets. No third-party model result, GRD-8 yield,
 ACP-7 gain, multi-round result, or promotion evidence is included in this
 repository.
 
+Before requesting a real-provider shadow authorization, run the secret-free
+readiness gate. It performs no provider call and returns exit status `2` while
+the private experiment bindings are incomplete:
+
+```bash
+python -m r3e.pilot.readiness \
+  --project-root . \
+  --config configs/evolution/grd8_acp7_pilot_v1.json
+```
+
 ### Real Integrated Coevolution Shadow V1
 
 The next engineering lane connects the real provider boundary to the formal
@@ -750,10 +760,18 @@ verification/selection, VerifiedEpisode creation, archive updates, and the
 checkpoint/event/audit DAG. `promotion_enabled` and
 `memory_qualification_enabled` are hard-disabled in this lane.
 
+The scope is frozen by
+`configs/evolution/real_integrated_coevolution_shadow_v1.json`. Its parent
+milestone, frozen source assets, claim boundary, and disabled promotion controls
+are checked by `tests/test_real_integrated_shadow_milestone.py`; the milestone
+does not include runtime artifacts or provider credentials.
+
 The deterministic integration fixture is runnable without network access:
 
 ```bash
-pytest -q -p no:cacheprovider tests/test_real_integrated_shadow.py
+pytest -q -p no:cacheprovider \
+  tests/test_real_integrated_shadow_milestone.py \
+  tests/test_real_integrated_shadow.py
 ```
 
 The test uses an injected OpenAI-compatible transport (one Grounded choice and

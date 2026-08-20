@@ -374,6 +374,28 @@ def test_grd8_acp7_template_is_fail_closed_and_secret_free():
     assert "api_key\":" not in serialized
 
 
+def test_readiness_cli_is_secret_free_and_fail_closed(monkeypatch, capsys):
+    from r3e.pilot.readiness import _main
+
+    monkeypatch.setattr("sys.argv", [
+        "r3e.pilot.readiness",
+        "--config",
+        str(ROOT / "configs/evolution/grd8_acp7_pilot_v1.json"),
+        "--project-root",
+        str(ROOT),
+    ])
+    assert _main() == 2
+    output = json.loads(capsys.readouterr().out)
+    assert output["ready"] is False
+    assert output["credential_environment_present"] == {
+        "red_api_key_env": False,
+        "red_base_url_env": False,
+        "blue_api_key_env": False,
+        "blue_base_url_env": False,
+    }
+    assert "api_key" not in output
+
+
 @pytest.mark.parametrize(
     "name",
     [

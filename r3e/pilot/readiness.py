@@ -1,7 +1,9 @@
 """Fail-closed readiness assessment for the first real-model pilot."""
 from __future__ import annotations
 
+import argparse
 from copy import deepcopy
+import json
 import os
 from pathlib import Path
 from typing import Any, Mapping
@@ -121,3 +123,28 @@ def assess_pilot_readiness(
     }
     record["readiness_hash"] = hash_payload(record)
     return record
+
+
+def _main(argv: list[str] | None = None) -> int:
+    """Run a secret-free readiness check without creating a provider client."""
+    parser = argparse.ArgumentParser(
+        description="Check GRD-8/ACP-7 pilot readiness without provider calls"
+    )
+    parser.add_argument(
+        "--config",
+        default="configs/evolution/grd8_acp7_pilot_v1.json",
+        help="pilot configuration JSON",
+    )
+    parser.add_argument("--project-root", default=".")
+    args = parser.parse_args(argv)
+    config_path = Path(args.config)
+    if not config_path.is_absolute():
+        config_path = Path(args.project_root) / config_path
+    raw = json.loads(config_path.read_text(encoding="utf-8"))
+    result = assess_pilot_readiness(raw, project_root=args.project_root)
+    print(json.dumps(result, sort_keys=True))
+    return 0 if result["ready"] else 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(_main())

@@ -23,7 +23,7 @@
     "four-call-injected-transport-smoke-closes-grd8-formal-triplet-and-acp7-selection"
   ],
   "frozen_assets": {
-    "README.md": "sha256:fad087d849131cf3ed9a1cbab1875934135850b8f10f496fb4de2e1c254fb47a",
+    "README.md": "sha256:52c62b5cc4395b28c55a4847da4394fefe4456f1bcad96ded2cc5733dcb64e3f",
     "configs/base_policy/frozen_base_policy_v3.json": "sha256:2471514186ab54e658696219d84146256cd35411e074e7a3e6a41d7fa25d668b",
     "configs/evolution/grd8_acp7_pilot_v1.json": "sha256:8b2b9e9294910330c888df7e82aa81a411015167d736569bc3487e62ee1201a3",
     "configs/evolution/round_integrated_deterministic_v1.json": "sha256:23e18ad7c57f38d9078ea9573d13f2dd420c712345c4e8f91b2b9b399a77a56e",
@@ -47,9 +47,9 @@
     "r3e/blue/portfolio/semantic_signature.py": "sha256:9fb66280229d6048b54ae2799a8be60f463c0b89f8396c45a8c68a0e5b0e2059",
     "r3e/providers/__init__.py": "sha256:1b629be162f953f869542beed537da3be954791c45eb3fb48ce9a886b3d72be7",
     "r3e/providers/openai_compatible.py": "sha256:36c9001a4b2ace7f2ae29a7b0f8540874807bb71dfb376082ced8584f9c79321",
-    "r3e/pilot/__init__.py": "sha256:71ab51002efd7d8fb9b46ae462444c9f5bfb4db2987c04434768f134452edea7",
+    "r3e/pilot/__init__.py": "sha256:68a28a9efce24575bf78b51c38d4ae534dcae48d294149d9ddb466bcd94a8148",
     "r3e/pilot/grd8_acp7_smoke.py": "sha256:a35029ab2daf22d244286987791d30ae7319129efaea863813775f1ad891ddad",
-    "r3e/pilot/readiness.py": "sha256:b02dc8b15163a43ba98df56f4867463aa7fec34bc7f34021ca24604dfb7aa877",
+    "r3e/pilot/readiness.py": "sha256:8bf61216ef84abb105e7225f72117b8d776539a9af38fdee67e3478dbafb85d8",
     "r3e/policy/registry_v2.py": "sha256:625a83aafa211a8f9c4b4971cd732921e7e8001501db1f2f97747c642d328adf",
     "r3e/red/grounded/openai_provider.py": "sha256:67398c01af0b7465dc12213339c2a18b93c735639340f8852b23d14a5ac4d147",
     "r3e/red/grounded/population_scheduler.py": "sha256:f095320c3d9107af3239083af9e0267485b6171397a7224e4c5d7b6ffc669d56",
@@ -68,7 +68,7 @@
     "tests/test_integrated_coevolution_loop.py": "sha256:2eaae518caaeb410099330cda3963b2f212a7413aac82b2d8341fc7aad97a1e6",
     "tests/test_grd8_acp7_pilot_smoke.py": "sha256:08c3c0dc9f94c7b874cf8f2e93ac16ea91caf099c7063ce4d7af4e6949e19e1b",
     "tests/test_parser_backed_candidate_semantics.py": "sha256:ab4bb7b63d5cb6e0a41d74e0f654542e107949df6a4ac0a8e2c037598d6ab6ff",
-    "tests/test_real_provider_pilot.py": "sha256:d5656dcca938fd12298dc8cf3a8f1e14f09ce5230fe15ae4f5c5af06f6eb18c9"
+    "tests/test_real_provider_pilot.py": "sha256:a223a0bb8b50cb4902dcbad9c6a8ec18b5579783ca9f0b6eede5f05130644e70"
   },
   "required_validation": [
     "pytest -q -p no:cacheprovider tests/test_real_provider_pilot.py",
@@ -86,5 +86,5 @@
     "pilot-budget"
   ],
   "claim_boundary": "The real Red target-choice and ACP candidate boundaries are implemented. Real ACP providers propose only replacement RTL and edit text; the runner derives semantic patch metadata from a bounded token-AST diff and binds it to verifier checks. Candidate-local AST/no-op materialization failures receive rejected signatures and do not abort the remaining planned slots. Injected-transport smoke tests close the runner-owned GRD formal triplet, ACP oracle selection, and invalid-candidate isolation. The checked-in pilot template remains non-executable. No third-party model result, GRD-8 yield, ACP-7 gain, multi-round result, or promotion evidence is claimed.",
-  "milestone_hash": "sha256:a6399180d52409d0cbca62725c97e3ea8f3c0f9bd611b82b49b885daf2fc220f"
+  "milestone_hash": "sha256:58beb7bf5e2d8a9a34fab29e4b8fc481841db3cff0936c60375f9e38a23aefad"
 }
