@@ -396,6 +396,30 @@ def test_readiness_cli_is_secret_free_and_fail_closed(monkeypatch, capsys):
     assert "api_key" not in output
 
 
+def test_shadow_admission_readiness_is_narrow_and_call_matched():
+    from r3e.pilot.readiness import assess_shadow_admission_readiness
+
+    config = json.loads((
+        ROOT / "configs/pilot/shadow_pilot_matrix_v1.json"
+    ).read_text(encoding="utf-8"))
+    readiness = assess_shadow_admission_readiness(
+        config, project_root=ROOT, environ={}
+    )
+    assert readiness["ready"] is False
+    assert readiness["expected_provider_calls"] == 13
+    assert readiness["blockers"] == [
+        "api_key_env",
+        "base_url_env",
+        "model_env",
+    ]
+    assert readiness["formal_toolchain_present"] == {
+        "yosys": True,
+        "iverilog": True,
+        "vvp": True,
+    }
+    assert "api_key" not in readiness
+
+
 @pytest.mark.parametrize(
     "name",
     [

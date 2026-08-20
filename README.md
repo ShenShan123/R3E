@@ -741,10 +741,19 @@ repository.
 
 Before requesting a real-provider shadow authorization, run the secret-free
 readiness gate. It performs no provider call and returns exit status `2` while
-the private experiment bindings are incomplete:
+the private shadow bindings are incomplete:
 
 ```bash
 python -m r3e.pilot.readiness \
+  --stage shadow-admission \
+  --project-root .
+```
+
+The full multi-round pilot has a separate, stricter gate:
+
+```bash
+python -m r3e.pilot.readiness \
+  --stage pilot \
   --project-root . \
   --config configs/evolution/grd8_acp7_pilot_v1.json
 ```
