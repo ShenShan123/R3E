@@ -703,9 +703,14 @@ pytest -q -p no:cacheprovider tests/test_shadow_pilot_runner.py
 The combined admission wrapper is available as:
 
 ```bash
-python -m r3e.pilot.shadow_admission \
+python -m r3e.pilot.safe_shadow_admission \
   --workspace runtime/pilots/shadow-admission-v1
 ```
+
+The safe entrypoint writes a terminal, privacy-safe failure checkpoint when a
+provider request or runner hard gate fails. A failed workspace cannot be
+resumed into another provider request; start a new authorized workspace after
+fixing the binding or budget.
 
 It records the expected 12+1 provider budget and keeps all detailed receipts
 under the ignored `runtime/` tree. The checked-in test uses an injected
