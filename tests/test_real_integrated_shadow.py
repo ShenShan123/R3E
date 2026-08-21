@@ -12,6 +12,7 @@ from r3e.arena.real_grounded_adapter import (
     RealGroundedArenaAdapter,
     RealGroundedArenaAdapterViolation,
 )
+from r3e.arena.audit import verify_frozen_round
 from r3e.providers.openai_compatible import (
     OpenAICompatibleClientConfig,
     OpenAICompatibleJSONClient,
@@ -93,10 +94,35 @@ def test_real_integrated_shadow_is_runner_owned_and_resumable(tmp_path):
             .read_text(encoding="utf-8").splitlines()[0]
         )
         assert challenge["repair_attempts"] == 1
-        assert len(challenge["blue_results"][0]["candidate_provider_receipts"]) == 3
+        blue_result = challenge["blue_results"][0]
+        assert len(blue_result["candidate_provider_receipts"]) == 3
+        selection = blue_result["selection_receipt"]
+        assert len(selection["candidate_ids"]) == 3
+        assert selection["selected_candidate_id"] in {
+            *selection["candidate_ids"],
+            None,
+        }
+        assert selection["selection_policy"] in {
+            "oracle_then_minimality_v1",
+            "first_verified_v1",
+        }
+        assert blue_result["oracle_ok"] is (
+            selection["selected_candidate_id"] is not None
+        )
         assert challenge["grounded_authority_bundle"]["formal_proof_triplet"]["poison"]["verdict"] == "counterexample"
         assert (round_dir / "archive_updates.jsonl").is_file()
         assert (round_dir / "covered_archive_updates.jsonl").is_file()
+        residual_updates = [
+            row for row in (round_dir / "archive_updates.jsonl")
+            .read_text(encoding="utf-8").splitlines()
+            if row.strip()
+        ]
+        covered_updates = [
+            row for row in (round_dir / "covered_archive_updates.jsonl")
+            .read_text(encoding="utf-8").splitlines()
+            if row.strip()
+        ]
+        assert len(residual_updates) + len(covered_updates) == 1
         episode_manifest = json.loads(
             (round_dir / "verified_episodes.json").read_text(
                 encoding="utf-8"
@@ -109,6 +135,11 @@ def test_real_integrated_shadow_is_runner_owned_and_resumable(tmp_path):
             )
         )
         assert renewed["challenged_policy_hash"] == first["summary"]["active_policy_hash"]
+        audit = verify_frozen_round(round_dir)
+        assert audit["blue_evaluation_authority"] == "candidate_portfolio_v1"
+        assert audit["promoted"] is False
+        assert audit["active_policy_hash"] == renewed["challenged_policy_hash"]
+        assert audit["verified_episode_manifest_hash"]
         registry_path = tmp_path / "shadow" / "policy_registry.json"
         registry_hash_after_first = hash_file(registry_path)
 

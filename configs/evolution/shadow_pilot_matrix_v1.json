@@ -46,7 +46,7 @@
     "tests/test_shadow_pilot_matrix.py": "sha256:baf00bbbda3be6820503e1ea1b45efaa3269d70ef13c32be6537533cb2f6ea4a",
     "tests/test_shadow_pilot_milestone.py": "sha256:82252908f95bd314c3014ed75bdd6a8b2163ad2d5d04a182e64b31c53d4f233b",
     "tests/test_shadow_pilot_runner.py": "sha256:acd80d0cae85676a52bec8c0170a9cd4cf92aa388a4b58a5d5d22e588fea1787",
-    "tests/test_real_integrated_shadow.py": "sha256:001e5fb752232dc9fcd53783df9ebaae61e99150661cb4818e5b568b616b599f",
+    "tests/test_real_integrated_shadow.py": "sha256:9c0bd00b0e2b7cd6c7f73366e047be77ec79e8a731f2cbb28b1677b16821fcf1",
     "tests/test_shadow_admission.py": "sha256:9d829234200a423d52650d077d4b79eabd051d7ac35abe98f279b5648c1b863e"
   },
   "required_validation": [
@@ -56,5 +56,5 @@
     "python scripts/check_release.py ."
   ],
   "claim_boundary": "The frozen Shadow Pilot Matrix and injected-transport execution prove call cardinality, authority binding, deterministic aggregation, checkpoint recovery, and one bounded Grounded Red formal round. They do not establish a real-provider ACP-7 gain, GRD-8 yield, causal portfolio advantage, multi-round co-evolution result, memory benefit, or promotion evidence.",
-  "milestone_hash": "sha256:0f6c9edd4dbae5b3dce6b8a5cc104ea78436d76f958b90f226ed8381566dbbdc"
+  "milestone_hash": "sha256:da3cf144617e39ae54b76ab2a412fb4878f9ea17d5a8acf17236906bdd273901"
 }
