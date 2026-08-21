@@ -4,7 +4,7 @@
   "status": "frozen",
   "parent_milestone": {
     "milestone_id": "shadow-pilot-matrix-v1",
-    "milestone_hash": "sha256:fc1733480c4886dd86880f2586b8b4c8acc1c216c3d8818e596abcb021133694"
+    "milestone_hash": "sha256:36fa282960aef35da43b352d7cb55be2e7c0e76f4d50163967614226b6f52a2b"
   },
   "completed_scope": [
     "formal-evolution-adapter-real-grounded-manifest-boundary",
@@ -37,7 +37,7 @@
     "tests/test_real_integrated_shadow.py": "sha256:e71e4b3e603d36e15e56d1345f43f6fc21437c44da5116e1d4440c2cf8ee15ec",
     "tests/test_grounded_population_wall_time_floor.py": "sha256:5e3c0da59494a9e69c4f2494138f56dbf98a45d18255e145500c237cfc730239",
     "tests/test_safe_shadow_admission.py": "sha256:60bc83e26cbd0e995a26bc8960a977a92c9662de65287577498596fa8099db52",
-    "tests/test_shadow_admission.py": "sha256:162efb2739502b20d4d3c499041983a0d58c88459344101a91810939a5a40518",
+    "tests/test_shadow_admission.py": "sha256:0da6c567c281de617613ee8bc44d3f871a33f8e0488c163ae48b00c1794bdd02",
     "tests/test_real_integrated_shadow_milestone.py": "sha256:c8e6ec7b91743c65e60ef679340ad281d54ff152220aa5ae79dd85f182936911"
   },
   "required_validation": [
@@ -65,5 +65,5 @@
     "policy-or-raam-promotion"
   ],
   "claim_boundary": "Frozen Real Integrated Coevolution Shadow V1 authority and injected-transport conformance only. It proves the Red to Blue formal data path, archive and VerifiedEpisode reconstruction, checkpoint/resume, and shadow hard gates; it does not claim real-provider yield, policy transition, RAAM benefit, multi-round coevolution, or promotion evidence.",
-  "milestone_hash": "sha256:e1a598a0545219977a41ed5e3169db40c0ddd90df799314d6dfff637d5a4e467"
+  "milestone_hash": "sha256:24080fa0b6a56faea95abe463d93b86badc740fa3279461b7dc2f70975dbd5d8"
 }

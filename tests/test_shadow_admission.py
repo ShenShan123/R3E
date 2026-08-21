@@ -101,7 +101,14 @@ def test_shadow_admission_is_exactly_twelve_plus_one_and_resumable(tmp_path):
             "provider_call_started",
             "provider_call_completed",
         ]
-        assert all("replacement_rtl" not in json.dumps(row) for row in red_ledger)
+        red_ledger_text = json.dumps(red_ledger)
+        for forbidden in (
+            "clean_rtl",
+            "replacement_rtl",
+            "prompt_asset",
+            str(ROOT),
+        ):
+            assert forbidden not in red_ledger_text
 
         resumed = run_shadow_admission(
             project_root=ROOT,
