@@ -140,6 +140,21 @@ def test_real_integrated_shadow_is_runner_owned_and_resumable(tmp_path):
         assert audit["promoted"] is False
         assert audit["active_policy_hash"] == renewed["challenged_policy_hash"]
         assert audit["verified_episode_manifest_hash"]
+        event_root = tmp_path / "shadow" / "events"
+        event_text = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in sorted(event_root.glob("*.jsonl"))
+        )
+        # Aggregated observability is authority metadata only. Provider
+        # prompts, RTL payloads, and machine-specific paths remain outside
+        # event streams even though detailed receipts live in the workspace.
+        for forbidden in (
+            "clean_rtl",
+            "replacement_rtl",
+            "prompt_asset",
+            str(ROOT),
+        ):
+            assert forbidden not in event_text
         registry_path = tmp_path / "shadow" / "policy_registry.json"
         registry_hash_after_first = hash_file(registry_path)
 
