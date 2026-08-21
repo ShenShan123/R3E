@@ -4,7 +4,7 @@
   "status": "frozen",
   "parent_milestone": {
     "milestone_id": "grounded-deterministic-population-v1",
-    "milestone_hash": "sha256:662463878d9315af0af288ffeb9472a84d601144a205ae0f4bb76dbcdac3514d"
+    "milestone_hash": "sha256:f8f1bbc8e229f6ca84a56fb4383fbe5728366a9351dda42899fe309838005250"
   },
   "completed_scope": [
     "policy-v3-registry-initialization-preserves-base-schema-authority",
@@ -51,5 +51,5 @@
     "acp7-repair-gain"
   ],
   "claim_boundary": "Frozen integrated deterministic Arena and RAAM scheduler authority only. The four-round fixture uses fake adapters and is not real-model coevolution evidence.",
-  "milestone_hash": "sha256:6572ee9aec5ea06127e65d1a6af5e3ea12007775287473446b19bef72e3919da"
+  "milestone_hash": "sha256:c8bb7306ac555d8bfd3575a646de2ee50d805f08f32d13228e9f28aeff0f3936"
 }

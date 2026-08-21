@@ -226,6 +226,7 @@ def _real_population_config(
             "max_input_tokens": 4096,
             "max_output_tokens": 1024,
             "max_wall_time_ms": 60000,
+            "minimum_wall_time_ms": 60000,
         }],
         "validator_authority": "runner_owned_grounded_execution",
         "minimizer_authority": "runner_owned_structural_minimizer",

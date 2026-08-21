@@ -28,27 +28,27 @@
     "r3e-round-audit-v1"
   ],
   "frozen_assets": {
-    "README.md": "sha256:eb3919779a6feb09ac3dd583c161856b7f45c27de9d4a5bc9d66c33035cd6f34",
+    "README.md": "sha256:51ba87918faa4a357be17e2a737303bd35a7435edd07a616e71d8981052aea53",
     "configs/evolution/round_deterministic_population_v1.json": "sha256:bc9fd7329ace4c6d634472a4003a8a5301ec292ca2d2b4818a65cd520fbb8ce1",
     "configs/red/deterministic_population_v1.json": "sha256:48a76dd7aa4b897150e0809c65526b745eafa730f32812270be985cb4c5f9063",
-    "r3e/red/grounded/population_scheduler.py": "sha256:9fda22f73af92e21a0ef257f1ea56c69140acb5a7bbf728b07cbc0aa9a15dac7",
+    "r3e/red/grounded/population_scheduler.py": "sha256:bec59e4891b11e1bb0d6829b7ff05c18194ed0f924d25e257e81df7fa50e794f",
     "r3e/red/feedback_packet.py": "sha256:238df6a40c626b6a94555f843824eff2b60cc22e0911dc1f1a980fe10aaee351",
-    "r3e/arena/fake_adapters.py": "sha256:7bd82b3bf11f0fc0e1337e2d5c011b23d3a90ca00b802b143f20c6fc6931d075",
-    "r3e/arena/runner.py": "sha256:10565fdb4071f8dfb1fe34ea1792e61905fa2ebf0ae2cd6af3ccfa3aa103e47b",
+    "r3e/arena/fake_adapters.py": "sha256:53b83e08fc76c589d4521ac53e6ac94d7c432e821ff38529feaa390151cd015b",
+    "r3e/arena/runner.py": "sha256:e4f932dd223eaafebd551d65f4d2efc87966ac1ac8d9a06ddf429c08515ac2fd",
     "r3e/arena/audit.py": "sha256:808111df5bc77d6223fa3dbb4ca6ac9a0803c0550401d997cb02fd6a82c3ce7c",
-    "tests/test_grounded_population_scheduler.py": "sha256:84e74c3becf05240f476729675623bdc9809639119ad2a9c16218febe4e930a7",
+    "tests/test_grounded_population_scheduler.py": "sha256:4db37375f38bd86729e7e3f4e4fb0347df0463fe0956b054780dd1049e04aa36",
     "tests/test_grounded_authority_integration.py": "sha256:7084988fc08b546d2686ea6e0f6f5c7a45ab3d9b9d75cc264f7290593e97676f",
-    "tests/test_grounded_pre_generation_planner.py": "sha256:dc7a49d4de25ebbebb2076ff059f43c979bcef2d9008c50c80e74486af1ad6d8",
-    "tests/test_grounded_sequential_execution.py": "sha256:7ce39a74d24f2cbb2219de57cfa1f708c45e31416bb75d31b57c520982b797c2",
-    "tests/test_grounded_planner_raam_closure.py": "sha256:ee10d6ebba123f015e3dd072d4fcbdd307033791438b5b5137f60c5fadd9a72d",
+    "tests/test_grounded_pre_generation_planner.py": "sha256:502682932378372a08aa62579cfcac12672307dc1cc9d8ab1965d96d9193915f",
+    "tests/test_grounded_sequential_execution.py": "sha256:87a12ba9322ac8a1ed64acd68caf49932688fe1e9f20edd164bcbb83227192b0",
+    "tests/test_grounded_planner_raam_closure.py": "sha256:9578ea0f2c1f445b6cec188707d31b74b6232682b10500446caa3714f404a306",
     "tests/test_raam_system_upgrade_milestone.py": "sha256:444a4416cb97386982ab9ec103cc7f5ea1886a502b3fe8333f70da5ab99605e6",
-    "tests/test_adaptive_candidate_descriptor_routed.py": "sha256:cba83dc2e89716cc0c0e3a488010972bdb4763c99678072428783b62bdc3f7ed",
-    "tests/test_adaptive_candidate_fixed_mixed.py": "sha256:fffe5322d4eda0f4aa9f41b2de814b5e63c93e57406e794c1888a983b41765ad",
-    "tests/test_adaptive_candidate_offline_allocator.py": "sha256:3e98aeca0e5d22b965b442b4efeaf5276f24ccd154e0226c75e13ec7475f482c",
-    "tests/test_adaptive_candidate_portfolio_red_challenge.py": "sha256:4b84bfc12c4de035175cdebb6d3e64063e9188358aa9a6d11080f7bd301761dc",
-    "tests/test_adaptive_candidate_protocol.py": "sha256:66923687a2fbcef9b6255cd908a0f679ea809abf3c7d1428ea83adf5fd09ae2b",
-    "tests/test_adaptive_candidate_raam_portfolio_control.py": "sha256:e2bdb6dc903fdc6bf9e8a61bd05340fa664213d2b16417ed061fe102061d010e",
-    "tests/test_adaptive_candidate_semantic_diversity.py": "sha256:aa4631ebf401d0dec005f6347082d1c36f9c87064f8d4ff141f1c170efdd5f73"
+    "tests/test_adaptive_candidate_descriptor_routed.py": "sha256:8ded0c3cd6af88815dd865d62973b2e16c48ce14e565ad79d1aa0cdafe9bb69b",
+    "tests/test_adaptive_candidate_fixed_mixed.py": "sha256:e50ecd8d4787bf52b41659bd3d467d0dad14b88796a1d953dbfc7aedb56d97a3",
+    "tests/test_adaptive_candidate_offline_allocator.py": "sha256:00a40e8aa3aa69af56b3dbabf6d7950b946830c60e5c27cb12e6db31fe94659e",
+    "tests/test_adaptive_candidate_portfolio_red_challenge.py": "sha256:1a3a16e7c930ab1f18e4d7b3504cf00e6c87617f381c5bb6cfd3d2153aeae76a",
+    "tests/test_adaptive_candidate_protocol.py": "sha256:a1d708bf51303a63875c6faad4330de5d78835ba9cc84309a3fdf4287b5c3fe7",
+    "tests/test_adaptive_candidate_raam_portfolio_control.py": "sha256:41029e2aba1e6db33f390c79f885d723bcc6c99c6061aef31be33159eabce22d",
+    "tests/test_adaptive_candidate_semantic_diversity.py": "sha256:8cd573afd0ab36a2d7013ec822bbbe4e931dcc0d018d1d93c469f9e7f7366707"
   },
   "required_validation": [
     "pytest -q -p no:cacheprovider tests/test_grounded_population_scheduler.py",
@@ -63,5 +63,5 @@
     "grd8-real-model-pilot"
   ],
   "claim_boundary": "Frozen deterministic GRD-6 population scheduling, provenance, budget, checkpoint, event, and audit authority only. Provider roles are deterministic fixtures; no real multi-model population gain or GRD-8 result is claimed.",
-  "milestone_hash": "sha256:662463878d9315af0af288ffeb9472a84d601144a205ae0f4bb76dbcdac3514d"
+  "milestone_hash": "sha256:f8f1bbc8e229f6ca84a56fb4383fbe5728366a9351dda42899fe309838005250"
 }

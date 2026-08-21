@@ -42,6 +42,7 @@ _PROVIDER_FIELDS = {
     "max_output_tokens",
     "max_wall_time_ms",
 }
+_OPTIONAL_PROVIDER_FIELDS = {"minimum_wall_time_ms"}
 _FORBIDDEN_GENERATOR_FIELDS = {
     "validity",
     "admission_decision",
@@ -65,7 +66,10 @@ def _hashed(payload: Mapping[str, Any], field: str) -> bool:
 
 def _verify_provider(raw: Mapping[str, Any]) -> dict[str, Any]:
     provider = deepcopy(dict(raw))
-    if set(provider) != _PROVIDER_FIELDS:
+    if set(provider) not in (
+        _PROVIDER_FIELDS,
+        _PROVIDER_FIELDS | _OPTIONAL_PROVIDER_FIELDS,
+    ):
         raise GroundedPopulationViolation(
             "population provider profile fields mismatch"
         )
@@ -114,6 +118,17 @@ def _verify_provider(raw: Mapping[str, Any]) -> dict[str, Any]:
         ):
             raise GroundedPopulationViolation(
                 f"population provider {field} must be positive"
+            )
+    if "minimum_wall_time_ms" in provider:
+        value = provider["minimum_wall_time_ms"]
+        if (
+            not isinstance(value, int)
+            or isinstance(value, bool)
+            or value < 1
+            or value > provider["max_wall_time_ms"]
+        ):
+            raise GroundedPopulationViolation(
+                "population provider minimum_wall_time_ms is invalid"
             )
     return provider
 
@@ -270,7 +285,11 @@ def _assignment_budget(
         provider["max_output_tokens"], 1_024 + 128 * rank
     )
     wall_time_ms = min(
-        provider["max_wall_time_ms"], 10_000 + 5_000 * rank
+        provider["max_wall_time_ms"],
+        max(
+            10_000 + 5_000 * rank,
+            int(provider.get("minimum_wall_time_ms", 0)),
+        ),
     )
     return input_tokens, output_tokens, wall_time_ms
 

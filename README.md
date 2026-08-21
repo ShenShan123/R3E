@@ -712,6 +712,10 @@ provider request or runner hard gate fails. A failed workspace cannot be
 resumed into another provider request; start a new authorized workspace after
 fixing the binding or budget.
 
+The real Grounded shadow profile reserves the frozen 60-second wall-time
+ceiling even for a D0 proposal. Legacy deterministic population profiles keep
+their difficulty-derived budgets.
+
 It records the expected 12+1 provider budget and keeps all detailed receipts
 under the ignored `runtime/` tree. The checked-in test uses an injected
 transport and is the reproducible no-network conformance path:
