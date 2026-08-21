@@ -24,7 +24,8 @@ from r3e.protocol.hashing import atomic_write_json, hash_payload, read_json
 from r3e.protocol.ledger import read_ledger
 
 
-FAILURE_SCHEMA = "r3e-shadow-admission-terminal-failure-v1"
+FAILURE_SCHEMA = "r3e-shadow-admission-terminal-failure-v2"
+LEGACY_FAILURE_SCHEMAS = {"r3e-shadow-admission-terminal-failure-v1"}
 
 
 def _expected_calls(matrix_path: str | Path, *, project_root: Path) -> tuple[int, int]:
@@ -88,14 +89,16 @@ def _failure_payload(
     red_summary = output / "grounded_red" / "summary.json"
     red_attempted = blue_summary.is_file() and not red_summary.is_file()
     stage = "grounded_red" if red_attempted else "blue_matrix"
-    calls: int | str
-    if red_attempted:
-        # Count only durable request-start entries. A failure before crossing
-        # the provider boundary consumes zero calls; a malformed response or
-        # runner-owned gate failure after start consumes one and is terminal.
-        calls = _started_red_calls(output)
-    else:
-        calls = _completed_blue_calls(output)
+    # Count durable request-start entries for every provider lane. A failure
+    # before crossing the provider boundary consumes zero calls; a malformed
+    # response or runner-owned gate failure after start consumes one and is
+    # terminal.  The old v1 record exposed only the failed-stage count as
+    # ``provider_calls_consumed``.  v2 makes the total explicit so a 12+1
+    # terminal run cannot be mistaken for a one-call run.
+    blue_calls = _completed_blue_calls(output)
+    red_calls = _started_red_calls(output)
+    calls = blue_calls + red_calls
+    failed_stage_calls = red_calls if red_attempted else blue_calls
     body = {
         "schema_version": FAILURE_SCHEMA,
         "matrix_id": matrix_id,
@@ -104,6 +107,11 @@ def _failure_payload(
         "failed_stage": stage,
         "failure_class": type(error).__name__,
         "provider_calls_consumed": calls,
+        "provider_calls_by_stage": {
+            "blue_matrix": blue_calls,
+            "grounded_red": red_calls,
+        },
+        "failed_stage_provider_calls_consumed": failed_stage_calls,
         "expected_blue_provider_calls": expected_blue_calls,
         "expected_red_provider_calls": expected_red_calls,
         "expected_total_provider_calls": expected_blue_calls + expected_red_calls,
@@ -125,7 +133,9 @@ def _verify_failure(payload: Any) -> dict[str, Any]:
     expected = hash_payload({
         key: value for key, value in payload.items() if key != "failure_hash"
     })
-    if payload.get("schema_version") != FAILURE_SCHEMA:
+    if payload.get("schema_version") not in (
+        {FAILURE_SCHEMA} | LEGACY_FAILURE_SCHEMAS
+    ):
         raise ShadowAdmissionViolation("terminal shadow failure schema mismatch")
     if payload.get("failure_hash") != expected:
         raise ShadowAdmissionViolation("terminal shadow failure hash mismatch")
