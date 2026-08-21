@@ -6,12 +6,14 @@ selection, archive, or promotion authority.
 
 from .openai_compatible import (
     OpenAICompatibleClientConfig,
+    OpenAICompatibleEmptyContentViolation,
     OpenAICompatibleJSONClient,
     OpenAICompatibleProviderViolation,
 )
 
 __all__ = [
     "OpenAICompatibleClientConfig",
+    "OpenAICompatibleEmptyContentViolation",
     "OpenAICompatibleJSONClient",
     "OpenAICompatibleProviderViolation",
 ]

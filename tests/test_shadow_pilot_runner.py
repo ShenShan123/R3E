@@ -166,7 +166,8 @@ def test_shadow_call_ledger_counts_started_call_on_provider_failure(tmp_path):
     ) == 7
     assert any(
         row["event_type"] == "provider_call_failed"
-        and row["failure_class"] == "OpenAICompatibleProviderViolation"
+        and row["failure_class"]
+        == "OpenAICompatibleEmptyContentViolation"
         for row in ledger_rows
     )
     ledger_text = (workspace / "provider_calls.jsonl").read_text(

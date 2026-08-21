@@ -24,6 +24,12 @@ class OpenAICompatibleProviderViolation(RuntimeError):
     """Raised when provider configuration or output is not auditable."""
 
 
+class OpenAICompatibleEmptyContentViolation(
+    OpenAICompatibleProviderViolation
+):
+    """Raised when a provider returns no assistant content."""
+
+
 @dataclass(frozen=True)
 class OpenAICompatibleClientConfig:
     provider_id: str
@@ -166,7 +172,7 @@ class OpenAICompatibleJSONClient:
     @staticmethod
     def _strict_object(text: str) -> dict[str, Any]:
         if not isinstance(text, str) or not text.strip():
-            raise OpenAICompatibleProviderViolation(
+            raise OpenAICompatibleEmptyContentViolation(
                 "provider returned empty content"
             )
         try:

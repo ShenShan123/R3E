@@ -16,6 +16,7 @@ from r3e.policy.schema import PolicyState
 from r3e.protocol.hashing import hash_file, hash_payload
 from r3e.providers.openai_compatible import (
     OpenAICompatibleClientConfig,
+    OpenAICompatibleEmptyContentViolation,
     OpenAICompatibleJSONClient,
     OpenAICompatibleProviderViolation,
 )
@@ -350,6 +351,31 @@ def test_openai_compatible_client_rejects_non_json_without_retry():
     )
     with pytest.raises(
         OpenAICompatibleProviderViolation, match="strict JSON"
+    ):
+        client.complete_json(
+            messages=[{"role": "user", "content": "return JSON"}],
+            seed=1,
+        )
+    assert len(calls) == 1
+
+
+def test_openai_compatible_client_classifies_empty_content_without_retry():
+    calls = []
+
+    def empty(**request):
+        calls.append(request)
+        return {
+            "content": "",
+            "input_tokens": 10,
+            "output_tokens": 0,
+            "provider_request_id": "empty-content",
+        }
+
+    client = OpenAICompatibleJSONClient(
+        _config(), transport=empty, environ={}
+    )
+    with pytest.raises(
+        OpenAICompatibleEmptyContentViolation, match="empty content"
     ):
         client.complete_json(
             messages=[{"role": "user", "content": "return JSON"}],
