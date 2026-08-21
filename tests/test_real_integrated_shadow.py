@@ -32,6 +32,8 @@ def _client(calls: list[dict]) -> OpenAICompatibleJSONClient:
         calls.append(request)
         prompt = json.loads(request["messages"][1]["content"])
         if "allowed_nodes" in prompt:
+            assert "clean_rtl" not in prompt
+            assert isinstance(prompt.get("clean_rtl_hash"), str)
             result = {
                 "target_module": prompt["target_module"],
                 "node_ordinal": prompt["allowed_nodes"][0]["node_ordinal"],

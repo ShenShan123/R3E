@@ -51,7 +51,7 @@
     "r3e/pilot/grd8_acp7_smoke.py": "sha256:59fe57fae1bf024d3afd534d18442712694bc38038eb6a7d5168c2b7a4273cdb",
     "r3e/pilot/readiness.py": "sha256:d96b616b8e5902440676f0b2a5ed019d6f6e47a1f27b3d4651d62eb3a05e2d8e",
     "r3e/policy/registry_v2.py": "sha256:625a83aafa211a8f9c4b4971cd732921e7e8001501db1f2f97747c642d328adf",
-    "r3e/red/grounded/openai_provider.py": "sha256:67398c01af0b7465dc12213339c2a18b93c735639340f8852b23d14a5ac4d147",
+    "r3e/red/grounded/openai_provider.py": "sha256:021185e5e881849248d36d019c04ec9d576d2745cf09c8a5b1f6311b78549e2e",
     "r3e/red/grounded/population_scheduler.py": "sha256:bec59e4891b11e1bb0d6829b7ff05c18194ed0f924d25e257e81df7fa50e794f",
     "r3e/red/grounded/verilog_ast.py": "sha256:fed230bc78ff8166f775531d5ac04914424a0fc682a672d50b466b23bc715e15",
     "tests/test_adaptive_candidate_descriptor_routed.py": "sha256:8ded0c3cd6af88815dd865d62973b2e16c48ce14e565ad79d1aa0cdafe9bb69b",
@@ -86,5 +86,5 @@
     "pilot-budget"
   ],
   "claim_boundary": "The real Red target-choice and ACP candidate boundaries are implemented. Real ACP providers propose only replacement RTL and edit text; the runner derives semantic patch metadata from a bounded token-AST diff and binds it to verifier checks. Candidate-local AST/no-op materialization failures receive rejected signatures and do not abort the remaining planned slots. Injected-transport smoke tests close the runner-owned GRD formal triplet, ACP oracle selection, and invalid-candidate isolation. The checked-in pilot template remains non-executable. No third-party model result, GRD-8 yield, ACP-7 gain, multi-round result, or promotion evidence is claimed.",
-  "milestone_hash": "sha256:e9cba7c5c5b2cae041edcc85aadfe0cadd4bc78e3786581b9ea782c18e97a2ec"
+  "milestone_hash": "sha256:cb90ee85a838d37f8ea38166dcb94d4ed82368a8be282a98e8b83b21d2589a5d"
 }

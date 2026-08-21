@@ -4,7 +4,7 @@
   "status": "frozen",
   "parent_milestone": {
     "milestone_id": "shadow-pilot-matrix-v1",
-    "milestone_hash": "sha256:cea50171df7ac8d268fbccffebe59ff2eab860454725370d4a3359cc447bb14e"
+    "milestone_hash": "sha256:0f6c9edd4dbae5b3dce6b8a5cc104ea78436d76f958b90f226ed8381566dbbdc"
   },
   "completed_scope": [
     "formal-evolution-adapter-real-grounded-manifest-boundary",
@@ -22,16 +22,16 @@
     "configs/pilot/real_integrated_shadow_manifest_v1.jsonl": "sha256:f2bae3e93453aea2fcf040cf755e41b95cf0070c6b20ecb03740de8c99e3beed",
     "configs/pilot/shadow_pilot_matrix_v1.json": "sha256:18a26c073d5fb246f2df51bb8c76093258b3ca5771925781ceedce59455b40bc",
     "r3e/arena/adapter.py": "sha256:378ac3539f91356cc1271e74df8e792b0a15e780228274735d9eb167f4529b2f",
-    "r3e/arena/real_grounded_adapter.py": "sha256:fea4a8d10f8b597fb1548b376a7f49a708f3a6f990d935bbc6410e8171617f9e",
+    "r3e/arena/real_grounded_adapter.py": "sha256:1cfed038cf2f2ca2ecd88c51203baf4988a73291f4dc69f8b77c66bc2b56d496",
     "r3e/arena/grounded_authority.py": "sha256:b4597b9c3d967dadeb9b339ddb28ad393e373b3a338df564bc8c704c5883b530",
     "r3e/arena/runner.py": "sha256:e4f932dd223eaafebd551d65f4d2efc87966ac1ac8d9a06ddf429c08515ac2fd",
     "r3e/arena/audit.py": "sha256:808111df5bc77d6223fa3dbb4ca6ac9a0803c0550401d997cb02fd6a82c3ce7c",
     "r3e/blue/portfolio/candidate_executor.py": "sha256:69bca1e9c5e480b9f02af29c46ba654d10ffa972f17d14faf0ebb8a750eac117",
     "r3e/blue/portfolio/oracle_gate_verifier.py": "sha256:34e840aea34a925f6694f81df3bc7e03eb88ab9ff105d01036cfbf869dec6933",
     "r3e/pilot/real_integrated_shadow.py": "sha256:a488f653118a9d44e964143721b7d42951dcb2948807e34984c97903f1622d07",
-    "r3e/pilot/grounded_red_shadow.py": "sha256:a2b453baa2fc06abdb9c81afc2490cbfa7f56ea51e34262051f22f72ed10a72b",
+    "r3e/pilot/grounded_red_shadow.py": "sha256:f09425db018011da42c7c52e01e4ad6436642d72386f8bc1e7f8d5c70ccc6a0d",
     "r3e/pilot/shadow_admission.py": "sha256:419e10a9aadef83eb82a11442cbc9f88511f34d1f97626b956a5153c123ec238",
-    "tests/test_real_integrated_shadow.py": "sha256:abac31ca9f4ec4f754c90b30bad059043a423cfc3d3aab96a878be56066afd66",
+    "tests/test_real_integrated_shadow.py": "sha256:001e5fb752232dc9fcd53783df9ebaae61e99150661cb4818e5b568b616b599f",
     "tests/test_shadow_admission.py": "sha256:9d829234200a423d52650d077d4b79eabd051d7ac35abe98f279b5648c1b863e",
     "tests/test_real_integrated_shadow_milestone.py": "sha256:c8e6ec7b91743c65e60ef679340ad281d54ff152220aa5ae79dd85f182936911"
   },
@@ -60,5 +60,5 @@
     "policy-or-raam-promotion"
   ],
   "claim_boundary": "Frozen Real Integrated Coevolution Shadow V1 authority and injected-transport conformance only. It proves the Red to Blue formal data path, archive and VerifiedEpisode reconstruction, checkpoint/resume, and shadow hard gates; it does not claim real-provider yield, policy transition, RAAM benefit, multi-round coevolution, or promotion evidence.",
-  "milestone_hash": "sha256:b5ef8532fb5780a3d54ab8deee91ef93a1153f749e2b394e43b4dd929439be79"
+  "milestone_hash": "sha256:66c783cf5f0a98615c63f61c39bf617e32b9d34e06c27c02cdbcbb0ded7e73d4"
 }

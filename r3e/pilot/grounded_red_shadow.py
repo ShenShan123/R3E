@@ -182,10 +182,6 @@ def _run_manifest_grounded(
         row for row in proposal["candidate_intents"]
         if row["intent_id"] == proposal["selected_intent_ids"][0]
     )
-    if selected_intent["operator_id"] != "replace_comparator":
-        raise GroundedRedShadowViolation(
-            "manifest shadow requires the frozen comparator operator"
-        )
     adapter = RealGroundedArenaAdapter(
         project_root=root,
         manifest_path=manifest_path,

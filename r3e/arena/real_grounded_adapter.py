@@ -213,9 +213,11 @@ class RealGroundedArenaAdapter:
         red_search_context: dict[str, Any],
     ) -> Iterable[dict[str, Any]]:
         intent, assignment = self._intent_and_assignment(red_search_context)
-        if intent.get("operator_id") != "replace_comparator":
+        operator_id = str(intent.get("operator_id") or "")
+        operator = self.registries.operators.get(operator_id)
+        if not isinstance(operator, Mapping):
             raise RealGroundedArenaAdapterViolation(
-                "shadow manifest is frozen for comparator boundary"
+                "Grounded intent uses an unknown frozen operator"
             )
         if assignment.get("model_id") != self.client.config.model_id:
             raise RealGroundedArenaAdapterViolation(
@@ -227,7 +229,7 @@ class RealGroundedArenaAdapter:
         nodes = operator_nodes(
             clean_source,
             module=target_module,
-            operator_id=str(intent["operator_id"]),
+            operator_id=operator_id,
         )
         choice = self.choice_provider.choose_target(
             policy=parent,
@@ -249,7 +251,10 @@ class RealGroundedArenaAdapter:
             family_id=str(intent["family_id"]),
             operator_id=str(intent["operator_id"]),
             expected_runtime_effect_id=str(intent["expected_runtime_effect_id"]),
-            preconditions={"comparison_expression": True},
+            preconditions={
+                str(name): True
+                for name in operator.get("preconditions", [])
+            },
             scope_limits={
                 "maximum_changed_modules": 1,
                 "maximum_changed_blocks": 1,

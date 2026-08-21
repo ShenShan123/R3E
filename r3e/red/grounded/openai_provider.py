@@ -108,7 +108,10 @@ class OpenAICompatibleGroundedChoiceProvider:
                 "target_role": intent["target_role"],
             },
             "target_module": target_module,
-            "clean_rtl": clean_source,
+            # The runner uses clean_source to derive parser-backed nodes, but
+            # the provider must not receive golden RTL.  A hash preserves
+            # request binding without leaking the oracle/reference artifact.
+            "clean_rtl_hash": hash_payload(clean_source),
             "allowed_nodes": option_rows,
             "required_output_schema": {
                 "target_module": target_module,
