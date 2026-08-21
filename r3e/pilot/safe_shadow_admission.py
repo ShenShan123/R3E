@@ -205,7 +205,7 @@ def _main() -> int:
     )
     parser.add_argument("--project-root", default=".")
     parser.add_argument(
-        "--workspace", default="runtime/pilots/shadow-admission-real-v1"
+        "--workspace", default="runtime/pilots/shadow-admission-real-v5"
     )
     parser.add_argument(
         "--matrix", default="configs/pilot/shadow_pilot_matrix_v1.json"

@@ -45,7 +45,7 @@
     "r3e/pilot/real_integrated_shadow.py": "sha256:c0c1b132288ab12c72a4a879b13cc3cd88a315b96207c3abdac738515574ae3f",
     "r3e/red/grounded/population_scheduler.py": "sha256:25d2d0eaeb3d2e08d55491e62e6174e381134330db9575f7415e8c3f96746b65",
     "r3e/pilot/shadow_admission.py": "sha256:419e10a9aadef83eb82a11442cbc9f88511f34d1f97626b956a5153c123ec238",
-    "r3e/pilot/safe_shadow_admission.py": "sha256:f09bc008ae07051771d2c6d4b4f7442e774ec8517719b65f7e3d57b2314211cb",
+    "r3e/pilot/safe_shadow_admission.py": "sha256:2a92074a86ef6611bc7894b2ec66271e618fce89d9a3b732af336aa1ee961481",
     "tests/test_shadow_pilot_milestone.py": "sha256:82252908f95bd314c3014ed75bdd6a8b2163ad2d5d04a182e64b31c53d4f233b",
     "tests/test_shadow_pilot_runner.py": "sha256:82165038d3db27aa34800a22a6e98e93f3a16e21445418af2562aedccc631069",
     "tests/test_real_integrated_shadow.py": "sha256:e71e4b3e603d36e15e56d1345f43f6fc21437c44da5116e1d4440c2cf8ee15ec",
@@ -61,5 +61,5 @@
     "python scripts/check_release.py ."
   ],
   "claim_boundary": "The frozen Shadow Pilot Matrix and injected-transport execution prove call cardinality, authority binding, deterministic aggregation, checkpoint recovery, and one bounded Grounded Red formal round. They do not establish a real-provider ACP-7 gain, GRD-8 yield, causal portfolio advantage, multi-round co-evolution result, memory benefit, or promotion evidence.",
-  "milestone_hash": "sha256:08da59a38418781124aeef895bc82d6f0ac523079c6d4d69de50ded1504d101e"
+  "milestone_hash": "sha256:777b26f37174c0bf37ce786963bc3604bc947441c61b753ce5700bc067b9c7a1"
 }
