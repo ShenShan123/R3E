@@ -151,6 +151,7 @@ def _run_manifest_grounded(
     round_id: str,
     manifest_path: Path,
     case_id: str,
+    red_budget: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Run the one-call Red shadow against a frozen formal manifest row.
 
@@ -192,7 +193,12 @@ def _run_manifest_grounded(
         case_id=case_id,
         round_id=round_id,
     )
-    population_config = _real_population_config(adapter.choice_provider)
+    population_config = _real_population_config(
+        adapter.choice_provider,
+        maximum_input_tokens=int(red_budget["maximum_input_tokens"]),
+        maximum_output_tokens=int(red_budget["maximum_output_tokens"]),
+        maximum_wall_time_ms=int(red_budget["maximum_wall_time_ms"]),
+    )
     schedule = build_population_schedule(
         policy=policy,
         proposal_plan=proposal,
@@ -326,6 +332,7 @@ def run_grounded_red_shadow(
             round_id=round_id,
             manifest_path=matrix.red_target_manifest_path,
             case_id=matrix.red_case_id,
+            red_budget=matrix.red_shadow,
         )
         result = _audit_result(
             root=root, workspace=output / "execution", result=result

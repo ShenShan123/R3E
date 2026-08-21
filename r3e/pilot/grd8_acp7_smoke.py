@@ -197,21 +197,33 @@ def _client_from_environment() -> OpenAICompatibleJSONClient:
 
 def _real_population_config(
     provider: OpenAICompatibleGroundedChoiceProvider,
+    *,
+    maximum_input_tokens: int = 4096,
+    maximum_output_tokens: int = 4096,
+    maximum_wall_time_ms: int = 60000,
 ) -> dict[str, Any]:
+    for name, value in (
+        ("maximum_input_tokens", maximum_input_tokens),
+        ("maximum_output_tokens", maximum_output_tokens),
+        ("maximum_wall_time_ms", maximum_wall_time_ms),
+    ):
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise PilotSmokeViolation(f"{name} must be positive")
     profile_budget = hash_payload({
         "maximum_assignments": 1,
-        "maximum_input_tokens": 4096,
-        "maximum_output_tokens": 1024,
-        "maximum_wall_time_ms": 60000,
+        "maximum_input_tokens": maximum_input_tokens,
+        "maximum_output_tokens": maximum_output_tokens,
+        "maximum_wall_time_ms": maximum_wall_time_ms,
+        "budget_mode": "fixed",
     })
     body = {
         "schema_version": "r3e-red-population-config-v1",
         "scheduler_id": "r3e-real-pilot-population-v1",
         "scheduler_mode": "generalist_only",
         "total_assignment_budget": 1,
-        "total_input_token_budget": 4096,
-        "total_output_token_budget": 1024,
-        "total_wall_time_budget_ms": 60000,
+        "total_input_token_budget": maximum_input_tokens,
+        "total_output_token_budget": maximum_output_tokens,
+        "total_wall_time_budget_ms": maximum_wall_time_ms,
         "provider_profiles": [{
             "provider_id": "real-pilot-generalist",
             "provider_role": "generalist",
@@ -223,10 +235,11 @@ def _real_population_config(
             "supported_specialist_kinds": [],
             "supported_family_prefixes": [],
             "max_assignments": 1,
-            "max_input_tokens": 4096,
-            "max_output_tokens": 1024,
-            "max_wall_time_ms": 60000,
-            "minimum_wall_time_ms": 60000,
+            "max_input_tokens": maximum_input_tokens,
+            "max_output_tokens": maximum_output_tokens,
+            "max_wall_time_ms": maximum_wall_time_ms,
+            "minimum_wall_time_ms": maximum_wall_time_ms,
+            "budget_mode": "fixed",
         }],
         "validator_authority": "runner_owned_grounded_execution",
         "minimizer_authority": "runner_owned_structural_minimizer",

@@ -45,7 +45,7 @@
     "verifier_id": "runner-owned-public-oracle-gate"
   },
   "execution_mode": "shadow_no_promotion",
-  "matrix_hash": "sha256:0bce8d3cc75907aefd8b0ed283a331dbdc18524c522963fa07598d5a0f00d149",
+  "matrix_hash": "sha256:942b7f8358b6437157bde9a5cc3b6d9d2f3ba11b9d5cbc854786e19028b25f99",
   "matrix_id": "grd8-acp7-shadow-pilot-matrix-v1",
   "model_binding": {
     "model_id": "deepseek-v4-pro",
@@ -58,7 +58,7 @@
     "manifest_file_hash": "sha256:f2bae3e93453aea2fcf040cf755e41b95cf0070c6b20ecb03740de8c99e3beed",
     "manifest_path": "configs/pilot/real_integrated_shadow_manifest_v1.jsonl",
     "maximum_input_tokens": 4096,
-    "maximum_output_tokens": 1024,
+    "maximum_output_tokens": 4096,
     "maximum_wall_time_ms": 60000,
     "memory_qualification_enabled": false,
     "promotion_enabled": false,

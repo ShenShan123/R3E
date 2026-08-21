@@ -28,7 +28,7 @@
     "configs/blue/homogeneous_generic_portfolio_v1.json": "sha256:bd40fc6d40f1318ab746c68499e52bfcd3edea5b0238736db1b2ff3c1583f4db",
     "configs/blue/lens_registry_v1.json": "sha256:65560bd82d230a3f208c4b9167f8d9a811ffefd46039c43bdcdd4335069056c1",
     "configs/blue/offline_allocator_state_v1.json": "sha256:911bc6d9ada13a40a285fcdc28cdba71c2b1ed4fa746457b493d3d0e4e00e397",
-    "configs/pilot/shadow_pilot_matrix_v1.json": "sha256:18a26c073d5fb246f2df51bb8c76093258b3ca5771925781ceedce59455b40bc",
+    "configs/pilot/shadow_pilot_matrix_v1.json": "sha256:5a82b47367e5f186bcede60b34225b376d51b7c845098654a8f906fb9010635a",
     "configs/pilot/real_integrated_shadow_manifest_v1.jsonl": "sha256:f2bae3e93453aea2fcf040cf755e41b95cf0070c6b20ecb03740de8c99e3beed",
     "configs/pilot/assets/real_integrated_shadow_buggy.v": "sha256:8a3498b516df73dbbbc0bb5af3a7d08ed42aa8bcdbbc6ce9e1d3148bcfc493b6",
     "configs/pilot/assets/real_integrated_shadow_dep.v": "sha256:d99f759e614ffa8e45877a3f4749770c89c0fcc0533f981131edba592d796309",
@@ -37,17 +37,20 @@
     "configs/pilot/assets/real_integrated_shadow_tb.v": "sha256:f24a1bc786c18025d008e8fe57fda1a128adb772e98a8093e822b279e8bdd13c",
     "datasets/manifests/strider14.jsonl": "sha256:60315b1c2f2a5f719b3bcd84bd32f4ae8b39c396cae1722c1e5b97da91d44f21",
     "r3e/arena/real_grounded_adapter.py": "sha256:1cfed038cf2f2ca2ecd88c51203baf4988a73291f4dc69f8b77c66bc2b56d496",
-    "r3e/pilot/grounded_red_shadow.py": "sha256:f09425db018011da42c7c52e01e4ad6436642d72386f8bc1e7f8d5c70ccc6a0d",
+    "r3e/pilot/grd8_acp7_smoke.py": "sha256:7a0160017d70c784be4e993187d05b13f2d2d7f6abc259390df668bcf9e0c337",
+    "r3e/pilot/grounded_red_shadow.py": "sha256:e8160bea03fe83ca6f64aee9656d0f4b5b8cfcd41cb53e2d39620b13210be3b2",
     "r3e/pilot/shadow_aggregate.py": "sha256:7a66f3e3a84cfae50966eae7348746972dff4101588209116c3462b16a73b1c8",
     "r3e/pilot/shadow_matrix.py": "sha256:2fd4ce26b77fa5c5e0a13a55c91450bf335d1b7c0ef62d52e975d990815429e5",
     "r3e/pilot/shadow_runner.py": "sha256:b9f148d61c0c49ed97bc8ec910507788983a80ab06297ea5edf1d9751c7d58f0",
-    "r3e/pilot/real_integrated_shadow.py": "sha256:a488f653118a9d44e964143721b7d42951dcb2948807e34984c97903f1622d07",
+    "r3e/pilot/real_integrated_shadow.py": "sha256:c0c1b132288ab12c72a4a879b13cc3cd88a315b96207c3abdac738515574ae3f",
+    "r3e/red/grounded/population_scheduler.py": "sha256:25d2d0eaeb3d2e08d55491e62e6174e381134330db9575f7415e8c3f96746b65",
     "r3e/pilot/shadow_admission.py": "sha256:419e10a9aadef83eb82a11442cbc9f88511f34d1f97626b956a5153c123ec238",
-    "tests/test_shadow_pilot_matrix.py": "sha256:baf00bbbda3be6820503e1ea1b45efaa3269d70ef13c32be6537533cb2f6ea4a",
     "tests/test_shadow_pilot_milestone.py": "sha256:82252908f95bd314c3014ed75bdd6a8b2163ad2d5d04a182e64b31c53d4f233b",
     "tests/test_shadow_pilot_runner.py": "sha256:6413cfd3a6cd0e89f849355ecdd6fbec3963f4db375ae642475b2bb00d678eed",
     "tests/test_real_integrated_shadow.py": "sha256:e71e4b3e603d36e15e56d1345f43f6fc21437c44da5116e1d4440c2cf8ee15ec",
-    "tests/test_shadow_admission.py": "sha256:9d829234200a423d52650d077d4b79eabd051d7ac35abe98f279b5648c1b863e"
+    "tests/test_grounded_population_wall_time_floor.py": "sha256:5e3c0da59494a9e69c4f2494138f56dbf98a45d18255e145500c237cfc730239",
+    "tests/test_shadow_admission.py": "sha256:5ecc0be08a311701a048ad368ad5f49874e5448513b5ea9bdb23e372012602ba",
+    "tests/test_shadow_pilot_matrix.py": "sha256:485ce4d74084fa9ae22fd0dbafd1fceaa48a1583a5b066473e783bb5a4f96d9d"
   },
   "required_validation": [
     "pytest -q -p no:cacheprovider tests/test_shadow_pilot_matrix.py tests/test_shadow_pilot_runner.py",
@@ -56,5 +59,5 @@
     "python scripts/check_release.py ."
   ],
   "claim_boundary": "The frozen Shadow Pilot Matrix and injected-transport execution prove call cardinality, authority binding, deterministic aggregation, checkpoint recovery, and one bounded Grounded Red formal round. They do not establish a real-provider ACP-7 gain, GRD-8 yield, causal portfolio advantage, multi-round co-evolution result, memory benefit, or promotion evidence.",
-  "milestone_hash": "sha256:d06e6caf50829d5f8cd86b0e417d4248d141f47e417bc17642036c28b2876d27"
+  "milestone_hash": "sha256:ea1c817238ccba8fbeb8cdd33c5607d6effa5ea7d8357a66d9f3f836b229e02a"
 }

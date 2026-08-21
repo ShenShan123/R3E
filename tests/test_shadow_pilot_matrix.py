@@ -59,6 +59,7 @@ def test_shadow_matrix_freezes_call_matched_abcd_authority():
     assert matrix.controls["promotion_enabled"] is False
     assert matrix.controls["raam_execution_enabled"] is False
     assert matrix.red_shadow["provider_calls_per_round"] == 1
+    assert matrix.red_shadow["maximum_output_tokens"] == 4096
     assert matrix.red_case_id == "r3e:real_integrated_shadow_comparator"
     assert matrix.red_target_manifest_path.name == (
         "real_integrated_shadow_manifest_v1.jsonl"

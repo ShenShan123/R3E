@@ -42,7 +42,7 @@ _PROVIDER_FIELDS = {
     "max_output_tokens",
     "max_wall_time_ms",
 }
-_OPTIONAL_PROVIDER_FIELDS = {"minimum_wall_time_ms"}
+_OPTIONAL_PROVIDER_FIELDS = {"minimum_wall_time_ms", "budget_mode"}
 _FORBIDDEN_GENERATOR_FIELDS = {
     "validity",
     "admission_decision",
@@ -66,9 +66,11 @@ def _hashed(payload: Mapping[str, Any], field: str) -> bool:
 
 def _verify_provider(raw: Mapping[str, Any]) -> dict[str, Any]:
     provider = deepcopy(dict(raw))
-    if set(provider) not in (
-        _PROVIDER_FIELDS,
-        _PROVIDER_FIELDS | _OPTIONAL_PROVIDER_FIELDS,
+    provider_fields = set(provider)
+    if (
+        not _PROVIDER_FIELDS <= provider_fields
+        or provider_fields - _PROVIDER_FIELDS
+        > _OPTIONAL_PROVIDER_FIELDS
     ):
         raise GroundedPopulationViolation(
             "population provider profile fields mismatch"
@@ -130,6 +132,13 @@ def _verify_provider(raw: Mapping[str, Any]) -> dict[str, Any]:
             raise GroundedPopulationViolation(
                 "population provider minimum_wall_time_ms is invalid"
             )
+    if "budget_mode" in provider and provider["budget_mode"] not in {
+        "difficulty_scaled",
+        "fixed",
+    }:
+        raise GroundedPopulationViolation(
+            "population provider budget_mode is invalid"
+        )
     return provider
 
 
@@ -276,6 +285,12 @@ def _assignment_budget(
     intent: Mapping[str, Any],
     provider: Mapping[str, Any],
 ) -> tuple[int, int, int]:
+    if provider.get("budget_mode") == "fixed":
+        return (
+            provider["max_input_tokens"],
+            provider["max_output_tokens"],
+            provider["max_wall_time_ms"],
+        )
     band = str(intent["difficulty_target"]["difficulty_band"])
     rank = {"D0": 0, "D1": 1, "D2": 2, "D3": 3, "D4": 4}[band]
     input_tokens = min(

@@ -67,7 +67,10 @@ def test_shadow_admission_is_exactly_twelve_plus_one_and_resumable(tmp_path):
         return {
             "content": json.dumps(content),
             "input_tokens": 100,
-            "output_tokens": 20,
+            # Exercise the real Grounded Red budget boundary: this is above
+            # the former 1024-token assignment but below the frozen 4096
+            # shadow ceiling.
+            "output_tokens": 1500 if "allowed_nodes" in prompt else 20,
             "provider_request_id": f"injected-admission-{len(calls)}",
         }
 
