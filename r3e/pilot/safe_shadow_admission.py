@@ -21,6 +21,7 @@ from r3e.pilot.shadow_admission import (
 )
 from r3e.pilot.shadow_matrix import load_shadow_pilot_matrix
 from r3e.protocol.hashing import atomic_write_json, hash_payload, read_json
+from r3e.protocol.ledger import read_ledger
 
 
 FAILURE_SCHEMA = "r3e-shadow-admission-terminal-failure-v1"
@@ -38,6 +39,15 @@ def _expected_calls(matrix_path: str | Path, *, project_root: Path) -> tuple[int
 
 
 def _completed_blue_calls(output: Path) -> int:
+    ledger = output / "blue_matrix" / "provider_calls.jsonl"
+    if ledger.is_file():
+        try:
+            return sum(
+                row.get("event_type") == "provider_call_started"
+                for row in read_ledger(ledger)
+            )
+        except (OSError, TypeError, ValueError):
+            pass
     aggregate = output / "blue_matrix" / "aggregate.json"
     if not aggregate.is_file():
         return 0

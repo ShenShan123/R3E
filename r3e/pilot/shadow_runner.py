@@ -43,6 +43,7 @@ from r3e.protocol.hashing import (
     hash_payload,
     read_json,
 )
+from r3e.protocol.ledger import append_ledger
 
 
 RUN_SUMMARY_SCHEMA = "r3e-shadow-pilot-run-summary-v1"
@@ -50,6 +51,85 @@ RUN_SUMMARY_SCHEMA = "r3e-shadow-pilot-run-summary-v1"
 
 class ShadowPilotRunnerViolation(RuntimeError):
     """Raised when a shadow cell cannot be executed or resumed safely."""
+
+
+SHADOW_PROVIDER_CALL_SCHEMA = "r3e-shadow-provider-call-v1"
+
+
+class _ShadowCallAccountingProvider:
+    """Persist call-start metadata before crossing the provider boundary.
+
+    The ledger deliberately contains assignment identity and exception class
+    labels only.  It never stores prompts, RTL, provider response text, or
+    machine-specific paths.  A started row is durable even when the provider
+    returns malformed/empty content or the process is interrupted, so the
+    terminal failure checkpoint can report consumed calls conservatively.
+    """
+
+    def __init__(
+        self,
+        provider: Any,
+        *,
+        ledger_path: Path,
+        matrix_id: str,
+        matrix_hash: str,
+        case_id: str,
+        seed: int,
+        arm_id: str,
+    ):
+        self._provider = provider
+        self._ledger_path = ledger_path
+        self._identity = {
+            "schema_version": SHADOW_PROVIDER_CALL_SCHEMA,
+            "matrix_id": matrix_id,
+            "matrix_hash": matrix_hash,
+            "case_id": case_id,
+            "seed": int(seed),
+            "arm_id": arm_id,
+        }
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._provider, name)
+
+    def generate_candidate(self, **kwargs: Any) -> dict[str, Any]:
+        slot = kwargs.get("slot")
+        candidate_id = str(kwargs.get("candidate_id") or "")
+        if not isinstance(slot, Mapping):
+            raise ShadowPilotRunnerViolation(
+                "provider call assignment is missing its frozen slot"
+            )
+        started = append_ledger(
+            self._ledger_path,
+            {
+                **self._identity,
+                "event_type": "provider_call_started",
+                "candidate_id": candidate_id,
+                "slot_index": int(slot["slot_index"]),
+                "candidate_seed": int(slot["candidate_seed"]),
+            },
+        )
+        try:
+            result = self._provider.generate_candidate(**kwargs)
+        except Exception as exc:
+            append_ledger(
+                self._ledger_path,
+                {
+                    **self._identity,
+                    "event_type": "provider_call_failed",
+                    "call_ledger_index": started["ledger_index"],
+                    "failure_class": type(exc).__name__,
+                },
+            )
+            raise
+        append_ledger(
+            self._ledger_path,
+            {
+                **self._identity,
+                "event_type": "provider_call_completed",
+                "call_ledger_index": started["ledger_index"],
+            },
+        )
+        return result
 
 
 def _safe_component(value: str) -> str:
@@ -109,6 +189,7 @@ def _components(
     seed: int,
     descriptor: Mapping[str, Any],
     client: Any,
+    call_ledger_path: Path,
 ) -> tuple[Any, Any, Any, Any, PolicyState]:
     portfolio = matrix.portfolios[arm_id]
     registry = load_lens_registry(
@@ -150,6 +231,15 @@ def _components(
         client,
         verifier_id=verifier.verifier_id,
         verifier_version=verifier.verifier_version,
+    )
+    provider = _ShadowCallAccountingProvider(
+        provider,
+        ledger_path=call_ledger_path,
+        matrix_id=matrix.matrix_id,
+        matrix_hash=matrix.matrix_hash,
+        case_id=str(case["case_id"]),
+        seed=seed,
+        arm_id=arm_id,
     )
     executor = CandidatePortfolioExecutor(
         registry=registry,
@@ -294,6 +384,7 @@ def run_shadow_matrix(
                     seed=seed,
                     descriptor=descriptor,
                     client=client,
+                    call_ledger_path=output / "provider_calls.jsonl",
                 )
                 evaluation_path = cell_dir / "blue_evaluation.json"
                 summary_path = cell_dir / "cell_summary.json"

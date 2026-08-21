@@ -40,12 +40,12 @@
     "r3e/pilot/grounded_red_shadow.py": "sha256:f09425db018011da42c7c52e01e4ad6436642d72386f8bc1e7f8d5c70ccc6a0d",
     "r3e/pilot/shadow_aggregate.py": "sha256:7a66f3e3a84cfae50966eae7348746972dff4101588209116c3462b16a73b1c8",
     "r3e/pilot/shadow_matrix.py": "sha256:2fd4ce26b77fa5c5e0a13a55c91450bf335d1b7c0ef62d52e975d990815429e5",
-    "r3e/pilot/shadow_runner.py": "sha256:a780f3ac64743d79af86faadc1431d6b9275bde966d62f29554f4dde4544d84e",
+    "r3e/pilot/shadow_runner.py": "sha256:b9f148d61c0c49ed97bc8ec910507788983a80ab06297ea5edf1d9751c7d58f0",
     "r3e/pilot/real_integrated_shadow.py": "sha256:a488f653118a9d44e964143721b7d42951dcb2948807e34984c97903f1622d07",
     "r3e/pilot/shadow_admission.py": "sha256:419e10a9aadef83eb82a11442cbc9f88511f34d1f97626b956a5153c123ec238",
     "tests/test_shadow_pilot_matrix.py": "sha256:baf00bbbda3be6820503e1ea1b45efaa3269d70ef13c32be6537533cb2f6ea4a",
     "tests/test_shadow_pilot_milestone.py": "sha256:82252908f95bd314c3014ed75bdd6a8b2163ad2d5d04a182e64b31c53d4f233b",
-    "tests/test_shadow_pilot_runner.py": "sha256:acd80d0cae85676a52bec8c0170a9cd4cf92aa388a4b58a5d5d22e588fea1787",
+    "tests/test_shadow_pilot_runner.py": "sha256:6413cfd3a6cd0e89f849355ecdd6fbec3963f4db375ae642475b2bb00d678eed",
     "tests/test_real_integrated_shadow.py": "sha256:e71e4b3e603d36e15e56d1345f43f6fc21437c44da5116e1d4440c2cf8ee15ec",
     "tests/test_shadow_admission.py": "sha256:9d829234200a423d52650d077d4b79eabd051d7ac35abe98f279b5648c1b863e"
   },
@@ -56,5 +56,5 @@
     "python scripts/check_release.py ."
   ],
   "claim_boundary": "The frozen Shadow Pilot Matrix and injected-transport execution prove call cardinality, authority binding, deterministic aggregation, checkpoint recovery, and one bounded Grounded Red formal round. They do not establish a real-provider ACP-7 gain, GRD-8 yield, causal portfolio advantage, multi-round co-evolution result, memory benefit, or promotion evidence.",
-  "milestone_hash": "sha256:218edb6dc7b2c50d578e91c41c9e025c9918b059a7a60a0eaa54a4d31b5bd8bb"
+  "milestone_hash": "sha256:d06e6caf50829d5f8cd86b0e417d4248d141f47e417bc17642036c28b2876d27"
 }

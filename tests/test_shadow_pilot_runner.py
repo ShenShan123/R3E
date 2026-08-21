@@ -89,6 +89,17 @@ def test_abcd_shadow_smoke_is_call_matched_private_and_resumable(tmp_path):
     )
     assert set(aggregate["arms"]) == set("ABCD")
     assert all(row["provider_calls"] == 3 for row in aggregate["arms"].values())
+    call_ledger = workspace / "provider_calls.jsonl"
+    ledger_rows = [
+        json.loads(line)
+        for line in call_ledger.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert sum(
+        row["event_type"] == "provider_call_started" for row in ledger_rows
+    ) == 12
+    assert "replacement_rtl" not in call_ledger.read_text(encoding="utf-8")
+    assert str(ROOT) not in call_ledger.read_text(encoding="utf-8")
 
     resumed = run_shadow_matrix(
         project_root=ROOT,
@@ -108,6 +119,61 @@ def test_abcd_shadow_smoke_is_call_matched_private_and_resumable(tmp_path):
             client=_client(transport),
             smoke_only=True,
         )
+
+
+@pytest.mark.skipif(not TOOLS_PRESENT, reason="Yosys/Icarus are required")
+def test_shadow_call_ledger_counts_started_call_on_provider_failure(tmp_path):
+    row = _manifest_row("strider:mux_4_1_1")
+    golden = (ROOT / row["golden_rtl"]).read_text(encoding="utf-8")
+    calls = []
+
+    def transport(**request):
+        calls.append(request)
+        if len(calls) == 7:
+            return {
+                "content": "",
+                "input_tokens": 100,
+                "output_tokens": 0,
+                "provider_request_id": "injected-empty-content",
+            }
+        return {
+            "content": json.dumps({
+                "replacement_rtl": golden,
+                "edit": "restore public golden behavior",
+            }),
+            "input_tokens": 100,
+            "output_tokens": 20,
+            "provider_request_id": f"injected-blue-{len(calls)}",
+        }
+
+    workspace = tmp_path / "shadow-failure"
+    with pytest.raises(Exception, match="provider returned empty content"):
+        run_shadow_matrix(
+            project_root=ROOT,
+            workspace=workspace,
+            client=_client(transport),
+            smoke_only=True,
+        )
+    assert len(calls) == 7
+    ledger_rows = [
+        json.loads(line)
+        for line in (workspace / "provider_calls.jsonl")
+        .read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert sum(
+        row["event_type"] == "provider_call_started" for row in ledger_rows
+    ) == 7
+    assert any(
+        row["event_type"] == "provider_call_failed"
+        and row["failure_class"] == "OpenAICompatibleProviderViolation"
+        for row in ledger_rows
+    )
+    ledger_text = (workspace / "provider_calls.jsonl").read_text(
+        encoding="utf-8"
+    )
+    assert "provider returned empty content" not in ledger_text
+    assert str(ROOT) not in ledger_text
 
 
 @pytest.mark.skipif(not TOOLS_PRESENT, reason="Yosys/Icarus are required")
