@@ -26,6 +26,7 @@ from r3e.protocol.hashing import (
     hash_payload,
     read_json,
 )
+from r3e.protocol.ledger import append_ledger
 from r3e.red.grounded.coverage import freeze_coverage_state
 from r3e.red.grounded.population_scheduler import (
     build_population_schedule,
@@ -40,6 +41,7 @@ from r3e.red.grounded.registry import load_grounded_registries
 
 RED_EVENT_SCHEMA = "r3e-grounded-red-shadow-event-v1"
 RED_SUMMARY_SCHEMA = "r3e-grounded-red-shadow-summary-v1"
+RED_PROVIDER_CALL_SCHEMA = "r3e-grounded-red-provider-call-v1"
 _EVENT_FIELDS = {
     "schema_version",
     "matrix_id",
@@ -62,6 +64,72 @@ _EVENT_FIELDS = {
 
 class GroundedRedShadowViolation(RuntimeError):
     """Raised when the bounded red shadow authority cannot be rebuilt."""
+
+
+class _GroundedRedCallAccountingProvider:
+    """Record the real Red request boundary without storing prompt material."""
+
+    def __init__(
+        self,
+        provider: Any,
+        *,
+        ledger_path: Path,
+        matrix_id: str,
+        matrix_hash: str,
+        case_id: str,
+        seed: int,
+    ):
+        self._provider = provider
+        self._ledger_path = ledger_path
+        self._identity = {
+            "schema_version": RED_PROVIDER_CALL_SCHEMA,
+            "matrix_id": matrix_id,
+            "matrix_hash": matrix_hash,
+            "case_id": case_id,
+            "seed": int(seed),
+            "arm_id": "grounded_red",
+        }
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._provider, name)
+
+    def choose_target(self, **kwargs: Any) -> dict[str, Any]:
+        assignment = kwargs.get("assignment")
+        if not isinstance(assignment, Mapping):
+            raise GroundedRedShadowViolation(
+                "Grounded Red provider call is missing its assignment"
+            )
+        started = append_ledger(
+            self._ledger_path,
+            {
+                **self._identity,
+                "event_type": "provider_call_started",
+                "assignment_id": str(assignment.get("assignment_id") or ""),
+                "intent_id": str(assignment.get("intent_id") or ""),
+            },
+        )
+        try:
+            result = self._provider.choose_target(**kwargs)
+        except Exception as exc:
+            append_ledger(
+                self._ledger_path,
+                {
+                    **self._identity,
+                    "event_type": "provider_call_failed",
+                    "call_ledger_index": started["ledger_index"],
+                    "failure_class": type(exc).__name__,
+                },
+            )
+            raise
+        append_ledger(
+            self._ledger_path,
+            {
+                **self._identity,
+                "event_type": "provider_call_completed",
+                "call_ledger_index": started["ledger_index"],
+            },
+        )
+        return result
 
 
 def verify_red_shadow_event(raw: Mapping[str, Any]) -> dict[str, Any]:
@@ -152,6 +220,8 @@ def _run_manifest_grounded(
     manifest_path: Path,
     case_id: str,
     red_budget: Mapping[str, Any],
+    matrix_id: str,
+    matrix_hash: str,
 ) -> dict[str, Any]:
     """Run the one-call Red shadow against a frozen formal manifest row.
 
@@ -192,6 +262,14 @@ def _run_manifest_grounded(
         artifact_root=workspace / "round" / "artifacts",
         case_id=case_id,
         round_id=round_id,
+    )
+    adapter.choice_provider = _GroundedRedCallAccountingProvider(
+        adapter.choice_provider,
+        ledger_path=workspace / "provider_calls.jsonl",
+        matrix_id=matrix_id,
+        matrix_hash=matrix_hash,
+        case_id=case_id,
+        seed=seed,
     )
     population_config = _real_population_config(
         adapter.choice_provider,
@@ -333,6 +411,8 @@ def run_grounded_red_shadow(
             manifest_path=matrix.red_target_manifest_path,
             case_id=matrix.red_case_id,
             red_budget=matrix.red_shadow,
+            matrix_id=matrix.matrix_id,
+            matrix_hash=matrix.matrix_hash,
         )
         result = _audit_result(
             root=root, workspace=output / "execution", result=result

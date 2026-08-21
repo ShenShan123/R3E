@@ -62,6 +62,19 @@ def _completed_blue_calls(output: Path) -> int:
         return 0
 
 
+def _started_red_calls(output: Path) -> int:
+    ledger = output / "grounded_red" / "execution" / "provider_calls.jsonl"
+    if not ledger.is_file():
+        return 0
+    try:
+        return sum(
+            row.get("event_type") == "provider_call_started"
+            for row in read_ledger(ledger)
+        )
+    except (OSError, TypeError, ValueError):
+        return 0
+
+
 def _failure_payload(
     *,
     output: Path,
@@ -77,10 +90,10 @@ def _failure_payload(
     stage = "grounded_red" if red_attempted else "blue_matrix"
     calls: int | str
     if red_attempted:
-        # The Red adapter has exactly one scheduled provider request. A
-        # response that fails a runner-owned wall-time/schema gate still
-        # consumes that request and must never be retried on resume.
-        calls = expected_red_calls
+        # Count only durable request-start entries. A failure before crossing
+        # the provider boundary consumes zero calls; a malformed response or
+        # runner-owned gate failure after start consumes one and is terminal.
+        calls = _started_red_calls(output)
     else:
         calls = _completed_blue_calls(output)
     body = {

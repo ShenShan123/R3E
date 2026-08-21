@@ -38,18 +38,20 @@
     "datasets/manifests/strider14.jsonl": "sha256:60315b1c2f2a5f719b3bcd84bd32f4ae8b39c396cae1722c1e5b97da91d44f21",
     "r3e/arena/real_grounded_adapter.py": "sha256:1cfed038cf2f2ca2ecd88c51203baf4988a73291f4dc69f8b77c66bc2b56d496",
     "r3e/pilot/grd8_acp7_smoke.py": "sha256:7a0160017d70c784be4e993187d05b13f2d2d7f6abc259390df668bcf9e0c337",
-    "r3e/pilot/grounded_red_shadow.py": "sha256:e8160bea03fe83ca6f64aee9656d0f4b5b8cfcd41cb53e2d39620b13210be3b2",
+    "r3e/pilot/grounded_red_shadow.py": "sha256:c541326be3e578bcacba33c01f9eb6d414840cc939b0b899da27e85760be530a",
     "r3e/pilot/shadow_aggregate.py": "sha256:7a66f3e3a84cfae50966eae7348746972dff4101588209116c3462b16a73b1c8",
     "r3e/pilot/shadow_matrix.py": "sha256:2fd4ce26b77fa5c5e0a13a55c91450bf335d1b7c0ef62d52e975d990815429e5",
     "r3e/pilot/shadow_runner.py": "sha256:b9f148d61c0c49ed97bc8ec910507788983a80ab06297ea5edf1d9751c7d58f0",
     "r3e/pilot/real_integrated_shadow.py": "sha256:c0c1b132288ab12c72a4a879b13cc3cd88a315b96207c3abdac738515574ae3f",
     "r3e/red/grounded/population_scheduler.py": "sha256:25d2d0eaeb3d2e08d55491e62e6174e381134330db9575f7415e8c3f96746b65",
     "r3e/pilot/shadow_admission.py": "sha256:419e10a9aadef83eb82a11442cbc9f88511f34d1f97626b956a5153c123ec238",
+    "r3e/pilot/safe_shadow_admission.py": "sha256:d355cf6369f2851b5756ddb4d6e25788ca8e9ff0cebc4d676d7371ff06879689",
     "tests/test_shadow_pilot_milestone.py": "sha256:82252908f95bd314c3014ed75bdd6a8b2163ad2d5d04a182e64b31c53d4f233b",
     "tests/test_shadow_pilot_runner.py": "sha256:6413cfd3a6cd0e89f849355ecdd6fbec3963f4db375ae642475b2bb00d678eed",
     "tests/test_real_integrated_shadow.py": "sha256:e71e4b3e603d36e15e56d1345f43f6fc21437c44da5116e1d4440c2cf8ee15ec",
     "tests/test_grounded_population_wall_time_floor.py": "sha256:5e3c0da59494a9e69c4f2494138f56dbf98a45d18255e145500c237cfc730239",
-    "tests/test_shadow_admission.py": "sha256:5ecc0be08a311701a048ad368ad5f49874e5448513b5ea9bdb23e372012602ba",
+    "tests/test_safe_shadow_admission.py": "sha256:60bc83e26cbd0e995a26bc8960a977a92c9662de65287577498596fa8099db52",
+    "tests/test_shadow_admission.py": "sha256:162efb2739502b20d4d3c499041983a0d58c88459344101a91810939a5a40518",
     "tests/test_shadow_pilot_matrix.py": "sha256:485ce4d74084fa9ae22fd0dbafd1fceaa48a1583a5b066473e783bb5a4f96d9d"
   },
   "required_validation": [
@@ -59,5 +61,5 @@
     "python scripts/check_release.py ."
   ],
   "claim_boundary": "The frozen Shadow Pilot Matrix and injected-transport execution prove call cardinality, authority binding, deterministic aggregation, checkpoint recovery, and one bounded Grounded Red formal round. They do not establish a real-provider ACP-7 gain, GRD-8 yield, causal portfolio advantage, multi-round co-evolution result, memory benefit, or promotion evidence.",
-  "milestone_hash": "sha256:ea1c817238ccba8fbeb8cdd33c5607d6effa5ea7d8357a66d9f3f836b229e02a"
+  "milestone_hash": "sha256:fc1733480c4886dd86880f2586b8b4c8acc1c216c3d8818e596abcb021133694"
 }

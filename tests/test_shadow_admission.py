@@ -90,6 +90,18 @@ def test_shadow_admission_is_exactly_twelve_plus_one_and_resumable(tmp_path):
         assert first["memory_qualification_executed"] is False
         assert first["red_status"] == "admitted"
         assert len(calls) == 13
+        red_ledger = [
+            json.loads(line)
+            for line in (
+                workspace / "grounded_red" / "execution" / "provider_calls.jsonl"
+            ).read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        assert [row["event_type"] for row in red_ledger] == [
+            "provider_call_started",
+            "provider_call_completed",
+        ]
+        assert all("replacement_rtl" not in json.dumps(row) for row in red_ledger)
 
         resumed = run_shadow_admission(
             project_root=ROOT,
