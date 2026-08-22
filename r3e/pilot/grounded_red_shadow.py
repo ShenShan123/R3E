@@ -377,8 +377,13 @@ def run_grounded_red_shadow(
     _verify_client(matrix, client)
     if seed not in matrix.seeds:
         raise GroundedRedShadowViolation("seed is outside frozen matrix")
+    # The integrated Grounded shadow uses the frozen portfolio-aware base
+    # policy everywhere: candidate generation, formal authority, and event
+    # provenance must expose the same challenged policy hash.  Reading the
+    # legacy v1 snapshot here would create an event that cannot be joined to
+    # its formal authority bundle.
     policy = PolicyState.from_dict(read_json(
-        root / "configs/base_policy/frozen_base_policy_v1.json"
+        root / "configs/base_policy/frozen_base_policy_v3.json"
     ))
     round_id = f"{matrix.matrix_id}-red-seed-{seed}"
     result_path = output / "red_result.json"

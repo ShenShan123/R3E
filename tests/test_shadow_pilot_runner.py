@@ -11,6 +11,7 @@ from r3e.pilot.shadow_runner import (
     ShadowPilotRunnerViolation,
     run_shadow_matrix,
 )
+from r3e.policy.schema import PolicyState
 from r3e.providers.openai_compatible import (
     OpenAICompatibleClientConfig,
     OpenAICompatibleJSONClient,
@@ -212,6 +213,21 @@ def test_grounded_red_shadow_is_one_call_formal_and_resumable(tmp_path):
     assert first["memory_qualification_executed"] is False
     assert len(calls) == 1
     event = json.loads((workspace / "event.json").read_text(encoding="utf-8"))
+    authority = json.loads(
+        (workspace / "execution" / "authority.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    policy = PolicyState.from_dict(
+        json.loads(
+            (ROOT / "configs/base_policy/frozen_base_policy_v3.json")
+            .read_text(encoding="utf-8")
+        )
+    )
+    assert event["policy_hash"] == policy.policy_hash
+    assert authority["execution_bundle"]["plan"][
+        "challenged_policy_instance_hash"
+    ] == policy.policy_instance_hash
     assert event["formal_triplet"] == {
         "clean": "proved",
         "poison": "counterexample",
