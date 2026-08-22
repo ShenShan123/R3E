@@ -712,6 +712,16 @@ provider request or runner hard gate fails. A failed workspace cannot be
 resumed into another provider request; start a new authorized workspace after
 fixing the binding or budget.
 
+The first three separately authorized real shadow admissions were executed
+under this boundary. Each consumed the frozen 12 ACP + 1 Grounded Red budget:
+the first stopped at the old Red output ceiling, and the later two stopped on
+provider empty-content responses. None produced formal poison,
+`VerifiedEpisode`, policy promotion, or RAAM qualification. These runs validate
+call accounting and fail-closed handling only; they are not ACP-7 gain,
+GRD-8 yield, or multi-round coevolution evidence. Empty responses are recorded
+only with categorical, privacy-safe envelope diagnostics; retries require a
+new authorization, workspace, and explicit budget.
+
 The real Grounded shadow profile reserves the frozen 60-second wall-time
 ceiling even for a D0 proposal. Legacy deterministic population profiles keep
 their difficulty-derived budgets.
