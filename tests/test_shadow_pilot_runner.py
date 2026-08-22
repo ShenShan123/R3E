@@ -6,7 +6,10 @@ import shutil
 
 import pytest
 
-from r3e.pilot.grounded_red_shadow import run_grounded_red_shadow
+from r3e.pilot.grounded_red_shadow import (
+    GroundedRedShadowViolation,
+    run_grounded_red_shadow,
+)
 from r3e.pilot.shadow_runner import (
     ShadowPilotRunnerViolation,
     run_shadow_matrix,
@@ -120,6 +123,51 @@ def test_abcd_shadow_smoke_is_call_matched_private_and_resumable(tmp_path):
             client=_client(transport),
             smoke_only=True,
         )
+
+
+@pytest.mark.skipif(not TOOLS_PRESENT, reason="Yosys/Icarus are required")
+def test_completed_matrix_rejects_tampered_event_ledger_before_new_call(
+    tmp_path,
+):
+    row = _manifest_row("strider:mux_4_1_1")
+    golden = (ROOT / row["golden_rtl"]).read_text(encoding="utf-8")
+    calls = []
+
+    def transport(**request):
+        calls.append(request)
+        return {
+            "content": json.dumps({
+                "replacement_rtl": golden,
+                "edit": "restore public golden behavior",
+            }),
+            "input_tokens": 100,
+            "output_tokens": 20,
+            "provider_request_id": f"injected-blue-{len(calls)}",
+        }
+
+    workspace = tmp_path / "tampered-events"
+    run_shadow_matrix(
+        project_root=ROOT,
+        workspace=workspace,
+        client=_client(transport),
+        smoke_only=True,
+    )
+    events_path = workspace / "events.jsonl"
+    events_path.write_text(
+        events_path.read_text(encoding="utf-8") + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        ShadowPilotRunnerViolation,
+        match="event ledger hash mismatch",
+    ):
+        run_shadow_matrix(
+            project_root=ROOT,
+            workspace=workspace,
+            client=_client(transport),
+            smoke_only=True,
+        )
+    assert len(calls) == 12
 
 
 @pytest.mark.skipif(not TOOLS_PRESENT, reason="Yosys/Icarus are required")
@@ -245,3 +293,48 @@ def test_grounded_red_shadow_is_one_call_formal_and_resumable(tmp_path):
     assert len(calls) == 1
     after = hash_file(registry) if registry.exists() else "absent"
     assert after == before
+
+
+@pytest.mark.skipif(not TOOLS_PRESENT, reason="Yosys/Icarus are required")
+def test_completed_red_shadow_rejects_tampered_event_ledger_before_new_call(
+    tmp_path,
+):
+    calls = []
+
+    def transport(**request):
+        calls.append(request)
+        prompt = json.loads(request["messages"][1]["content"])
+        return {
+            "content": json.dumps({
+                "target_module": prompt["target_module"],
+                "node_ordinal": prompt["allowed_nodes"][0]["node_ordinal"],
+                "rationale": "deterministic injected target",
+            }),
+            "input_tokens": 200,
+            "output_tokens": 30,
+            "provider_request_id": f"injected-red-{len(calls)}",
+        }
+
+    workspace = tmp_path / "red-tampered-events"
+    run_grounded_red_shadow(
+        project_root=ROOT,
+        workspace=workspace,
+        client=_client(transport),
+        seed=17,
+    )
+    events_path = workspace / "events.jsonl"
+    events_path.write_text(
+        events_path.read_text(encoding="utf-8") + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        GroundedRedShadowViolation,
+        match="event ledger hash mismatch",
+    ):
+        run_grounded_red_shadow(
+            project_root=ROOT,
+            workspace=workspace,
+            client=_client(transport),
+            seed=17,
+        )
+    assert len(calls) == 1

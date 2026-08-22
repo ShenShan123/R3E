@@ -292,6 +292,72 @@ def _audit_evaluation(
     return verified
 
 
+def _verify_matrix_resume_artifacts(
+    *,
+    output: Path,
+    matrix: ShadowPilotMatrix,
+    expected_cells: set[tuple[str, int, str]],
+    execution_mode: str,
+) -> None:
+    """Reject a completed matrix before any provider-bound resume work.
+
+    A completed summary means all cell artifacts, the aggregate and the event
+    ledger were durably written.  Reconstructing the ledger first would make a
+    tampered event file appear valid, so verify the immutable top-level hashes
+    before entering the per-cell loop.
+    """
+    summary_path = output / "summary.json"
+    try:
+        summary = read_json(summary_path)
+        aggregate = read_json(output / "aggregate.json")
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise ShadowPilotRunnerViolation(
+            "completed shadow matrix has unreadable summary artifacts"
+        ) from exc
+    if not isinstance(summary, Mapping) or summary.get("summary_hash") != hash_payload({
+        key: value for key, value in summary.items() if key != "summary_hash"
+    }):
+        raise ShadowPilotRunnerViolation(
+            "completed shadow matrix summary hash mismatch"
+        )
+    expected = {
+        "schema_version": RUN_SUMMARY_SCHEMA,
+        "matrix_id": matrix.matrix_id,
+        "matrix_hash": matrix.matrix_hash,
+        "execution_mode": execution_mode,
+        "completed_cells": len(expected_cells),
+        "call_matched": True,
+        "promotion_executed": False,
+        "raam_execution_executed": False,
+    }
+    if any(summary.get(key) != value for key, value in expected.items()):
+        raise ShadowPilotRunnerViolation(
+            "completed shadow matrix summary binding mismatch"
+        )
+    events_path = output / "events.jsonl"
+    if not events_path.is_file() or summary.get("events_file_hash") != hash_file(events_path):
+        raise ShadowPilotRunnerViolation(
+            "completed shadow matrix event ledger hash mismatch"
+        )
+    if not isinstance(aggregate, Mapping) or aggregate.get("aggregate_hash") != hash_payload({
+        key: value for key, value in aggregate.items() if key != "aggregate_hash"
+    }):
+        raise ShadowPilotRunnerViolation(
+            "completed shadow matrix aggregate hash mismatch"
+        )
+    if (
+        aggregate.get("matrix_id") != matrix.matrix_id
+        or aggregate.get("matrix_hash") != matrix.matrix_hash
+        or aggregate.get("completed_cells") != len(expected_cells)
+        or aggregate.get("expected_cells") != len(expected_cells)
+        or aggregate.get("call_matched") is not True
+        or summary.get("aggregate_hash") != aggregate.get("aggregate_hash")
+    ):
+        raise ShadowPilotRunnerViolation(
+            "completed shadow matrix aggregate binding mismatch"
+        )
+
+
 def _cell_event(
     *,
     matrix: ShadowPilotMatrix,
@@ -360,6 +426,18 @@ def run_shadow_matrix(
         for seed in seeds
         for arm in matrix.arms
     }
+    top_summary_path = output / "summary.json"
+    if top_summary_path.exists():
+        if not resume:
+            raise ShadowPilotRunnerViolation(
+                "completed shadow matrix cannot be overwritten"
+            )
+        _verify_matrix_resume_artifacts(
+            output=output,
+            matrix=matrix,
+            expected_cells=expected_cells,
+            execution_mode="smoke" if smoke_only else "full_matrix",
+        )
     manifest = _manifest_rows(matrix)
     events: list[dict[str, Any]] = []
     for case_id in case_ids:

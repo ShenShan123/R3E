@@ -163,6 +163,65 @@ def verify_red_shadow_event(raw: Mapping[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def _verify_red_resume_artifacts(
+    *,
+    output: Path,
+    matrix: Any,
+    round_id: str,
+    seed: int,
+    event: Mapping[str, Any],
+    result_path: Path,
+) -> None:
+    """Reject a completed Red round if its event ledger was altered."""
+    summary_path = output / "summary.json"
+    try:
+        summary = read_json(summary_path)
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise GroundedRedShadowViolation(
+            "completed red shadow summary is unreadable"
+        ) from exc
+    if not isinstance(summary, Mapping) or summary.get("summary_hash") != hash_payload({
+        key: value for key, value in summary.items() if key != "summary_hash"
+    }):
+        raise GroundedRedShadowViolation(
+            "completed red shadow summary hash mismatch"
+        )
+    if any(summary.get(key) != value for key, value in {
+        "schema_version": RED_SUMMARY_SCHEMA,
+        "matrix_id": matrix.matrix_id,
+        "matrix_hash": matrix.matrix_hash,
+        "round_id": round_id,
+        "seed": int(seed),
+        "promotion_executed": False,
+        "memory_qualification_executed": False,
+        "event_hash": event["event_hash"],
+    }.items()):
+        raise GroundedRedShadowViolation(
+            "completed red shadow summary binding mismatch"
+        )
+    events_path = output / "events.jsonl"
+    if not events_path.is_file() or summary.get("events_file_hash") != hash_file(events_path):
+        raise GroundedRedShadowViolation(
+            "completed red shadow event ledger hash mismatch"
+        )
+    try:
+        rows = [
+            json.loads(line)
+            for line in events_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise GroundedRedShadowViolation(
+            "completed red shadow event ledger is invalid"
+        ) from exc
+    if rows != [dict(event)] or not result_path.is_file() or event.get(
+        "red_result_file_hash"
+    ) != hash_file(result_path):
+        raise GroundedRedShadowViolation(
+            "completed red shadow event binding mismatch"
+        )
+
+
 def _audit_result(
     *, root: Path, workspace: Path, result: Mapping[str, Any]
 ) -> dict[str, Any]:
@@ -402,6 +461,15 @@ def run_grounded_red_shadow(
         ):
             raise GroundedRedShadowViolation(
                 "resumed red shadow output hash mismatch"
+            )
+        if (output / "summary.json").is_file():
+            _verify_red_resume_artifacts(
+                output=output,
+                matrix=matrix,
+                round_id=round_id,
+                seed=seed,
+                event=event,
+                result_path=result_path,
             )
         result = _audit_result(
             root=root, workspace=output / "execution", result=read_json(result_path)
