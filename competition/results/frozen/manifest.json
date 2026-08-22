@@ -1,7 +1,0 @@
-{
-  "schema_version": "r3e-aic-frozen-manifest-v1",
-  "status": "case_and_toolchain_index_only",
-  "cases": ["demo_counter", "demo_fsm", "demo_shift"],
-  "metrics_path": "competition/results/frozen/metrics.json",
-  "note": "Run-specific result artifacts remain outside the repository until explicitly frozen."
-}

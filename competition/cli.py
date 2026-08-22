@@ -9,12 +9,13 @@ from pathlib import Path
 from typing import Any
 
 from .app.backend.health import health
+from .config import load_config
 from .services.artifact_service import ArtifactService
 from .services.benchmark_service import BenchmarkService
 from .services.case_service import CaseCatalog
 from .services.diagnosis_service import DiagnosisService
 from .services.repair_service import RepairService
-from .services.verification_service import VerificationService
+from .services.common import git_provenance
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,19 +28,13 @@ def output_root(value: str | None, prefix: str) -> Path:
 
 
 def run_one(root: Path, case_id: str, mode: str, out: Path) -> dict[str, Any]:
-    repair = RepairService(root, out)
-    verifier = VerificationService(root, out)
-    proposals = repair.generate(case_id, mode=mode)
-    verified = []
-    for candidate in proposals["candidates"]:
-        verified.append({
-            "candidate": candidate,
-            "verification": verifier.verify(
-                case_id,
-                candidate["replacement_rtl"],
-                run_id=f"{mode}-{candidate['id']}",
-            ),
-        })
+    config = load_config(root)
+    repair = RepairService(root, out, config)
+    proposals = repair.generate(case_id, mode=mode, run_id=f"cli-{mode}")
+    verified = [
+        {"candidate": candidate, "verification": candidate["verification"]}
+        for candidate in proposals["candidates"]
+    ]
     return {"proposals": proposals, "verified_candidates": verified}
 
 
@@ -55,6 +50,11 @@ def summary_payload(mode: str, out: Path, runs: list[dict[str, Any]]) -> dict[st
             "case_id": proposals["case_id"],
             "mode": mode,
             "provider": proposals["provider"],
+            "policy_id": proposals["policy_id"],
+            "run_seed": proposals["provider"]["run_seed"],
+            "candidate_budget": proposals["candidate_budget"],
+            "descriptor_hash": proposals["diagnosis"]["failure_descriptor"]["descriptor_hash"],
+            "allocation_plan_hash": proposals["allocation_plan"]["plan_hash"],
             "accepted_candidate_ids": [item["candidate"]["id"] for item in accepted],
             "candidate_results": [
                 {
@@ -63,8 +63,12 @@ def summary_payload(mode: str, out: Path, runs: list[dict[str, Any]]) -> dict[st
                     "source_kind": item["candidate"]["source_kind"],
                     "accepted": item["verification"]["accepted"],
                     "result_hash": item["verification"]["result_hash"],
+                    "replacement_sha256": item["candidate"]["replacement_sha256"],
+                    "semantic_signature_hash": item["candidate"]["semantic_signature"].get("signature_hash", ""),
                     "case_evidence": item["verification"]["case_evidence"],
                     "toolchain": item["verification"]["toolchain"],
+                    "verification": item["verification"],
+                    "scope": item["candidate"].get("scope", {}),
                 }
                 for item in run["verified_candidates"]
             ],
@@ -75,6 +79,7 @@ def summary_payload(mode: str, out: Path, runs: list[dict[str, Any]]) -> dict[st
         "mode": mode,
         "case_count": len(rows),
         "runs": rows,
+        "git": git_provenance(ROOT),
         "output_root": str(out),
     }
 

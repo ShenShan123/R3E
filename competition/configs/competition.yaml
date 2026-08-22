@@ -1,38 +1,65 @@
 competition:
-  version: r3e-aic-v1
+  version: r3e-aic-m2
   mode: demo
   anonymized: true
   candidate_budget: 3
+  run_seed: 0
 
-model:
-  provider: openai-compatible
+provider:
+  provider_id_env: R3E_AIC_PROVIDER_ID
+  model_env: R3E_AIC_MODEL
+  model_version_env: R3E_AIC_MODEL_VERSION
+  api_key_env: R3E_AIC_API_KEY_ENV
+  base_url_env: R3E_AIC_BASE_URL_ENV
+  default_provider_id: openai-compatible
+  default_model: gpt-4o-mini
+  default_model_version: configured
   timeout_seconds: 120
+  max_output_tokens: 4096
 
 repair:
   lenses:
-    - generic
-    - temporal
-    - control
-    - dataflow
+    - generic_v1
+    - temporal_v1
+    - control_v1
+    - dataflow_v1
+  portfolio: descriptor_routed
 
 verification:
   parse: true
+  scope: true
   compile: true
   simulation: true
   oracle: true
-  formal: true
-  regression: true
+  structural_check: true
+  repeatability: true
   fail_closed: true
+  timeout_seconds: 20
+  stages:
+    - parse
+    - scope
+    - compile
+    - simulation
+    - oracle
+    - structural_check
+    - repeatability
 
 evolution:
-  enabled: true
+  enabled: false
   live_red_generation: false
 
 memory:
-  enabled: true
+  enabled: false
   display_internal_authority: false
 
 ui:
   show_protocol_details: false
   show_model_reasoning: false
   show_evidence: true
+
+paths:
+  case_root: competition/cases
+  frozen_root: competition/results/frozen
+  lens_registry: configs/blue/lens_registry_v1.json
+  descriptor_router: configs/blue/descriptor_router_v1.json
+  portfolio: configs/blue/descriptor_routed_portfolio_v1.json

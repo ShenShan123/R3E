@@ -1,5 +1,5 @@
-"""R³E-AIC competition-facing facade and reproducibility tooling."""
+"""R³E-AIC Competition M2 facade and reproducibility tooling."""
 
 __all__ = ["__version__"]
 
-__version__ = "r3e-aic-v1"
+__version__ = "r3e-aic-m2"

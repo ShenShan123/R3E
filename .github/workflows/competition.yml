@@ -1,0 +1,26 @@
+name: competition-m2
+
+on:
+  push:
+    branches: [competition/aic-ic-2026]
+  pull_request:
+
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install package
+        run: python -m pip install -e ".[dev]"
+      - name: Competition protocol tests
+        run: pytest -q -p no:cacheprovider tests/competition
+      - name: Privacy and release audits
+        run: |
+          python competition/scripts/check_anonymization.py
+          python scripts/check_release.py
+          python competition/scripts/validate_frozen_evidence.py
+      - name: Dataset input verification
+        run: python scripts/verify_datasets.py

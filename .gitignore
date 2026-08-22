@@ -42,7 +42,6 @@ competition/results/*
 !competition/results/frozen/
 competition/results/frozen/*
 !competition/results/frozen/.gitkeep
-!competition/results/frozen/manifest.json
-!competition/results/frozen/toolchain.json
-!competition/results/frozen/metrics.json
 !competition/results/frozen/README.md
+!competition/results/frozen/*/
+!competition/results/frozen/*/*.json

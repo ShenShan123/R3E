@@ -1,0 +1,7 @@
+{
+  "schema_version": "r3e-aic-memory-evidence-v2",
+  "authority": "experience-memory",
+  "available": false,
+  "status": "not_frozen",
+  "claim_boundary": "A normal demo run cannot activate Experience Memory."
+}

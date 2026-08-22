@@ -16,4 +16,5 @@ button.active,button.primary { background:var(--accent); color:#06111d; border-c
 select { display:block; width:100%; margin:12px 0; }.notice { color:#c9b890; font-size:13px; }.cards { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
 .card { border:1px solid var(--line); border-radius:10px; padding:14px; }.pass { color:var(--good); }.fail { color:var(--bad); }.skip { color:var(--muted); }
 pre { white-space:pre-wrap; overflow:auto; color:#c8d6f1; background:#09101d; border-radius:8px; padding:14px; min-height:100px; }
+.authority-view { color:var(--muted); min-height:72px; }.diff { min-height:0; max-height:220px; font-size:12px; }
 @media (max-width:760px) { header { display:block; }.grid.two,.cards { grid-template-columns:1fr; } h1 { font-size:30px; } }

@@ -1,9 +1,9 @@
-# R³E-AIC：自进化 RTL 智能纠错系统
+# R³E：自进化RTL智能纠错系统
 
 R³E-AIC 面向“RTL 能通过编译但功能仍错误”的芯片前端调试问题。比赛版把科研核心收敛成一条可审计链路：
 
 ```text
-RTL → 缺陷诊断 → 多候选修复 → Parse → Compile → Simulation → Oracle → Formal → Regression
+RTL → Runtime Evidence → Failure Descriptor → Blue Portfolio → Scope Gate → Parse → Compile → Simulation → Oracle → Structural Check → Repeatability
 ```
 
 模型只提出候选，真实 EDA 工具链和 R³E `oracle_gate` 决定候选能否被接受。
@@ -22,10 +22,10 @@ RTL → 缺陷诊断 → 多候选修复 → Parse → Compile → Simulation �
 ```bash
 ./competition/scripts/setup.sh
 ./competition/scripts/run_demo.sh
-./competition/scripts/reproduce_benchmarks.sh
+./competition/scripts/verify_benchmark_inputs.sh
 ```
 
-`run_demo.sh` 默认使用冻结参考候选进行 guided replay，因此不需要模型 API；每个候选仍经过 Icarus、R³E differential oracle、Yosys 和重复仿真检查。该模式是可复现演示，不是模型增益实验。显式使用 `--mode live` 才会调用真实 provider，provider 不可用时直接报错，不伪造结果。
+`run_demo.sh` 默认使用从 buggy RTL 生成的 frozen minimal patch 进行 guided replay，因此不需要模型 API；每个候选仍经过 R³E Blue Portfolio、Scope Gate、Icarus、differential oracle、Yosys Structural Check 和 Repeatability Check。该模式是可复现演示，不是模型增益实验。显式使用 `--mode live` 才会调用真实 provider，provider 不可用时直接报错，不伪造结果。
 
 ## 目录
 
@@ -33,10 +33,10 @@ RTL → 缺陷诊断 → 多候选修复 → Parse → Compile → Simulation �
 - `services/`：diagnosis、repair、verification、evolution、memory、benchmark facade；
 - `cases/`：三个可追溯到公开 CirFix 输入的演示案例；
 - `configs/`：比赛模式、Demo 和 provider 配置模板；
-- `results/frozen/`：只保存有来源的冻结证据索引；
+- `results/frozen/`：按 demo、benchmark、evolution、memory 分离的冻结证据索引；
 - `scripts/`：安装检查、演示、结果冻结、匿名化与提交包检查；
 - `docs/`：架构、视频脚本和官方大纲对齐的提交材料。
 
 ## 真实性边界
 
-第三方 benchmark、Icarus Verilog、Yosys 和 provider 均在材料中注明来源。当前仓库不内置模型响应、私有日志或 headline 实验数字；`metrics.json` 的空值表示尚未冻结真实实验，而不是零结果。所有正式数字必须由 `freeze_results.py` 从 raw result artifact 生成。
+第三方 benchmark、Icarus Verilog、Yosys 和 provider 均在材料中注明来源。当前仓库不内置模型响应、私有日志或 headline 实验数字；benchmark evidence 的 `available: false` 表示尚未冻结真实实验，而不是零结果。所有正式数字必须由 `freeze_results.py` 从 raw result artifact 生成。

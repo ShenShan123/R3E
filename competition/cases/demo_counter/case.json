@@ -1,5 +1,5 @@
 {
-  "schema_version": "r3e-aic-case-v1",
+  "schema_version": "r3e-aic-case-v2",
   "case_id": "demo_counter",
   "title": "Counter Temporal Defect",
   "dataset": "CirFix-39 / first_counter_overflow",
@@ -13,17 +13,22 @@
   "testbench": "datasets/cases/cirfix/first_counter_overflow/first_counter_tb_t3.v",
   "tb_output": "output_first_counter_tb_t3.txt",
   "top_module": "first_counter",
-  "failure_type": "temporal",
-  "first_divergence_cycle": 1,
-  "signal": "counter_out",
-  "suspected_region": {
-    "file": "first_counter_overflow_wadden_buggy1.v",
-    "start_line": 34,
-    "end_line": 51
-  },
-  "recommended_lens": "temporal",
-  "reference_edit": "Change always@(clk) to always@(posedge clk) and preserve the counter behavior.",
   "description": "A counter responds to both clock transitions instead of only the rising edge.",
   "sim_timeout": 20.0,
-  "deps": []
+  "deps": [],
+  "demo_annotation": {
+    "failure_family": "temporal",
+    "recommended_lens": "temporal_v1",
+    "suspected_region": {
+      "file": "first_counter_overflow_wadden_buggy1.v",
+      "start_line": 34,
+      "end_line": 51
+    },
+    "reference_edit": "Change always@(clk) to always@(posedge clk) and preserve the counter behavior."
+  },
+  "guided_patch": {
+    "operations": [
+      {"old": "always@(clk)", "new": "always@(posedge clk)"}
+    ]
+  }
 }

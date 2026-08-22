@@ -3,13 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>R³E-AIC RTL Repair Studio</title>
+    <title>R³E：自进化RTL智能纠错系统</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
     <header>
       <div>
-        <p class="eyebrow">R³E-AIC · CHIP INTELLIGENT DESIGN</p>
+        <p class="eyebrow">R³E-AIC Competition M2 · CHIP INTELLIGENT DESIGN</p>
         <h1>RTL Repair Studio</h1>
         <p class="subtitle">Model proposes. EDA decides.</p>
       </div>
@@ -30,7 +30,7 @@
             <select id="case-select"></select>
             <div id="case-description" class="muted"></div>
             <button id="run-demo" class="primary">Run guided demo</button>
-            <p class="notice">Guided demo uses a frozen public reference candidate for deterministic replay. It is not a model-effect result.</p>
+            <p class="notice">Guided demo uses a frozen minimal patch derived from buggy RTL. The reference RTL is oracle-only; this is not a model-effect result.</p>
           </article>
           <article class="panel">
             <h2>Diagnosis</h2>
@@ -43,9 +43,9 @@
         </article>
       </section>
       <section id="verification" class="page"><article class="panel"><h2>Verification Trace</h2><div id="trace"></div></article></section>
-      <section id="evolution" class="page"><article class="panel"><h2>Evolution Lab</h2><pre id="evolution-data">Loading…</pre></article></section>
-      <section id="memory" class="page"><article class="panel"><h2>Experience Memory</h2><pre id="memory-data">Loading…</pre></article></section>
-      <section id="benchmarks" class="page"><article class="panel"><h2>Benchmark Dashboard</h2><pre id="benchmark-data">Loading…</pre></article></section>
+      <section id="evolution" class="page"><article class="panel"><h2>Evolution Lab</h2><div id="evolution-data" class="authority-view">Loading…</div></article></section>
+      <section id="memory" class="page"><article class="panel"><h2>Experience Memory</h2><div id="memory-data" class="authority-view">Loading…</div></article></section>
+      <section id="benchmarks" class="page"><article class="panel"><h2>Benchmark Dashboard</h2><div id="benchmark-data" class="authority-view">Loading…</div></article></section>
     </main>
     <script src="/static/app.js"></script>
   </body>

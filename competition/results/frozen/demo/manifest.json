@@ -1,0 +1,9 @@
+{
+  "schema_version": "r3e-aic-demo-evidence-v2",
+  "authority": "competition-demo",
+  "available": true,
+  "status": "portable_case_index",
+  "cases": ["demo_counter", "demo_fsm", "demo_shift"],
+  "case_count": 3,
+  "claim_boundary": "This index proves the public demo inputs exist; run-specific EDA results are not frozen here."
+}

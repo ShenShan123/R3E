@@ -22,4 +22,5 @@ for tool in iverilog vvp yosys; do
 done
 
 python3 "$ROOT/scripts/verify_datasets.py"
+python3 "$ROOT/competition/scripts/validate_submission.py" --check-only
 echo "Setup check complete. No provider call was made."

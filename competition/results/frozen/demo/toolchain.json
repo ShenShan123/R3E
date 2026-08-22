@@ -1,0 +1,6 @@
+{
+  "schema_version": "r3e-aic-demo-toolchain-v2",
+  "available": false,
+  "status": "captured_per_run",
+  "note": "Exact executable paths and versions belong to the external run artifact; this public index does not claim a machine-specific toolchain."
+}

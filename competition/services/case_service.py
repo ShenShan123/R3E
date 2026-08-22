@@ -66,6 +66,24 @@ class CaseDefinition:
             return self.reference_rtl.read_text(encoding="utf-8")
         raise CaseError(f"unknown source role: {role}")
 
+    def guided_candidate_source(self) -> str:
+        """Apply the checked-in minimal guided patch, never the golden RTL."""
+        source = self.source("buggy")
+        patch = self.raw.get("guided_patch")
+        if not isinstance(patch, dict) or not isinstance(patch.get("operations"), list):
+            raise CaseError(f"guided patch is missing: {self.case_id}")
+        for operation in patch["operations"]:
+            if not isinstance(operation, dict) or set(operation) != {"old", "new"}:
+                raise CaseError(f"guided patch operation is invalid: {self.case_id}")
+            old = str(operation["old"])
+            new = str(operation["new"])
+            if not old or old not in source:
+                raise CaseError(f"guided patch context is absent: {self.case_id}")
+            source = source.replace(old, new, 1)
+        if source == self.source("buggy"):
+            raise CaseError(f"guided patch made no change: {self.case_id}")
+        return source
+
     def oracle_case(self) -> dict[str, Any]:
         return {
             "case_id": self.case_id,
@@ -102,21 +120,31 @@ class CaseCatalog:
     def _load(self) -> None:
         for path in sorted(self.case_root.glob("*/case.json")):
             raw = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(raw, dict):
+                raise CaseError(f"case definition must be an object: {path}")
             required = {
                 "schema_version", "case_id", "title", "dataset", "source",
                 "buggy_rtl", "reference_rtl", "testbench", "tb_output",
-                "top_module", "failure_type", "recommended_lens", "sim_timeout",
+                "top_module", "description", "sim_timeout", "deps",
+                "demo_annotation", "guided_patch",
             }
-            if set(raw) < required:
+            if not required.issubset(raw):
                 raise CaseError(f"case schema is incomplete: {path}")
-            if raw["schema_version"] != "r3e-aic-case-v1":
+            if raw["schema_version"] != "r3e-aic-case-v2":
                 raise CaseError(f"unsupported case schema: {path}")
+            if not isinstance(raw["case_id"], str) or not raw["case_id"]:
+                raise CaseError(f"case_id must be non-empty: {path}")
+            if not isinstance(raw["deps"], list):
+                raise CaseError(f"deps must be a list: {path}")
+            if not isinstance(raw["demo_annotation"], dict):
+                raise CaseError(f"demo_annotation must be an object: {path}")
             case = CaseDefinition(self.repo_root, raw)
             if case.case_id in self._cases:
                 raise CaseError(f"duplicate case id: {case.case_id}")
             case.buggy_rtl
             case.reference_rtl
             case.testbench
+            case.guided_candidate_source()
             self._cases[case.case_id] = case
         if set(self._cases) != {"demo_counter", "demo_fsm", "demo_shift"}:
             raise CaseError("the competition facade must expose exactly three demos")
@@ -135,9 +163,8 @@ class CaseCatalog:
             {
                 "case_id": case.case_id,
                 "title": case.title,
-                "failure_type": case.raw["failure_type"],
-                "recommended_lens": case.raw["recommended_lens"],
                 "description": case.raw["description"],
+                "demo_annotation": case.raw["demo_annotation"],
                 "evidence": case.evidence(),
             }
             for case in self.all()

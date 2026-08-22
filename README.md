@@ -1,6 +1,6 @@
-# R³E-AIC：自进化 RTL 智能纠错系统
+# R³E：自进化RTL智能纠错系统
 
-R³E-AIC 面向芯片前端设计中“RTL 能通过编译但功能仍错误”的问题，连接缺陷诊断、多候选修复、真实 EDA 正确性验证和可追溯证据。
+R³E 面向芯片前端设计中“RTL 能通过编译但功能仍错误”的问题，连接运行时证据、Failure Descriptor、Blue Candidate Portfolio、Scope Gate、真实 EDA 正确性验证和可追溯证据。R³E-AIC 仅是比赛软件版本名。
 
 > 模型提出候选，EDA 决定候选。
 
@@ -11,10 +11,10 @@ Python 3.11+、Icarus Verilog/VVP 和 Yosys 是比赛版基线依赖：
 ```bash
 ./competition/scripts/setup.sh
 ./competition/scripts/run_demo.sh
-./competition/scripts/reproduce_benchmarks.sh
+./competition/scripts/verify_benchmark_inputs.sh
 ```
 
-`run_demo.sh` 默认是 guided replay：它使用公开案例的冻结参考 RTL 作为确定性 Demo 候选，不调用模型，也不宣称模型效果；每个候选仍经过 Parse、Compile、Simulation、R³E differential Oracle、Yosys structural/formal-sanity 和重复回归。显式运行 `./competition/scripts/run_demo.sh --mode live` 才会调用真实 provider，provider 不可用时 fail closed。
+`run_demo.sh` 默认是 guided replay：它从 buggy RTL 生成 checked-in 的最小修复候选，不调用模型，也不宣称模型效果；每个候选仍经过 Parse、Scope、Compile、Simulation、R³E differential Oracle、Yosys Structural Check 和 Repeatability Check。显式运行 `./competition/scripts/run_demo.sh --mode live` 才会调用真实 provider，provider 不可用时 fail closed。
 
 ## 比赛 Demo
 
@@ -44,9 +44,9 @@ PYTHONPATH=. python3 -m competition.app.backend.api
 
 ## 真实性和权限边界
 
-比赛 Facade 不复制 R³E Core。LLM 只负责诊断建议和 replacement RTL 提案，不能报告 parse/formal/oracle 成功、排序候选或宣布修复正确。`r3e.semantic_repair_bench.oracle_gate.judge` 使用同一 testbench 对 frozen reference 和 candidate 做 Icarus differential comparison，结果由 runner 记录。
+比赛 Facade 不复制 R³E Core。Live provider 只负责 replacement RTL 提案，不能报告 gate 成功、排序候选或宣布修复正确；Diagnosis、Router、Scope、EDA 和 Candidate Receipt 均由 runner 负责。`r3e.semantic_repair_bench.oracle_gate.judge` 使用同一 testbench 对 oracle-only reference 和 candidate 做 Icarus differential comparison，结果由 runner 记录。
 
-第三方 CirFix/Strider/RTLFixer benchmark、Icarus Verilog、Yosys、provider 和公开 RTL 的来源/许可见 `datasets/README.md`、`datasets/licenses/` 和 `competition/docs/submission/佐证材料索引.md`。确定性 fixture 只能证明工程协议能力，不能作为 headline gain。
+第三方 CirFix/Strider/RTLFixer benchmark、Icarus Verilog、Yosys、provider 和公开 RTL 的来源/许可见 `datasets/README.md`、`datasets/licenses/` 和 `competition/docs/submission/佐证材料索引.md`。Guided minimal patch 只能证明工程协议能力，不能作为 headline gain。
 
 ## 证据与复现
 

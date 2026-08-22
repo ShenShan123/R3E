@@ -24,6 +24,7 @@ from ...services.evolution_service import EvolutionService
 from ...services.memory_service import MemoryService
 from ...services.repair_service import RepairService
 from ...services.verification_service import VerificationService
+from ...config import CompetitionConfig, load_config
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -32,13 +33,19 @@ DEFAULT_OUTPUT = Path(os.getenv("R3E_AIC_OUTPUT_ROOT", "/tmp/r3e-aic-runs"))
 
 
 class CompetitionContext:
-    def __init__(self, root: Path = ROOT, output_root: Path = DEFAULT_OUTPUT):
+    def __init__(
+        self,
+        root: Path = ROOT,
+        output_root: Path = DEFAULT_OUTPUT,
+        config: CompetitionConfig | None = None,
+    ):
         self.root = root.resolve()
         self.output_root = output_root.resolve()
+        self.config = config or load_config(self.root)
         self.catalog = CaseCatalog(self.root)
-        self.diagnosis = DiagnosisService(self.root, self.output_root)
-        self.repair = RepairService(self.root, self.output_root)
-        self.verification = VerificationService(self.root, self.output_root)
+        self.diagnosis = DiagnosisService(self.root, self.output_root, self.config)
+        self.repair = RepairService(self.root, self.output_root, self.config)
+        self.verification = VerificationService(self.root, self.output_root, self.config)
         self.evolution = EvolutionService(self.root)
         self.memory = MemoryService(self.root)
         self.benchmark = BenchmarkService(self.root)
@@ -46,15 +53,11 @@ class CompetitionContext:
     def run_case(self, payload: dict[str, Any]) -> dict[str, Any]:
         case_id = str(payload.get("case_id") or "")
         mode = str(payload.get("mode") or "demo")
-        proposals = self.repair.generate(case_id, mode=mode)
-        verified = []
-        for candidate in proposals["candidates"]:
-            result = self.verification.verify(
-                case_id,
-                candidate["replacement_rtl"],
-                run_id=f"{mode}-{candidate['id']}",
-            )
-            verified.append({"candidate": candidate, "verification": result})
+        proposals = self.repair.generate(case_id, mode=mode, run_id=f"api-{mode}")
+        verified = [
+            {"candidate": candidate, "verification": candidate["verification"]}
+            for candidate in proposals["candidates"]
+        ]
         return {"proposals": proposals, "verified_candidates": verified}
 
 

@@ -1,0 +1,7 @@
+{
+  "schema_version": "r3e-aic-demo-cases-v2",
+  "authority": "competition-case-catalog",
+  "available": true,
+  "cases": ["demo_counter", "demo_fsm", "demo_shift"],
+  "run_command": "./competition/scripts/run_demo.sh"
+}

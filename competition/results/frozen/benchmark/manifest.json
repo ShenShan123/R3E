@@ -1,0 +1,7 @@
+{
+  "schema_version": "r3e-aic-benchmark-evidence-v2",
+  "authority": "benchmark",
+  "available": false,
+  "status": "not_frozen",
+  "claim_boundary": "No benchmark generalization result is claimed."
+}
