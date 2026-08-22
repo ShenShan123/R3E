@@ -4,7 +4,7 @@
   "status": "frozen",
   "parent_milestone": {
     "milestone_id": "real-adapter-pilot-entry-v1",
-    "milestone_hash": "sha256:2af49925ce3e30bc1e3e0af08f3773d420dab3cac9f300e97807ef3f42b12dcb"
+    "milestone_hash": "sha256:760a4ae33155ac49c0b2fc0d365f9af764e05032f9a6d947adda51c9afb3e5bb"
   },
   "completed_scope": [
     "fixed-four-design-three-seed-abcd-shadow-matrix",
@@ -61,5 +61,5 @@
     "python scripts/check_release.py ."
   ],
   "claim_boundary": "The frozen Shadow Pilot Matrix and injected-transport execution prove call cardinality, authority binding, deterministic aggregation, checkpoint recovery, and one bounded Grounded Red formal round. They do not establish a real-provider ACP-7 gain, GRD-8 yield, causal portfolio advantage, multi-round co-evolution result, memory benefit, or promotion evidence.",
-  "milestone_hash": "sha256:3b18339359c8e0cba18e0ab8968a3b464d10e31364e9ac3eef7fce46f202455b"
+  "milestone_hash": "sha256:e113c2d5639852fe873fb7b3de414b8a7cc678cd11142476dd32a0f70d6796ca"
 }

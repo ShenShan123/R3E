@@ -830,6 +830,21 @@ pytest -q -p no:cacheprovider tests/test_policy_promotion_rehearsal.py
 This is a deterministic interface/recovery rehearsal, not evidence from a
 real provider and not a multi-seed experiment.
 
+Before enabling a real policy-transition rehearsal, run the read-only
+promotion gate with a separately frozen binding:
+
+```bash
+python -m r3e.pilot.promotion_readiness \
+  --shadow-workspace /path/to/real-shadow-admission \
+  --binding /path/to/real-policy-rehearsal-binding.json
+```
+
+The gate rejects terminal/incomplete shadow workspaces and requires a
+reconstructable 12+1 admission, an admitted clean/poison/revert formal
+triplet, two residual designs, an independent non-target manifest, fixed
+one-seed/two-round policy-only controls, and unchanged registry snapshots. It
+does not call a provider or promote a policy.
+
 ### Deterministic B0→B1→B2 pilot scaffold
 
 The next engineering fixture freezes the shape of the first real dynamic
