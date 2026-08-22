@@ -71,17 +71,6 @@ def _successful_shadow(root: Path) -> Path:
     workspace = root / "shadow"
     matrix_id = "matrix-v1"
     matrix_hash = "sha256:" + "b" * 64
-    blue = _hashed({
-        "schema_version": "r3e-shadow-pilot-run-summary-v1",
-        "matrix_id": matrix_id,
-        "matrix_hash": matrix_hash,
-        "execution_mode": "smoke",
-        "completed_cells": 4,
-        "call_matched": True,
-        "promotion_executed": False,
-        "raam_execution_executed": False,
-        "claim_scope": "shadow",
-    }, "summary_hash")
     aggregate = _hashed({
         "schema_version": "r3e-shadow-pilot-aggregate-v1",
         "matrix_id": matrix_id,
@@ -95,6 +84,22 @@ def _successful_shadow(root: Path) -> Path:
         },
         "claim_scope": "shadow",
     }, "aggregate_hash")
+    blue_events = workspace / "blue_matrix" / "events.jsonl"
+    blue_events.parent.mkdir(parents=True, exist_ok=True)
+    blue_events.write_text("{}\n", encoding="utf-8")
+    blue = _hashed({
+        "schema_version": "r3e-shadow-pilot-run-summary-v1",
+        "matrix_id": matrix_id,
+        "matrix_hash": matrix_hash,
+        "execution_mode": "smoke",
+        "completed_cells": 4,
+        "call_matched": True,
+        "promotion_executed": False,
+        "raam_execution_executed": False,
+        "events_file_hash": hash_file(blue_events),
+        "aggregate_hash": aggregate["aggregate_hash"],
+        "claim_scope": "shadow",
+    }, "summary_hash")
     _write_json(workspace / "blue_matrix" / "summary.json", blue)
     _write_json(workspace / "blue_matrix" / "aggregate.json", aggregate)
     result = {
@@ -242,3 +247,16 @@ def test_red_event_ledger_hash_drift_fails_closed(tmp_path):
     )
     assert result["ready"] is False
     assert "red_events_hash_binding" in result["blockers"]
+
+
+def test_blue_event_ledger_hash_drift_fails_closed(tmp_path):
+    workspace = _successful_shadow(tmp_path)
+    events = workspace / "blue_matrix" / "events.jsonl"
+    events.write_text(events.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    result = assess_policy_promotion_readiness(
+        shadow_workspace=workspace,
+        rehearsal_binding=_binding(tmp_path),
+        project_root=tmp_path,
+    )
+    assert result["ready"] is False
+    assert "blue_events_hash_binding" in result["blockers"]

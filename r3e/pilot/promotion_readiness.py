@@ -172,6 +172,15 @@ def _verify_shadow(
             or aggregate.get("call_matched") is not True
         ):
             blockers.append("blue_aggregate_shape")
+        if blue is not None and blue.get("aggregate_hash") != aggregate.get(
+            "aggregate_hash"
+        ):
+            blockers.append("blue_aggregate_hash_binding")
+    blue_events_path = workspace / "blue_matrix" / "events.jsonl"
+    if blue is None or not blue_events_path.is_file():
+        blockers.append("blue_events_missing")
+    elif blue.get("events_file_hash") != hash_file(blue_events_path):
+        blockers.append("blue_events_hash_binding")
         arms = aggregate.get("arms")
         if not isinstance(arms, Mapping) or sum(
             int(row.get("provider_calls", -1))
