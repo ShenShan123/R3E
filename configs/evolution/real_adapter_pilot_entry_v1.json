@@ -23,7 +23,7 @@
     "four-call-injected-transport-smoke-closes-grd8-formal-triplet-and-acp7-selection"
   ],
   "frozen_assets": {
-    "README.md": "sha256:9a80f235afe65410bb1371a1ca938fc2a3826755b780934b374ce472d4c87e70",
+    "README.md": "sha256:33a330bf142eb297c7a2db5d6ee08329893571a1fbfc44b040d8caa4e1af3e68",
     "configs/base_policy/frozen_base_policy_v3.json": "sha256:2471514186ab54e658696219d84146256cd35411e074e7a3e6a41d7fa25d668b",
     "configs/evolution/grd8_acp7_pilot_v1.json": "sha256:8b2b9e9294910330c888df7e82aa81a411015167d736569bc3487e62ee1201a3",
     "configs/evolution/round_integrated_deterministic_v1.json": "sha256:23e18ad7c57f38d9078ea9573d13f2dd420c712345c4e8f91b2b9b399a77a56e",
@@ -86,5 +86,5 @@
     "pilot-budget"
   ],
   "claim_boundary": "The real Red target-choice and ACP candidate boundaries are implemented. Real ACP providers propose only replacement RTL and edit text; the runner derives semantic patch metadata from a bounded token-AST diff and binds it to verifier checks. Candidate-local AST/no-op materialization failures receive rejected signatures and do not abort the remaining planned slots. Injected-transport smoke tests close the runner-owned GRD formal triplet, ACP oracle selection, and invalid-candidate isolation. The checked-in pilot template remains non-executable. No third-party model result, GRD-8 yield, ACP-7 gain, multi-round result, or promotion evidence is claimed.",
-  "milestone_hash": "sha256:760a4ae33155ac49c0b2fc0d365f9af764e05032f9a6d947adda51c9afb3e5bb"
+  "milestone_hash": "sha256:d64fb6bb76b4b14a22935238f4d4a00c04d22f9b90a7cecae8977b7e41ccb055"
 }

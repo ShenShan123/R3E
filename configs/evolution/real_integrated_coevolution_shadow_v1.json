@@ -4,7 +4,7 @@
   "status": "frozen",
   "parent_milestone": {
     "milestone_id": "shadow-pilot-matrix-v1",
-    "milestone_hash": "sha256:0778993546b515d0dac01eeedcd7f65238e1c80ff05d7c026b0fbc1a9be3e673"
+    "milestone_hash": "sha256:d06afb65605b0ef8a68329f4bfe4bbd14e3e2e455b5982300ad9ae84244ce094"
   },
   "completed_scope": [
     "formal-evolution-adapter-real-grounded-manifest-boundary",
@@ -69,5 +69,5 @@
     "policy-or-raam-promotion"
   ],
   "claim_boundary": "Frozen Real Integrated Coevolution Shadow V1 authority and injected-transport conformance only. It proves the Red to Blue formal data path, archive and VerifiedEpisode reconstruction, checkpoint/resume, and shadow hard gates; it does not claim real-provider yield, policy transition, RAAM benefit, multi-round coevolution, or promotion evidence.",
-  "milestone_hash": "sha256:70792e78507adeebd6e6f72beae9520e5183f244b0ae8a0ac74fc43c22d9364e"
+  "milestone_hash": "sha256:6ba1879d7b0b2e15fc04872face227f21be7ec5f25d1c7f1e414941209e94e92"
 }
