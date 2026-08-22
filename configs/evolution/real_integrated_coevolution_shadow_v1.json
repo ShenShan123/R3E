@@ -35,13 +35,13 @@
     "r3e/pilot/shadow_admission.py": "sha256:419e10a9aadef83eb82a11442cbc9f88511f34d1f97626b956a5153c123ec238",
     "r3e/pilot/safe_shadow_admission.py": "sha256:9372b48d1642522d8e830ef00f573123a8e7ca15d3aad27c84cc72e0b0c0a0e0",
     "r3e/pilot/__init__.py": "sha256:1ad17044659d27b6cb00e23aa5d3efd63ee0e349fd8a184a72db433171831b6c",
-    "r3e/pilot/promotion_readiness.py": "sha256:a0ae87c3d51dc373d90dd086a8c7a71b64287e99f8b082964a80a95e98922469",
+    "r3e/pilot/promotion_readiness.py": "sha256:69ac5f36758f4237d915a5ec180a96ae29323b3d3a015fee642fcd83c39300f2",
     "r3e/red/grounded/population_scheduler.py": "sha256:25d2d0eaeb3d2e08d55491e62e6174e381134330db9575f7415e8c3f96746b65",
     "tests/test_real_integrated_shadow.py": "sha256:e71e4b3e603d36e15e56d1345f43f6fc21437c44da5116e1d4440c2cf8ee15ec",
     "tests/test_grounded_population_wall_time_floor.py": "sha256:5e3c0da59494a9e69c4f2494138f56dbf98a45d18255e145500c237cfc730239",
     "tests/test_safe_shadow_admission.py": "sha256:a8bddb455dd17939becd1fbf8689f5f2fba625ce94ffbab0fc203842c90f406d",
     "tests/test_shadow_admission.py": "sha256:0da6c567c281de617613ee8bc44d3f871a33f8e0488c163ae48b00c1794bdd02",
-    "tests/test_promotion_readiness.py": "sha256:8a0aabe454dbd9e0707d2412d96e386d4287f552a2e5c580dea6e36559665a57",
+    "tests/test_promotion_readiness.py": "sha256:519f2223e1c6f2670345ccb7f3872431e1cbec9116d9c1ca9518912ccfee5d5f",
     "tests/test_real_integrated_shadow_milestone.py": "sha256:c8e6ec7b91743c65e60ef679340ad281d54ff152220aa5ae79dd85f182936911"
   },
   "required_validation": [
@@ -69,5 +69,5 @@
     "policy-or-raam-promotion"
   ],
   "claim_boundary": "Frozen Real Integrated Coevolution Shadow V1 authority and injected-transport conformance only. It proves the Red to Blue formal data path, archive and VerifiedEpisode reconstruction, checkpoint/resume, and shadow hard gates; it does not claim real-provider yield, policy transition, RAAM benefit, multi-round coevolution, or promotion evidence.",
-  "milestone_hash": "sha256:09371c870215821d93393f95230db3b0e929a7083897a63f800419c24d8558fb"
+  "milestone_hash": "sha256:725a13b73af84ac963b7970e8eb12be7320ba9355dc2a4fe12a38ba7861191f7"
 }

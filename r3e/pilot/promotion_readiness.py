@@ -44,18 +44,31 @@ def _read(path: Path) -> Any | None:
         return None
 
 
-def _under_root(root: Path, raw: Any) -> Path | None:
+def _under_roots(roots: tuple[Path, ...], raw: Any) -> Path | None:
     if not isinstance(raw, str) or not raw:
         return None
     path = Path(raw)
     if not path.is_absolute():
-        path = root / path
+        path = roots[0] / path
     path = path.resolve()
+    if not any(
+        _is_relative_to(path, root)
+        for root in roots
+    ):
+        return None
+    return path if path.is_file() else None
+
+
+def _is_relative_to(path: Path, root: Path) -> bool:
     try:
         path.relative_to(root)
     except ValueError:
-        return None
-    return path if path.is_file() else None
+        return False
+    return True
+
+
+def _under_root(root: Path, raw: Any) -> Path | None:
+    return _under_roots((root,), raw)
 
 
 def _manifest_binding(
@@ -124,6 +137,11 @@ def _verify_shadow(
     if blue is None:
         blockers.append("blue_summary_missing")
     else:
+        if (
+            blue.get("matrix_id") != summary.get("matrix_id")
+            or blue.get("matrix_hash") != summary.get("matrix_hash")
+        ):
+            blockers.append("blue_matrix_binding")
         if not _hash_matches(blue, "summary_hash"):
             blockers.append("blue_summary_hash")
         for key, value in {
@@ -141,6 +159,11 @@ def _verify_shadow(
     if aggregate is None:
         blockers.append("blue_aggregate_missing")
     else:
+        if (
+            aggregate.get("matrix_id") != summary.get("matrix_id")
+            or aggregate.get("matrix_hash") != summary.get("matrix_hash")
+        ):
+            blockers.append("blue_aggregate_binding")
         if not _hash_matches(aggregate, "aggregate_hash"):
             blockers.append("blue_aggregate_hash")
         if (
@@ -163,6 +186,11 @@ def _verify_shadow(
     if red is None:
         blockers.append("red_summary_missing")
     else:
+        if (
+            red.get("matrix_id") != summary.get("matrix_id")
+            or red.get("matrix_hash") != summary.get("matrix_hash")
+        ):
+            blockers.append("red_matrix_binding")
         if not _hash_matches(red, "summary_hash"):
             blockers.append("red_summary_hash")
         for key, value in {
@@ -188,6 +216,12 @@ def _verify_shadow(
     if event is None:
         blockers.append("red_event_missing")
     else:
+        if (
+            event.get("matrix_id") != summary.get("matrix_id")
+            or event.get("matrix_hash") != summary.get("matrix_hash")
+            or (red is not None and event.get("event_hash") != red.get("event_hash"))
+        ):
+            blockers.append("red_event_binding")
         if not _hash_matches(event, "event_hash"):
             blockers.append("red_event_hash")
         if event.get("schema_version") != RED_EVENT_SCHEMA:
@@ -205,6 +239,11 @@ def _verify_shadow(
         result_path = workspace / "grounded_red" / "red_result.json"
         if result_path.is_file() and event.get("red_result_file_hash") != hash_file(result_path):
             blockers.append("red_result_hash_binding")
+    events_path = workspace / "grounded_red" / "events.jsonl"
+    if red is None or not events_path.is_file():
+        blockers.append("red_events_missing")
+    elif red.get("events_file_hash") != hash_file(events_path):
+        blockers.append("red_events_hash_binding")
     return dict(summary)
 
 
@@ -212,6 +251,7 @@ def _verify_binding(
     raw: Any,
     *,
     root: Path,
+    workspace: Path,
     blockers: list[str],
 ) -> None:
     if not isinstance(raw, Mapping) or raw.get("schema_version") != BINDING_SCHEMA:
@@ -287,7 +327,8 @@ def _verify_binding(
         resolved: dict[str, str] = {}
         for label in ("before", "after"):
             item = snapshots.get(label)
-            path = _under_root(root, item.get("path") if isinstance(item, Mapping) else None)
+            raw_path = item.get("path") if isinstance(item, Mapping) else None
+            path = _under_root(root, raw_path) or _under_root(workspace, raw_path)
             if path is None or not isinstance(item, Mapping) or hash_file(path) != item.get("file_hash"):
                 blockers.append(f"registry_{label}_snapshot")
             else:
@@ -307,7 +348,12 @@ def assess_policy_promotion_readiness(
     workspace = Path(shadow_workspace).resolve()
     blockers: list[str] = []
     summary = _verify_shadow(workspace, blockers=blockers)
-    _verify_binding(rehearsal_binding, root=root, blockers=blockers)
+    _verify_binding(
+        rehearsal_binding,
+        root=root,
+        workspace=workspace,
+        blockers=blockers,
+    )
     evidence = {
         "shadow_summary_hash": str(summary.get("summary_hash") or ""),
         "shadow_matrix_hash": str(summary.get("matrix_hash") or ""),

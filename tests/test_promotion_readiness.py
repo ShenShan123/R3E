@@ -186,6 +186,26 @@ def test_complete_shadow_and_fixed_binding_can_pass_readiness(tmp_path):
     assert result["readiness_hash"].startswith("sha256:")
 
 
+def test_registry_snapshots_may_live_in_external_shadow_workspace(tmp_path):
+    workspace = _successful_shadow(tmp_path)
+    binding = _binding(tmp_path)
+    before = workspace / "registry-before.json"
+    after = workspace / "registry-after.json"
+    registry = {"registry_hash": "same"}
+    _write_json(before, registry)
+    _write_json(after, registry)
+    binding["registry_snapshots"] = {
+        "before": {"path": str(before), "file_hash": hash_file(before)},
+        "after": {"path": str(after), "file_hash": hash_file(after)},
+    }
+    result = assess_policy_promotion_readiness(
+        shadow_workspace=workspace,
+        rehearsal_binding=binding,
+        project_root=tmp_path,
+    )
+    assert result["ready"] is True
+
+
 def test_registry_change_and_formal_triplet_drift_fail_closed(tmp_path):
     workspace = _successful_shadow(tmp_path)
     binding = _binding(tmp_path)
@@ -209,3 +229,16 @@ def test_registry_change_and_formal_triplet_drift_fail_closed(tmp_path):
     assert result["ready"] is False
     assert "registry_changed" in result["blockers"]
     assert "red_formal_triplet" in result["blockers"]
+
+
+def test_red_event_ledger_hash_drift_fails_closed(tmp_path):
+    workspace = _successful_shadow(tmp_path)
+    events = workspace / "grounded_red" / "events.jsonl"
+    events.write_text(events.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    result = assess_policy_promotion_readiness(
+        shadow_workspace=workspace,
+        rehearsal_binding=_binding(tmp_path),
+        project_root=tmp_path,
+    )
+    assert result["ready"] is False
+    assert "red_events_hash_binding" in result["blockers"]
