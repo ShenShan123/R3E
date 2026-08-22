@@ -712,12 +712,13 @@ provider request or runner hard gate fails. A failed workspace cannot be
 resumed into another provider request; start a new authorized workspace after
 fixing the binding or budget.
 
-Four separately authorized real shadow admissions have been executed under
+Five separately authorized real shadow admissions have been executed under
 this boundary. The first completed 12 ACP calls and stopped at the old Red
 output ceiling; the second completed 12 ACP calls plus one Red request that
-returned empty content; the third stopped on empty Blue content at call 9; and
-the fourth completed 12 ACP calls plus one Red request that returned empty
-content. None produced formal poison,
+returned empty content; the third stopped on empty Blue content at call 9; the
+fourth completed 12 ACP calls plus one Red request that returned empty content;
+and the fifth stopped on empty Blue content at call 9 with a length-finish
+diagnostic. None produced formal poison,
 `VerifiedEpisode`, policy promotion, or RAAM qualification. These runs validate
 call accounting and fail-closed handling only; they are not ACP-7 gain,
 GRD-8 yield, or multi-round coevolution evidence. Empty responses are recorded
