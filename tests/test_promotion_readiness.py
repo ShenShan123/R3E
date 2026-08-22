@@ -179,6 +179,21 @@ def test_terminal_shadow_is_not_promotion_input(tmp_path):
     assert "rehearsal_binding_schema" in result["blockers"]
 
 
+def test_terminal_checkpoint_overrides_mixed_success_artifacts(tmp_path):
+    workspace = _successful_shadow(tmp_path)
+    _write_json(workspace / "terminal_failure.json", {
+        "terminal": True,
+        "failure_class": "OpenAICompatibleEmptyContentViolation",
+    })
+    result = assess_policy_promotion_readiness(
+        shadow_workspace=workspace,
+        rehearsal_binding=_binding(tmp_path),
+        project_root=tmp_path,
+    )
+    assert result["ready"] is False
+    assert "shadow_terminal_failure" in result["blockers"]
+
+
 def test_complete_shadow_and_fixed_binding_can_pass_readiness(tmp_path):
     workspace = _successful_shadow(tmp_path)
     result = assess_policy_promotion_readiness(

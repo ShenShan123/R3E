@@ -106,11 +106,14 @@ def _verify_shadow(
     *,
     blockers: list[str],
 ) -> dict[str, Any]:
+    if (workspace / "terminal_failure.json").is_file():
+        # A terminal checkpoint is authoritative even if stale success files
+        # are also present; never let mixed terminal/success artifacts enter
+        # a policy-promotion evidence lane.
+        blockers.append("shadow_terminal_failure")
     summary = _read(workspace / "summary.json")
     if summary is None:
-        if (workspace / "terminal_failure.json").is_file():
-            blockers.append("shadow_terminal_failure")
-        else:
+        if not (workspace / "terminal_failure.json").is_file():
             blockers.append("shadow_summary_missing")
         return {}
     if not _hash_matches(summary, "summary_hash"):
