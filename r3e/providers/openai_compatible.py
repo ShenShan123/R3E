@@ -18,16 +18,101 @@ from r3e.protocol.hashing import hash_payload
 
 
 CLIENT_CONFIG_SCHEMA = "r3e-openai-compatible-client-config-v1"
+RESPONSE_DIAGNOSTIC_SCHEMA = (
+    "r3e-openai-compatible-response-diagnostic-v1"
+)
+_OPTIONAL_RESPONSE_FIELDS = {"finish_reason", "refusal"}
+_SAFE_FINISH_REASONS = {
+    "stop",
+    "length",
+    "tool_calls",
+    "function_call",
+    "content_filter",
+    "null",
+}
 
 
 class OpenAICompatibleProviderViolation(RuntimeError):
     """Raised when provider configuration or output is not auditable."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        diagnostics: Mapping[str, Any] | None = None,
+    ):
+        super().__init__(message)
+        self.diagnostics = sanitize_provider_diagnostics(diagnostics)
 
 
 class OpenAICompatibleEmptyContentViolation(
     OpenAICompatibleProviderViolation
 ):
     """Raised when a provider returns no assistant content."""
+
+
+def sanitize_provider_diagnostics(
+    raw: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Return the fixed, privacy-safe response diagnostic subset.
+
+    Diagnostics are deliberately limited to categorical envelope metadata and
+    token counters.  Provider content, prompts, request URLs, credentials and
+    arbitrary provider fields never cross this boundary.
+    """
+    if not isinstance(raw, Mapping):
+        return {}
+    allowed = {
+        "schema_version",
+        "content_state",
+        "finish_reason",
+        "refusal_present",
+        "provider_request_id_present",
+        "input_tokens",
+        "output_tokens",
+    }
+    payload = {key: raw[key] for key in allowed if key in raw}
+    required = {
+        "schema_version",
+        "content_state",
+        "finish_reason",
+        "refusal_present",
+        "provider_request_id_present",
+        "input_tokens",
+        "output_tokens",
+    }
+    if set(payload) != required:
+        return {}
+    if payload.get("schema_version") != RESPONSE_DIAGNOSTIC_SCHEMA:
+        return {}
+    if payload.get("content_state") not in {
+        None,
+        "missing_content",
+        "null_content",
+        "blank_content",
+        "invalid_content_type",
+        "nonempty_content",
+    }:
+        return {}
+    if payload.get("finish_reason") not in {
+        None,
+        "missing",
+        *_SAFE_FINISH_REASONS,
+        "other",
+    }:
+        return {}
+    for key in ("refusal_present", "provider_request_id_present"):
+        if key in payload and not isinstance(payload[key], bool):
+            return {}
+    for key in ("input_tokens", "output_tokens"):
+        value = payload.get(key)
+        if value is not None and (
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value < 0
+        ):
+            return {}
+    return payload
 
 
 @dataclass(frozen=True)
@@ -170,20 +255,71 @@ class OpenAICompatibleJSONClient:
         }
 
     @staticmethod
-    def _strict_object(text: str) -> dict[str, Any]:
+    def _response_diagnostics(raw: Mapping[str, Any]) -> dict[str, Any]:
+        if "content" not in raw:
+            content_state = "missing_content"
+        elif raw.get("content") is None:
+            content_state = "null_content"
+        elif not isinstance(raw.get("content"), str):
+            content_state = "invalid_content_type"
+        elif not raw["content"].strip():
+            content_state = "blank_content"
+        else:
+            content_state = "nonempty_content"
+        reason = raw.get("finish_reason")
+        if reason is None:
+            finish_reason = "missing"
+        elif isinstance(reason, str) and reason in _SAFE_FINISH_REASONS:
+            finish_reason = reason
+        else:
+            finish_reason = "other"
+        return {
+            "schema_version": RESPONSE_DIAGNOSTIC_SCHEMA,
+            "content_state": content_state,
+            "finish_reason": finish_reason,
+            "refusal_present": bool(raw.get("refusal")),
+            "provider_request_id_present": bool(
+                str(raw.get("provider_request_id") or "")
+            ),
+            "input_tokens": (
+                raw.get("input_tokens")
+                if isinstance(raw.get("input_tokens"), int)
+                and not isinstance(raw.get("input_tokens"), bool)
+                and raw.get("input_tokens") >= 0
+                else None
+            ),
+            "output_tokens": (
+                raw.get("output_tokens")
+                if isinstance(raw.get("output_tokens"), int)
+                and not isinstance(raw.get("output_tokens"), bool)
+                and raw.get("output_tokens") >= 0
+                else None
+            ),
+        }
+
+    @staticmethod
+    def _strict_object(
+        text: Any,
+        *,
+        diagnostics: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        safe_diagnostics = sanitize_provider_diagnostics(diagnostics)
         if not isinstance(text, str) or not text.strip():
             raise OpenAICompatibleEmptyContentViolation(
-                "provider returned empty content"
+                "provider returned empty content",
+                diagnostics=safe_diagnostics,
             )
         try:
             value = json.loads(text)
         except json.JSONDecodeError as exc:
             raise OpenAICompatibleProviderViolation(
-                "provider content is not strict JSON"
+                "provider content is not strict JSON",
+                diagnostics=safe_diagnostics,
             ) from exc
         if not isinstance(value, dict):
             raise OpenAICompatibleProviderViolation(
-                "provider JSON output must be an object"
+                "provider JSON output must be an object",
+                diagnostics=safe_diagnostics,
             )
         return value
 
@@ -258,6 +394,12 @@ class OpenAICompatibleJSONClient:
                     response = client.chat.completions.create(**request)
                     raw = {
                         "content": response.choices[0].message.content,
+                        "finish_reason": getattr(
+                            response.choices[0], "finish_reason", None
+                        ),
+                        "refusal": getattr(
+                            response.choices[0].message, "refusal", None
+                        ),
                         "input_tokens": int(
                             getattr(
                                 response.usage, "prompt_tokens", 0
@@ -291,9 +433,13 @@ class OpenAICompatibleJSONClient:
             "output_tokens",
             "provider_request_id",
         }
-        if set(raw) != required:
+        if (
+            not required <= set(raw)
+            or not set(raw) <= required | _OPTIONAL_RESPONSE_FIELDS
+        ):
             raise OpenAICompatibleProviderViolation(
-                "provider transport result fields mismatch"
+                "provider transport result fields mismatch",
+                diagnostics=self._response_diagnostics(raw),
             )
         for field in ("input_tokens", "output_tokens"):
             value = raw[field]
@@ -303,9 +449,13 @@ class OpenAICompatibleJSONClient:
                 or value < 0
             ):
                 raise OpenAICompatibleProviderViolation(
-                    f"provider {field} must be non-negative"
+                    f"provider {field} must be non-negative",
+                    diagnostics=self._response_diagnostics(raw),
                 )
-        result = self._strict_object(str(raw["content"]))
+        result = self._strict_object(
+            raw["content"],
+            diagnostics=self._response_diagnostics(raw),
+        )
         return {
             "result": result,
             "raw_response_hash": hash_payload({
@@ -315,6 +465,7 @@ class OpenAICompatibleJSONClient:
             "input_tokens": raw["input_tokens"],
             "output_tokens": raw["output_tokens"],
             "request_hash": request_hash,
+            "response_diagnostics": self._response_diagnostics(raw),
         }
 
     def _stdlib_complete(
@@ -364,8 +515,12 @@ class OpenAICompatibleJSONClient:
             ) from exc
         try:
             usage = payload.get("usage") or {}
+            choice = payload["choices"][0]
+            message = choice["message"]
             return {
-                "content": payload["choices"][0]["message"]["content"],
+                "content": message.get("content"),
+                "finish_reason": choice.get("finish_reason"),
+                "refusal": message.get("refusal"),
                 "input_tokens": int(
                     usage.get("prompt_tokens") or 0
                 ),
@@ -374,7 +529,13 @@ class OpenAICompatibleJSONClient:
                 ),
                 "provider_request_id": str(payload.get("id") or ""),
             }
-        except (KeyError, IndexError, TypeError, ValueError) as exc:
+        except (
+            AttributeError,
+            KeyError,
+            IndexError,
+            TypeError,
+            ValueError,
+        ) as exc:
             raise OpenAICompatibleProviderViolation(
                 "real provider response envelope is invalid"
             ) from exc

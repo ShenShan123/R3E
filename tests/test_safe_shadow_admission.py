@@ -7,6 +7,9 @@ import pytest
 
 import r3e.pilot.safe_shadow_admission as safe
 from r3e.pilot.shadow_admission import ShadowAdmissionViolation
+from r3e.providers.openai_compatible import (
+    OpenAICompatibleEmptyContentViolation,
+)
 from r3e.protocol.hashing import hash_payload
 from r3e.protocol.ledger import append_ledger
 
@@ -187,5 +190,68 @@ def test_terminal_failure_reports_total_calls_across_blue_and_red(
     }
     assert payload["failed_stage_provider_calls_consumed"] == 1
     assert "combined response text" not in (
+        workspace / "terminal_failure.json"
+    ).read_text()
+
+
+def test_terminal_failure_preserves_only_safe_provider_diagnostics(
+    tmp_path, monkeypatch
+):
+    def fake_admission(**kwargs):
+        output = Path(kwargs["workspace"])
+        append_ledger(
+            output / "grounded_red" / "execution" / "provider_calls.jsonl",
+            {
+                "schema_version": "r3e-grounded-red-provider-call-v1",
+                "matrix_id": "test-matrix",
+                "matrix_hash": "sha256:" + "0" * 64,
+                "case_id": "public-red-case",
+                "seed": 17,
+                "arm_id": "grounded_red",
+                "event_type": "provider_call_started",
+                "assignment_id": "GRD6-0001",
+                "intent_id": "intent-0",
+            },
+        )
+        (output / "blue_matrix").mkdir(parents=True)
+        (output / "blue_matrix" / "summary.json").write_text(
+            json.dumps({"completed_cells": 4}), encoding="utf-8"
+        )
+        raise OpenAICompatibleEmptyContentViolation(
+            "provider returned empty content",
+            diagnostics={
+                "schema_version": (
+                    "r3e-openai-compatible-response-diagnostic-v1"
+                ),
+                "content_state": "blank_content",
+                "finish_reason": "length",
+                "refusal_present": True,
+                "provider_request_id_present": True,
+                "input_tokens": 41,
+                "output_tokens": 0,
+                "prompt": "must not persist",
+            },
+        )
+
+    monkeypatch.setattr(safe, "run_shadow_admission", fake_admission)
+    workspace = tmp_path / "terminal-diagnostic"
+    with pytest.raises(ShadowAdmissionViolation, match="terminally checkpointed"):
+        safe.run_safe_shadow_admission(
+            project_root=ROOT,
+            workspace=workspace,
+            client=object(),
+        )
+    payload = json.loads((workspace / "terminal_failure.json").read_text())
+    assert payload["schema_version"] == safe.FAILURE_SCHEMA
+    assert payload["provider_diagnostics"] == {
+        "schema_version": "r3e-openai-compatible-response-diagnostic-v1",
+        "content_state": "blank_content",
+        "finish_reason": "length",
+        "refusal_present": True,
+        "provider_request_id_present": True,
+        "input_tokens": 41,
+        "output_tokens": 0,
+    }
+    assert "must not persist" not in (
         workspace / "terminal_failure.json"
     ).read_text()

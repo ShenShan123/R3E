@@ -19,6 +19,7 @@ from r3e.pilot.grd8_acp7_smoke import (
 from r3e.pilot.shadow_matrix import load_shadow_pilot_matrix
 from r3e.pilot.shadow_runner import _verify_client
 from r3e.policy.schema import PolicyState
+from r3e.providers.openai_compatible import sanitize_provider_diagnostics
 from r3e.protocol.hashing import (
     atomic_write_json,
     atomic_write_jsonl,
@@ -111,15 +112,18 @@ class _GroundedRedCallAccountingProvider:
         try:
             result = self._provider.choose_target(**kwargs)
         except Exception as exc:
-            append_ledger(
-                self._ledger_path,
-                {
-                    **self._identity,
-                    "event_type": "provider_call_failed",
-                    "call_ledger_index": started["ledger_index"],
-                    "failure_class": type(exc).__name__,
-                },
+            failure = {
+                **self._identity,
+                "event_type": "provider_call_failed",
+                "call_ledger_index": started["ledger_index"],
+                "failure_class": type(exc).__name__,
+            }
+            diagnostics = sanitize_provider_diagnostics(
+                getattr(exc, "diagnostics", None)
             )
+            if diagnostics:
+                failure["provider_diagnostics"] = diagnostics
+            append_ledger(self._ledger_path, failure)
             raise
         append_ledger(
             self._ledger_path,

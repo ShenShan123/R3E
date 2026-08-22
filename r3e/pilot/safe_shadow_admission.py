@@ -20,12 +20,16 @@ from r3e.pilot.shadow_admission import (
     run_shadow_admission,
 )
 from r3e.pilot.shadow_matrix import load_shadow_pilot_matrix
+from r3e.providers.openai_compatible import sanitize_provider_diagnostics
 from r3e.protocol.hashing import atomic_write_json, hash_payload, read_json
 from r3e.protocol.ledger import read_ledger
 
 
-FAILURE_SCHEMA = "r3e-shadow-admission-terminal-failure-v2"
-LEGACY_FAILURE_SCHEMAS = {"r3e-shadow-admission-terminal-failure-v1"}
+FAILURE_SCHEMA = "r3e-shadow-admission-terminal-failure-v3"
+LEGACY_FAILURE_SCHEMAS = {
+    "r3e-shadow-admission-terminal-failure-v1",
+    "r3e-shadow-admission-terminal-failure-v2",
+}
 
 
 def _expected_calls(matrix_path: str | Path, *, project_root: Path) -> tuple[int, int]:
@@ -123,6 +127,22 @@ def _failure_payload(
             "policy transition, RAAM qualification, or empirical claim."
         ),
     }
+    # Preserve only the provider client's fixed diagnostic envelope.  The
+    # wrapper raises a new exception, so inspect its short cause chain without
+    # copying exception text, prompts, RTL, URLs or response content.
+    current: BaseException | None = error
+    seen: set[int] = set()
+    while current is not None and len(seen) < 4:
+        if id(current) in seen:
+            break
+        seen.add(id(current))
+        diagnostics = sanitize_provider_diagnostics(
+            getattr(current, "diagnostics", None)
+        )
+        if diagnostics:
+            body["provider_diagnostics"] = diagnostics
+            break
+        current = current.__cause__ or current.__context__
     body["failure_hash"] = hash_payload(body)
     return body
 
@@ -141,6 +161,14 @@ def _verify_failure(payload: Any) -> dict[str, Any]:
         raise ShadowAdmissionViolation("terminal shadow failure hash mismatch")
     if payload.get("terminal") is not True:
         raise ShadowAdmissionViolation("terminal shadow failure is not terminal")
+    if "provider_diagnostics" in payload:
+        diagnostics = sanitize_provider_diagnostics(
+            payload.get("provider_diagnostics")
+        )
+        if diagnostics != payload.get("provider_diagnostics"):
+            raise ShadowAdmissionViolation(
+                "terminal shadow provider diagnostics are invalid"
+            )
     if (
         payload.get("promotion_executed") is not False
         or payload.get("memory_qualification_executed") is not False

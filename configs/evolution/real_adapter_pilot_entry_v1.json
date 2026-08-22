@@ -46,7 +46,7 @@
     "r3e/blue/portfolio/rtl_ast_materializer.py": "sha256:278bcaa2e60ee1fcbaa3d0e5afa44ec1a5c6c32c4c2b9c7ca4181fd6d7fa1255",
     "r3e/blue/portfolio/semantic_signature.py": "sha256:9fb66280229d6048b54ae2799a8be60f463c0b89f8396c45a8c68a0e5b0e2059",
     "r3e/providers/__init__.py": "sha256:bc77901e618f60c5236b91b49c63f3ea889dcde2aa76c2b678b0204a1de0fd6e",
-    "r3e/providers/openai_compatible.py": "sha256:5f59c560c181fa9dd0c3fb1708650db33798dfbbe224e5c562bd6fade29b8185",
+    "r3e/providers/openai_compatible.py": "sha256:ee458b1d5e386aaa359b59fb51711aed88d7e1729f1d4ddb184ebeb5debe767b",
     "r3e/pilot/__init__.py": "sha256:107289021d17b428b2aad8ce061d197fd297cfc6e6be454a3628d4ba5daf461c",
     "r3e/pilot/grd8_acp7_smoke.py": "sha256:7a0160017d70c784be4e993187d05b13f2d2d7f6abc259390df668bcf9e0c337",
     "r3e/pilot/readiness.py": "sha256:d96b616b8e5902440676f0b2a5ed019d6f6e47a1f27b3d4651d62eb3a05e2d8e",
@@ -68,7 +68,7 @@
     "tests/test_integrated_coevolution_loop.py": "sha256:2eaae518caaeb410099330cda3963b2f212a7413aac82b2d8341fc7aad97a1e6",
     "tests/test_grd8_acp7_pilot_smoke.py": "sha256:08c3c0dc9f94c7b874cf8f2e93ac16ea91caf099c7063ce4d7af4e6949e19e1b",
     "tests/test_parser_backed_candidate_semantics.py": "sha256:ab4bb7b63d5cb6e0a41d74e0f654542e107949df6a4ac0a8e2c037598d6ab6ff",
-    "tests/test_real_provider_pilot.py": "sha256:32b74db2cc9384a0b23c17787696b46c7448efa69e65e8db117159932acf265c"
+    "tests/test_real_provider_pilot.py": "sha256:a10ec64fe56dff8d5684bc7f0fe3866eead1a49fe6984986ccdc66a682d60ff8"
   },
   "required_validation": [
     "pytest -q -p no:cacheprovider tests/test_real_provider_pilot.py",
@@ -86,5 +86,5 @@
     "pilot-budget"
   ],
   "claim_boundary": "The real Red target-choice and ACP candidate boundaries are implemented. Real ACP providers propose only replacement RTL and edit text; the runner derives semantic patch metadata from a bounded token-AST diff and binds it to verifier checks. Candidate-local AST/no-op materialization failures receive rejected signatures and do not abort the remaining planned slots. Injected-transport smoke tests close the runner-owned GRD formal triplet, ACP oracle selection, and invalid-candidate isolation. The checked-in pilot template remains non-executable. No third-party model result, GRD-8 yield, ACP-7 gain, multi-round result, or promotion evidence is claimed.",
-  "milestone_hash": "sha256:45b2415b7b528adcacfd6c73d9bc13f2463b8b37359c42da68bb081bee6b1893"
+  "milestone_hash": "sha256:8e98ec57bdafaeecab06b6136da5876d043e5fd25fd2fbfc3b5f6bbc66281123"
 }

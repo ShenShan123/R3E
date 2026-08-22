@@ -369,6 +369,8 @@ def test_openai_compatible_client_classifies_empty_content_without_retry():
             "input_tokens": 10,
             "output_tokens": 0,
             "provider_request_id": "empty-content",
+            "finish_reason": "length",
+            "refusal": None,
         }
 
     client = OpenAICompatibleJSONClient(
@@ -376,12 +378,60 @@ def test_openai_compatible_client_classifies_empty_content_without_retry():
     )
     with pytest.raises(
         OpenAICompatibleEmptyContentViolation, match="empty content"
-    ):
+    ) as raised:
         client.complete_json(
             messages=[{"role": "user", "content": "return JSON"}],
             seed=1,
         )
     assert len(calls) == 1
+    assert raised.value.diagnostics == {
+        "schema_version": "r3e-openai-compatible-response-diagnostic-v1",
+        "content_state": "blank_content",
+        "finish_reason": "length",
+        "refusal_present": False,
+        "provider_request_id_present": True,
+        "input_tokens": 10,
+        "output_tokens": 0,
+    }
+
+
+@pytest.mark.parametrize(
+    ("content", "expected_state"),
+    [
+        (None, "null_content"),
+        ("   ", "blank_content"),
+        ([], "invalid_content_type"),
+    ],
+)
+def test_empty_response_diagnostics_are_categorical_and_no_retry(
+    content, expected_state
+):
+    calls = []
+
+    def empty(**request):
+        calls.append(request)
+        return {
+            "content": content,
+            "input_tokens": 3,
+            "output_tokens": 0,
+            "provider_request_id": "diagnostic-only",
+            "finish_reason": "provider-specific-value",
+            "refusal": "blocked by provider",
+        }
+
+    client = OpenAICompatibleJSONClient(
+        _config(), transport=empty, environ={}
+    )
+    with pytest.raises(OpenAICompatibleEmptyContentViolation) as raised:
+        client.complete_json(
+            messages=[{"role": "user", "content": "return JSON"}],
+            seed=1,
+        )
+    assert len(calls) == 1
+    assert raised.value.diagnostics["content_state"] == expected_state
+    assert raised.value.diagnostics["finish_reason"] == "other"
+    assert raised.value.diagnostics["refusal_present"] is True
+    assert "blocked by provider" not in json.dumps(raised.value.diagnostics)
 
 
 def test_grd8_acp7_template_is_fail_closed_and_secret_free():
