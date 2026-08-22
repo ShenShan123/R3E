@@ -1,0 +1,38 @@
+competition:
+  version: r3e-aic-v1
+  mode: demo
+  anonymized: true
+  candidate_budget: 3
+
+model:
+  provider: openai-compatible
+  timeout_seconds: 120
+
+repair:
+  lenses:
+    - generic
+    - temporal
+    - control
+    - dataflow
+
+verification:
+  parse: true
+  compile: true
+  simulation: true
+  oracle: true
+  formal: true
+  regression: true
+  fail_closed: true
+
+evolution:
+  enabled: true
+  live_red_generation: false
+
+memory:
+  enabled: true
+  display_internal_authority: false
+
+ui:
+  show_protocol_details: false
+  show_model_reasoning: false
+  show_evidence: true

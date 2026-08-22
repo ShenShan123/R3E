@@ -1,0 +1,29 @@
+{
+  "schema_version": "r3e-aic-case-v1",
+  "case_id": "demo_shift",
+  "title": "Shift Register Dataflow Defect",
+  "dataset": "CirFix-39 / lshift_reg",
+  "source": {
+    "project": "CirFix",
+    "license": "MIT",
+    "url": "https://github.com/hammad-a/verilog_repair"
+  },
+  "buggy_rtl": "datasets/cases/cirfix/lshift_reg/lshift_reg_wadden_buggy1.v",
+  "reference_rtl": "datasets/cases/cirfix/lshift_reg/lshift_reg.v",
+  "testbench": "datasets/cases/cirfix/lshift_reg/lshift_reg_tb_t1.v",
+  "tb_output": "output_lshift_reg_tb_t1.txt",
+  "top_module": "lshift_reg",
+  "failure_type": "dataflow",
+  "first_divergence_cycle": 8,
+  "signal": "op",
+  "suspected_region": {
+    "file": "lshift_reg_wadden_buggy1.v",
+    "start_line": 19,
+    "end_line": 25
+  },
+  "recommended_lens": "dataflow",
+  "reference_edit": "Use nonblocking assignments for the shift-register state update so all bits read the previous cycle.",
+  "description": "Blocking bit updates propagate a new bit through the whole shift in one clock.",
+  "sim_timeout": 20.0,
+  "deps": []
+}

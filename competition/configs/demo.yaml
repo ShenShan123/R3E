@@ -1,0 +1,9 @@
+demo:
+  cases:
+    - demo_counter
+    - demo_fsm
+    - demo_shift
+  mode: guided_replay
+  requires_icarus: true
+  requires_yosys: true
+  output_root: /tmp/r3e-aic-demo

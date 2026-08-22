@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>R³E-AIC RTL Repair Studio</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <header>
+      <div>
+        <p class="eyebrow">R³E-AIC · CHIP INTELLIGENT DESIGN</p>
+        <h1>RTL Repair Studio</h1>
+        <p class="subtitle">Model proposes. EDA decides.</p>
+      </div>
+      <div id="health" class="health">Checking toolchain…</div>
+    </header>
+    <main>
+      <nav class="tabs">
+        <button data-page="repair" class="active">Repair Studio</button>
+        <button data-page="verification">Verification Trace</button>
+        <button data-page="evolution">Evolution Lab</button>
+        <button data-page="memory">Experience Memory</button>
+        <button data-page="benchmarks">Benchmark Dashboard</button>
+      </nav>
+      <section id="repair" class="page active">
+        <div class="grid two">
+          <article class="panel">
+            <h2>Load a verified demo case</h2>
+            <select id="case-select"></select>
+            <div id="case-description" class="muted"></div>
+            <button id="run-demo" class="primary">Run guided demo</button>
+            <p class="notice">Guided demo uses a frozen public reference candidate for deterministic replay. It is not a model-effect result.</p>
+          </article>
+          <article class="panel">
+            <h2>Diagnosis</h2>
+            <pre id="diagnosis">Choose a case to start.</pre>
+          </article>
+        </div>
+        <article class="panel">
+          <h2>Candidate portfolio</h2>
+          <div id="candidates" class="cards"></div>
+        </article>
+      </section>
+      <section id="verification" class="page"><article class="panel"><h2>Verification Trace</h2><div id="trace"></div></article></section>
+      <section id="evolution" class="page"><article class="panel"><h2>Evolution Lab</h2><pre id="evolution-data">Loading…</pre></article></section>
+      <section id="memory" class="page"><article class="panel"><h2>Experience Memory</h2><pre id="memory-data">Loading…</pre></article></section>
+      <section id="benchmarks" class="page"><article class="panel"><h2>Benchmark Dashboard</h2><pre id="benchmark-data">Loading…</pre></article></section>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "schema_version": "r3e-aic-frozen-metrics-v1",
+  "status": "pending_real_run",
+  "headline_metrics": {
+    "cirfix39": null,
+    "literature32": null,
+    "strider14": null
+  },
+  "source": "No model/provider benchmark result is claimed until freeze_results.py ingests a raw artifact."
+}

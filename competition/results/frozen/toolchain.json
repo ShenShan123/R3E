@@ -1,0 +1,5 @@
+{
+  "schema_version": "r3e-aic-toolchain-v1",
+  "status": "pending_live_capture",
+  "note": "The authoritative run artifact records exact executable paths and versions."
+}

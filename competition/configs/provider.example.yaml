@@ -1,0 +1,7 @@
+provider:
+  kind: openai-compatible
+  api_key_env: OPENAI_API_KEY
+  base_url_env: OPENAI_BASE_URL
+  model_env: R3E_AIC_MODEL
+  seed_required: true
+  note: Set credentials only in the shell environment; never commit them.

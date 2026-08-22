@@ -1,0 +1,29 @@
+{
+  "schema_version": "r3e-aic-case-v1",
+  "case_id": "demo_fsm",
+  "title": "FSM Control Defect",
+  "dataset": "CirFix-39 / fsm_full",
+  "source": {
+    "project": "CirFix",
+    "license": "MIT",
+    "url": "https://github.com/hammad-a/verilog_repair"
+  },
+  "buggy_rtl": "datasets/cases/cirfix/fsm_full/fsm_full_wadden_buggy1.v",
+  "reference_rtl": "datasets/cases/cirfix/fsm_full/fsm_full.v",
+  "testbench": "datasets/cases/cirfix/fsm_full/fsm_full_tb_t1.v",
+  "tb_output": "output_fsm_full_tb_t1.txt",
+  "top_module": "fsm_full",
+  "failure_type": "control",
+  "first_divergence_cycle": 19,
+  "signal": "gnt_3",
+  "suspected_region": {
+    "file": "fsm_full_wadden_buggy1.v",
+    "start_line": 88,
+    "end_line": 110
+  },
+  "recommended_lens": "control",
+  "reference_edit": "Restore the GNT3 output branch so a request for agent 3 produces gnt_3.",
+  "description": "The RTL compiles, but the GNT3 state has no output assignment.",
+  "sim_timeout": 20.0,
+  "deps": []
+}

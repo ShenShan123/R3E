@@ -17,7 +17,7 @@ dev = ["pytest>=8.0"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["r3e*"]
+include = ["r3e*", "competition*"]
 namespaces = true
 
 [tool.pytest.ini_options]

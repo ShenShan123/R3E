@@ -71,6 +71,9 @@ for relative in tracked:
 
 for path in ROOT.rglob("*"):
     rel = path.relative_to(ROOT)
+    competition_frozen = rel.parts[:3] == ("competition", "results", "frozen")
+    competition_results = rel.parts[:2] == ("competition", "results")
+    competition_script = rel.parts[:2] == ("competition", "scripts")
     generated_result_dir = any(
         part.startswith(".cross_benchmark_r3e_") for part in rel.parts
     )
@@ -85,11 +88,17 @@ for path in ROOT.rglob("*"):
         ("configs", "blue"),
     }
     if (
-        any(part in FORBIDDEN_NAMES for part in rel.parts)
+        (
+            any(part in FORBIDDEN_NAMES for part in rel.parts)
+            and not competition_results
+        )
         or generated_result_dir
         or (generated_result_file and not frozen_protocol_config)
-        or path.suffix in FORBIDDEN_SUFFIXES
-        or path.name.startswith(("run_", "launch_", "resume_", "rerun_"))
+        or (path.suffix in FORBIDDEN_SUFFIXES and not competition_script)
+        or (
+            path.name.startswith(("run_", "launch_", "resume_", "rerun_"))
+            and not competition_script
+        )
     ):
         violations.append(f"forbidden artifact: {rel}")
         continue
