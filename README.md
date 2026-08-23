@@ -721,14 +721,17 @@ the fifth stopped on empty Blue content at call 9 with a length-finish
 diagnostic; the sixth completed 12 ACP calls plus one Red request before its
 empty-content gate; and the seventh stopped on empty Blue content at call 9
 with `finish_reason=length` and `output_tokens=4096`. The eighth completed the
-full 12+1 budget: Grounded Red was formally admitted with a clean/poison/revert
-triplet, the poison entered the runner-owned ACP path, and the archive,
-`VerifiedEpisode`, and zero-call resume checkpoints were reconstructed. All
-eight runs kept policy promotion and RAAM qualification disabled. These runs
-validate call accounting and fail-closed handling only; they are not ACP-7
-gain, GRD-8 yield, or multi-round coevolution evidence. Empty responses are
-recorded only with categorical, privacy-safe envelope diagnostics; retries
-require a new authorization, workspace, and explicit budget.
+full 12+1 budget: the four-arm ACP matrix completed 12 candidate calls, while
+the separate manifest-backed Grounded Red call was admitted with a
+clean/poison/revert triplet. Both child lanes reconstructed their authority and
+zero-call resume checkpoints, and all eight runs kept policy promotion and RAAM
+qualification disabled. The real 12+1 wrapper is call-matched shadow evidence;
+same-poison Red-to-Blue chaining remains covered by the injected four-call
+integrated fixture and is not claimed as a real-provider result here. These runs
+are not ACP-7 gain, GRD-8 yield, or multi-round coevolution evidence. Empty
+responses are recorded only with categorical, privacy-safe envelope
+diagnostics; retries require a new authorization, workspace, and explicit
+budget.
 
 The real Grounded shadow profile reserves the frozen 60-second wall-time
 ceiling even for a D0 proposal. Legacy deterministic population profiles keep
