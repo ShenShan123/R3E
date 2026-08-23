@@ -4,7 +4,7 @@
   "status": "frozen",
   "parent_milestone": {
     "milestone_id": "grounded-planner-raam-cross-round-v1",
-    "milestone_hash": "sha256:fbf1c47d7a18e855ec07ce5a869e87cb0ad64dcd5f4461ca161cdae0efe02e05"
+    "milestone_hash": "sha256:c81ba2db03ab889f6fc2065aed4f756952bc53208616c60a1f19f9210895663b"
   },
   "completed_scope": [
     "four-lens-registry-with-prompt-asset-authority",
@@ -32,22 +32,22 @@
     "r3e-memory-execution-trace-v2"
   ],
   "frozen_assets": {
-    "README.md": "sha256:8f60ff87b6016676223fbdf11745208ba4c54226b84f0dd98b6feebbc515df77",
+    "README.md": "sha256:c876095fe4630afa58dee7a336da995a16a7b5100ba1fe09bf801f98abcca312",
     "configs/blue/lens_registry_v1.json": "sha256:65560bd82d230a3f208c4b9167f8d9a811ffefd46039c43bdcdd4335069056c1",
-    "r3e/arena/adapter.py": "sha256:a27450bc7618b57fe49b61fab541b3d7e556c3bade4e7c0f6182ceb6ebc1589a",
-    "r3e/arena/conformance.py": "sha256:726ff031152c671f1ae0327cb8b2d07a27555bd7b8288e06879b6709863f7c07",
-    "r3e/blue/__init__.py": "sha256:a29e1bdb99f043080aea600886b76858e5bd3a5d4487398db43042b7e7b69aae",
-    "r3e/blue/portfolio/__init__.py": "sha256:195bcd663024b13d65b71683d9294e39b6163a39da49cf11239d0adda385b836",
-    "r3e/blue/portfolio/schema.py": "sha256:2a08b634c8c961ceaee13b05233ade444ac9e199ae00b41c2d50559d0d7a197f",
-    "r3e/blue/portfolio/lens_registry.py": "sha256:0f0687b1607b5937ccb657dc51c1b52f750ceb8f9afd4ae9e2fd093b528dc3f0",
-    "r3e/blue/portfolio/candidate_receipts.py": "sha256:7ac42a094fa920f8a828c2af899ddcc1278c598ac001767f4941f10869154b95",
-    "r3e/blue/portfolio/candidate_executor.py": "sha256:5ac65cccbd3a070dbd48d20883e4a6c6021dbed0ad821319b3de8fbf22bc4fc1",
-    "r3e/blue/portfolio/audit.py": "sha256:405380ffe51c17b3848411b5ec9e636a08e08f993c1ede1d802af3c2d2d0fff7",
-    "r3e/blue/portfolio/fake.py": "sha256:83a1bc9eb168abc80f213070cc5a2234b36bc8b86d40d115103cc40d37f06271",
-    "r3e/blue/portfolio/fake_system.py": "sha256:81ab35d0ff0678d64ab4cc0e489c39abe5acec0a16f71c1c2807956b1186ae4e",
-    "r3e/memory/execution_trace.py": "sha256:dccbf13f73ff6c149c1765a943f72b9bbbc14ecc3ddc9edf6eccf3d0ba22a587",
-    "scripts/check_release.py": "sha256:233eb10cfae575b5b876af6344928f53e7f164f4d2a66e5060c47cc2ad5c994b",
-    "tests/test_adaptive_candidate_protocol.py": "sha256:e4cbb25d942f0c2feeb4805878b744225eea04bd10a989d097f0867b410e683d"
+    "r3e/arena/adapter.py": "sha256:378ac3539f91356cc1271e74df8e792b0a15e780228274735d9eb167f4529b2f",
+    "r3e/arena/conformance.py": "sha256:3c6ef2e4d9041dc75b15162367eb087513d7a688d90cc45af56f0d0bd01a469d",
+    "r3e/blue/__init__.py": "sha256:a5b5c71505c00f383ac7065ea405f55a9b5e21754cc87e56950592540940412b",
+    "r3e/blue/portfolio/__init__.py": "sha256:35ebe034817e7e656fa4894347f8510fd9782c587e82f1cfc76af1fe25275668",
+    "r3e/blue/portfolio/schema.py": "sha256:fab92822ffa59cfa6da546b8d1fcb445641b4e16a8e9de9a5f7c43287237dcf0",
+    "r3e/blue/portfolio/lens_registry.py": "sha256:da623f155e22ab182b949d1fb068428945756667c4c9e10a0109abdab7023a85",
+    "r3e/blue/portfolio/candidate_receipts.py": "sha256:9a5035db12ac1d2dd0ba28f3db71059187f749cbbc3d4b88702a0a7ca155b9ac",
+    "r3e/blue/portfolio/candidate_executor.py": "sha256:69bca1e9c5e480b9f02af29c46ba654d10ffa972f17d14faf0ebb8a750eac117",
+    "r3e/blue/portfolio/audit.py": "sha256:30b9b49ed8d4157e25db60dd8abbd69b78ef4ad6e24152556a1697a1f209b57c",
+    "r3e/blue/portfolio/fake.py": "sha256:c85cba5ec27039a5d3b33109c5dfc63dc5e697611dab9c94fefdaa3ba36a5a74",
+    "r3e/blue/portfolio/fake_system.py": "sha256:ba839c9de03911e5ba48ef7e8811c73e9b3640046ca31a8c2c99c8d2573f3e71",
+    "r3e/memory/execution_trace.py": "sha256:c28c88f450c4d5f12eab7f0ff31453e9e985cf9a4ef98a6c2ad51824176e7a6d",
+    "scripts/check_release.py": "sha256:0e36e382f0886f990e26d19c488d0a556e6386ae786bf2ddbfa8db736a64b555",
+    "tests/test_adaptive_candidate_protocol.py": "sha256:a1d708bf51303a63875c6faad4330de5d78835ba9cc84309a3fdf4287b5c3fe7"
   },
   "required_validation": [
     "pytest -q -p no:cacheprovider",
@@ -67,5 +67,5 @@
     "acp7-real-model-multi-round-experiment"
   ],
   "claim_boundary": "Frozen deterministic ACP-0 candidate-level authority, receipts, budget gates, ExecutionTrace V2, offline audit, and fake-provider infrastructure only; no fixed-mixed or routed portfolio result, formal arena-wide adoption, real-model repair gain, or multi-round ACP evidence.",
-  "milestone_hash": "sha256:9a689e8084a415e5415301ec5ba8f426318fab80598c2c89efb3343a00790446"
+  "milestone_hash": "sha256:84b4f124c8aa0e9fdecf05b1b067525c9ae623b38f9ecf1099adca7b3fd6b28b"
 }

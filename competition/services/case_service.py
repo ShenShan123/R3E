@@ -47,6 +47,8 @@ class CaseDefinition:
         return str(self.raw["tb_output"])
 
     def repo_path(self, relative: str) -> Path:
+        if not isinstance(relative, str) or not relative:
+            raise CaseError(f"case path must be a non-empty string: {relative!r}")
         value = Path(relative)
         if value.is_absolute() or ".." in value.parts:
             raise CaseError(f"non-portable case path: {relative}")
@@ -73,10 +75,15 @@ class CaseDefinition:
         if not isinstance(patch, dict) or not isinstance(patch.get("operations"), list):
             raise CaseError(f"guided patch is missing: {self.case_id}")
         for operation in patch["operations"]:
-            if not isinstance(operation, dict) or set(operation) != {"old", "new"}:
+            if (
+                not isinstance(operation, dict)
+                or set(operation) != {"old", "new"}
+                or not isinstance(operation["old"], str)
+                or not isinstance(operation["new"], str)
+            ):
                 raise CaseError(f"guided patch operation is invalid: {self.case_id}")
-            old = str(operation["old"])
-            new = str(operation["new"])
+            old = operation["old"]
+            new = operation["new"]
             if not old or old not in source:
                 raise CaseError(f"guided patch context is absent: {self.case_id}")
             source = source.replace(old, new, 1)
@@ -136,6 +143,13 @@ class CaseCatalog:
                 raise CaseError(f"case_id must be non-empty: {path}")
             if not isinstance(raw["deps"], list):
                 raise CaseError(f"deps must be a list: {path}")
+            if any(not isinstance(item, str) or not item for item in raw["deps"]):
+                raise CaseError(f"deps must contain non-empty strings: {path}")
+            for field in (
+                "buggy_rtl", "reference_rtl", "testbench", "tb_output", "top_module"
+            ):
+                if not isinstance(raw[field], str) or not raw[field]:
+                    raise CaseError(f"{field} must be a non-empty string: {path}")
             if not isinstance(raw["demo_annotation"], dict):
                 raise CaseError(f"demo_annotation must be an object: {path}")
             case = CaseDefinition(self.repo_root, raw)

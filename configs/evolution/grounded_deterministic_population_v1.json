@@ -4,7 +4,7 @@
   "status": "frozen",
   "parent_milestone": {
     "milestone_id": "grounded-sequential-runtime-gate-v1",
-    "milestone_hash": "sha256:23d3ad2f66f75374f382daff4f07305f955f12439701118eb998395176b1c02e"
+    "milestone_hash": "sha256:39c4640a9519cd4456ec953d3682ffb30cae374a222680d47a9f66643182c39f"
   },
   "completed_scope": [
     "pre-generation-one-provider-per-selected-intent-schedule",
@@ -28,7 +28,7 @@
     "r3e-round-audit-v1"
   ],
   "frozen_assets": {
-    "README.md": "sha256:51ba87918faa4a357be17e2a737303bd35a7435edd07a616e71d8981052aea53",
+    "README.md": "sha256:c876095fe4630afa58dee7a336da995a16a7b5100ba1fe09bf801f98abcca312",
     "configs/evolution/round_deterministic_population_v1.json": "sha256:bc9fd7329ace4c6d634472a4003a8a5301ec292ca2d2b4818a65cd520fbb8ce1",
     "configs/red/deterministic_population_v1.json": "sha256:48a76dd7aa4b897150e0809c65526b745eafa730f32812270be985cb4c5f9063",
     "r3e/red/grounded/population_scheduler.py": "sha256:25d2d0eaeb3d2e08d55491e62e6174e381134330db9575f7415e8c3f96746b65",
@@ -63,5 +63,5 @@
     "grd8-real-model-pilot"
   ],
   "claim_boundary": "Frozen deterministic GRD-6 population scheduling, provenance, budget, checkpoint, event, and audit authority only. Provider roles are deterministic fixtures; no real multi-model population gain or GRD-8 result is claimed.",
-  "milestone_hash": "sha256:3404df4d2b583e74928d230bfe8b1fbb58b4452468fe9c68c16e1f33786679d8"
+  "milestone_hash": "sha256:cc08a972a3c88e875aa494fd346336108eb3655822bc16b8e03f0ca76aee67d3"
 }

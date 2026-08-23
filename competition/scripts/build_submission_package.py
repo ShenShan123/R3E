@@ -22,7 +22,7 @@ def main() -> int:
     subprocess.run(["python3", str(ROOT / "competition/scripts/validate_submission.py"), "--check-only"], check=True)
     output = Path(args.output).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
-    prefixes = ("competition/", "r3e/", "configs/", "datasets/", "README.md", "LICENSE", "pyproject.toml", "requirements.txt")
+    prefixes = ("competition/", "r3e/", "configs/", "datasets/", "scripts/", "README.md", "LICENSE", "pyproject.toml", "requirements.txt")
     forbidden = ("__pycache__", ".pytest_cache", ".env", ".log", ".vcd", ".fst", ".db", ".zip")
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(ROOT.rglob("*")):

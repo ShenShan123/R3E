@@ -4,7 +4,7 @@
   "status": "frozen",
   "parent_milestone": {
     "milestone_id": "grounded-authority-integration-v1",
-    "milestone_hash": "sha256:9c090596407990479db9d6fe192903f608836d67f2149320a71aa42642528917"
+    "milestone_hash": "sha256:c66a5d9ea25c8f58bdca3c9d4c926db2afb400c251dd5b688aa5435f60d1dbcf"
   },
   "completed_scope": [
     "arena-required-yosys-clean-poison-revert-proof-triplet",
@@ -49,5 +49,5 @@
     "real-model-multi-round-pilot"
   ],
   "claim_boundary": "Frozen runner-owned Icarus plus Yosys arena authority and artifact-derived RAAM descriptor/episode binding only; no complete waveform semantics, full-SystemVerilog proof coverage, real-model discovery, bug-yield, memory-gain, multi-round evolution, or empirical-result claim.",
-  "milestone_hash": "sha256:015d271fa7911ca132caae91971cf98180f81ea40273fb6910a7375d16e62c1b"
+  "milestone_hash": "sha256:911ca4ae0e6422adb3b77402c305e8757b441459bd7ce17bf953fee92c2802fb"
 }

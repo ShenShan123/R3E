@@ -10,6 +10,7 @@ import argparse
 import json
 import mimetypes
 import os
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
@@ -50,10 +51,18 @@ class CompetitionContext:
         self.memory = MemoryService(self.root)
         self.benchmark = BenchmarkService(self.root)
 
+    @staticmethod
+    def _run_id(prefix: str) -> str:
+        return f"{prefix}-{uuid.uuid4().hex}"
+
     def run_case(self, payload: dict[str, Any]) -> dict[str, Any]:
         case_id = str(payload.get("case_id") or "")
         mode = str(payload.get("mode") or "demo")
-        proposals = self.repair.generate(case_id, mode=mode, run_id=f"api-{mode}")
+        proposals = self.repair.generate(
+            case_id,
+            mode=mode,
+            run_id=self._run_id(f"api-{mode}"),
+        )
         verified = [
             {"candidate": candidate, "verification": candidate["verification"]}
             for candidate in proposals["candidates"]
@@ -127,16 +136,21 @@ class Handler(BaseHTTPRequestHandler):
         try:
             payload = self._payload()
             if path == "/api/diagnose":
-                result = self.context.diagnosis.diagnose(str(payload.get("case_id") or ""))
+                result = self.context.diagnosis.diagnose(
+                    str(payload.get("case_id") or ""),
+                    run_id=self.context._run_id("api-diagnosis"),
+                )
             elif path == "/api/repair":
                 result = self.context.repair.generate(
                     str(payload.get("case_id") or ""),
                     mode=str(payload.get("mode") or "demo"),
+                    run_id=self.context._run_id("api-repair"),
                 )
             elif path == "/api/verify":
                 result = self.context.verification.verify(
                     str(payload.get("case_id") or ""),
                     str(payload.get("replacement_rtl") or ""),
+                    run_id=self.context._run_id("api-verify"),
                 )
             elif path == "/api/run-case":
                 result = self.context.run_case(payload)

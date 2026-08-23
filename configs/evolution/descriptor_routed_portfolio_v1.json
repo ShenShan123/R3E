@@ -4,7 +4,7 @@
   "status": "frozen",
   "parent_milestone": {
     "milestone_id": "fixed-mixed-portfolio-v1",
-    "milestone_hash": "sha256:b25a3df2ecadca0ed609af15d13fbc225239ec21e468878fe965f068f9a25af4"
+    "milestone_hash": "sha256:9afc5408cd59cfab17dc66d11d5df8f220ab92b396d997f8952c52ba52b94104"
   },
   "completed_scope": [
     "descriptor-router-v1-current-grounded-descriptor-only",
@@ -30,25 +30,25 @@
     "candidate_portfolio_v1"
   ],
   "frozen_assets": {
-    "README.md": "sha256:1931b2bb33a087b700ed302746f23796960601be063ff84d992dd4b8c1b8792d",
+    "README.md": "sha256:c876095fe4630afa58dee7a336da995a16a7b5100ba1fe09bf801f98abcca312",
     "configs/blue/descriptor_router_v1.json": "sha256:bac10968691e62797c469bbc69611c56faa588b4f6e7c3037caec9d28ffbd2ba",
     "configs/blue/descriptor_routed_portfolio_v1.json": "sha256:2dcc2bdaf9e764c1a1909f4d2e7dd207c2d3a87ecd78552bcef0babb3291d9ba",
-    "configs/blue/portfolio_operator_space_v1.json": "sha256:b99091a22698ea2aa943ad939ea1fc2a46350c1fb512c316e6128b659c199623",
+    "configs/blue/portfolio_operator_space_v1.json": "sha256:2c6f7d8397713f333b7256756f0d3a13039c414bad0b63d7a8e4fd9ee1037265",
     "configs/evolution/round_acp2_descriptor_routed_v1.json": "sha256:20ca6dd3b8fb56ed63788f4c5ee4fdff9077d378ba50de0115157f92791f9de2",
-    "r3e/policy/search.py": "sha256:4748acbd2f862df9b9e7dad8342fa698af918b1ecdd79985dec032c5359c690f",
-    "r3e/arena/portfolio.py": "sha256:be995e902368af2069292366d3f7fcae58de2a931a024730c1682ae65068c9ec",
-    "r3e/arena/runner.py": "sha256:3d680b6d34b11bd789640e91ccd37a4572438031a2c0073c0fb6f4a13dc21fbf",
-    "r3e/arena/audit.py": "sha256:b6f058a74f47c4438100c2398cd86c75067a864bd7964b6137edeb93d2d47b22",
-    "r3e/blue/portfolio/__init__.py": "sha256:a9e1f6f06ba8dd28bd521e1a065893fc10db857aa0a3f7bd002d47179557a520",
+    "r3e/policy/search.py": "sha256:4ddbcec0bbd98420bdff2809ba22e32c170a77e9cd6c7c284eab4a97e1e919c3",
+    "r3e/arena/portfolio.py": "sha256:223a3c93097c2a0ba80ed88f0484bbe4a43f5b3329d860905bbc8e40fd1fe3db",
+    "r3e/arena/runner.py": "sha256:e4f932dd223eaafebd551d65f4d2efc87966ac1ac8d9a06ddf429c08515ac2fd",
+    "r3e/arena/audit.py": "sha256:808111df5bc77d6223fa3dbb4ca6ac9a0803c0550401d997cb02fd6a82c3ce7c",
+    "r3e/blue/portfolio/__init__.py": "sha256:35ebe034817e7e656fa4894347f8510fd9782c587e82f1cfc76af1fe25275668",
     "r3e/blue/portfolio/router.py": "sha256:20850cca44e9ddd13ed843a448eba789babb087bd8b0b643de4ceef247412c90",
-    "r3e/blue/portfolio/schema.py": "sha256:21aa250435f4b5be4a66bc7f31c7c90606c317994b864b38bcc412547dba687f",
-    "r3e/blue/portfolio/candidate_executor.py": "sha256:2b1fce62861773cf7d1f7002227c40f3d8e3bfcd5f6814f90458b1f11f59e970",
-    "r3e/blue/portfolio/audit.py": "sha256:ea5780a0e3faa721654901ae8bd74a8ea40ddecaf4f092eb0f59535e6d407ef2",
-    "r3e/blue/portfolio/fake_system.py": "sha256:68b907ea452ad3d3d1f264a19369dda2dc3954b5fe41a540940881f293b68c2b",
-    "tests/test_adaptive_candidate_protocol.py": "sha256:91ca2d1739110f0bc2525ec7ea18a6e1873f0c89829085a1aed964fbdaa5691c",
-    "tests/test_adaptive_candidate_fixed_mixed.py": "sha256:0be459554578e765a4fc6ef6277a79ffb52e7fc211cb87668657ef303736243e",
-    "tests/test_adaptive_candidate_descriptor_routed.py": "sha256:7665454393f609e4e2eaba117c936cf48a1aad3dcf4b7115f466148e6337de67",
-    "tests/test_grounded_planner_raam_closure.py": "sha256:b5ad5ac8b3bf7aa75698fe9b69e85373a412466934651aa95a8f87e02fe59f1c"
+    "r3e/blue/portfolio/schema.py": "sha256:fab92822ffa59cfa6da546b8d1fcb445641b4e16a8e9de9a5f7c43287237dcf0",
+    "r3e/blue/portfolio/candidate_executor.py": "sha256:69bca1e9c5e480b9f02af29c46ba654d10ffa972f17d14faf0ebb8a750eac117",
+    "r3e/blue/portfolio/audit.py": "sha256:30b9b49ed8d4157e25db60dd8abbd69b78ef4ad6e24152556a1697a1f209b57c",
+    "r3e/blue/portfolio/fake_system.py": "sha256:ba839c9de03911e5ba48ef7e8811c73e9b3640046ca31a8c2c99c8d2573f3e71",
+    "tests/test_adaptive_candidate_protocol.py": "sha256:a1d708bf51303a63875c6faad4330de5d78835ba9cc84309a3fdf4287b5c3fe7",
+    "tests/test_adaptive_candidate_fixed_mixed.py": "sha256:e50ecd8d4787bf52b41659bd3d467d0dad14b88796a1d953dbfc7aedb56d97a3",
+    "tests/test_adaptive_candidate_descriptor_routed.py": "sha256:8ded0c3cd6af88815dd865d62973b2e16c48ce14e565ad79d1aa0cdafe9bb69b",
+    "tests/test_grounded_planner_raam_closure.py": "sha256:9578ea0f2c1f445b6cec188707d31b74b6232682b10500446caa3714f404a306"
   },
   "required_validation": [
     "pytest -q -p no:cacheprovider tests/test_adaptive_candidate_protocol.py tests/test_adaptive_candidate_fixed_mixed.py tests/test_adaptive_candidate_descriptor_routed.py",
@@ -69,5 +69,5 @@
     "acp7-real-model-multi-round-experiment"
   ],
   "claim_boundary": "Frozen deterministic ACP-2 descriptor-only routing, router receipts, generic-primary-orthogonal allocation, Policy V3 child operation, formal arena authority, and fake-provider conformance only; no measured router accuracy, held-out generalization, semantic diversity, real-model repair gain, or adaptive/multi-round ACP result.",
-  "milestone_hash": "sha256:d6c3016145eed9dbef3f2300d07df7249e822143c4895b6d8a1c568861a6cbdb"
+  "milestone_hash": "sha256:df870a30fd352455f39d63b4ec6413a2a8f32d3e6b6ada06e89c50a405474161"
 }

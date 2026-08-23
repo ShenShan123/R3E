@@ -17,22 +17,21 @@ _MODULE_RE = re.compile(
     r"\bmodule\s+([A-Za-z_$][\w$]*)\s*(?:#\s*\(.*?\))?\s*\((.*?)\)\s*;",
     re.DOTALL,
 )
-_DECL_RE = re.compile(
-    r"\b(input|output|inout)\b\s*(?:(?:wire|reg|logic)\s*)?"
-    r"(\[[^\]]+\])?\s*([^;]+);",
-    re.DOTALL,
-)
-_DIRECTION_RE = re.compile(
-    r"^\s*(input|output|inout)\b\s*"
-    r"(?:(?:wire|reg|logic)\s*)?(\[[^\]]+\])?\s*(.*)$",
-    re.DOTALL,
+_DECL_RE = re.compile(r"\b(input|output|inout)\b\s*([^;]+);", re.DOTALL)
+_DIRECTION_RE = re.compile(r"^\s*(input|output|inout)\b\s*(.*)$", re.DOTALL)
+_WIDTH_RE = re.compile(r"\[[^\]]+\]")
+_PORT_KEYWORDS_RE = re.compile(
+    r"\b(?:wire|reg|logic|signed|unsigned|var|tri|wand|wor|integer|time)\b"
 )
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_$][\w$]*$")
 _FORBIDDEN = {
     "oracle_file_read": re.compile(r"\$(?:fopen|readmem(?:b|h))\b"),
     "force_release": re.compile(r"\b(?:force|release)\b"),
     "new_file_include": re.compile(r"(?m)^\s*`include\b"),
-    "external_path": re.compile(r"(?:/|[A-Za-z]:\\)[^\s\"']+"),
+    "external_path": re.compile(
+        r"(?:^|(?<=[\s\"'(=,:]))/(?![/*\s])[^\s\"'`;,)]+",
+        re.MULTILINE,
+    ),
 }
 
 
@@ -45,16 +44,44 @@ def _strip_comments(value: str) -> str:
     return re.sub(r"/\*.*?\*/", "", value, flags=re.DOTALL)
 
 
+def _split_top_level(segment: str) -> list[str]:
+    parts: list[str] = []
+    start = 0
+    depth = 0
+    quote = ""
+    escaped = False
+    for index, char in enumerate(segment):
+        if quote:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = ""
+            continue
+        if char in "'\"`":
+            quote = char
+        elif char in "([{":
+            depth += 1
+        elif char in ")]}":
+            depth = max(0, depth - 1)
+        elif char == "," and depth == 0:
+            parts.append(segment[start:index])
+            start = index + 1
+    parts.append(segment[start:])
+    return parts
+
+
 def _port_names(segment: str) -> list[str]:
     names: list[str] = []
-    for item in segment.split(","):
+    for item in _split_top_level(segment):
         item = item.strip()
         match = _DIRECTION_RE.match(item)
         if match:
-            item = match.group(3).strip()
-        item = re.sub(r"\[[^]]+\]", "", item)
-        item = re.sub(r"\b(?:wire|reg|logic|signed|unsigned)\b", "", item)
-        item = item.split("=")[0].strip()
+            item = match.group(2).strip()
+        item = item.split("=", 1)[0].strip()
+        item = _WIDTH_RE.sub("", item)
+        item = _PORT_KEYWORDS_RE.sub("", item).strip()
         if _IDENTIFIER_RE.fullmatch(item):
             names.append(item)
     return names
@@ -66,21 +93,24 @@ def interface_signature(source: str) -> dict[str, Any]:
     modules: dict[str, dict[str, Any]] = {}
     declarations: dict[str, tuple[str, str]] = {}
     for match in _DECL_RE.finditer(clean):
-        direction, width, names = match.groups()
-        for name in _port_names(names):
-            declarations[name] = (direction, width or "")
+        direction, body = match.groups()
+        width_match = _WIDTH_RE.search(body)
+        width = width_match.group(0) if width_match else ""
+        for name in _port_names(body):
+            declarations[name] = (direction, width)
     for match in _MODULE_RE.finditer(clean):
         module_name, header = match.groups()
         ports: list[dict[str, str]] = []
         pending_direction = ""
         pending_width = ""
-        for item in header.split(","):
+        for item in _split_top_level(header):
             item = item.strip()
             direction_match = _DIRECTION_RE.match(item)
             if direction_match:
                 pending_direction = direction_match.group(1)
-                pending_width = direction_match.group(2) or ""
-                names = _port_names(direction_match.group(3))
+                width_match = _WIDTH_RE.search(direction_match.group(2))
+                pending_width = width_match.group(0) if width_match else ""
+                names = _port_names(direction_match.group(2))
             else:
                 names = _port_names(item)
             for name in names:

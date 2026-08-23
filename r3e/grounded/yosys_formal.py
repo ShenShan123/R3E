@@ -530,7 +530,6 @@ class YosysFormalProvider:
                 f"{_quote_yosys_path(property_file)}"
             ),
             f"prep -top {top_module} -flatten",
-            "chformal -lower",
             (
                 f"sat -prove-asserts -seq {depth} -show-ports "
                 f"-dump_json {_quote_yosys_path(trace_path)}"

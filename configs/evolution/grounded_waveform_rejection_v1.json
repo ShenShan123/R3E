@@ -4,7 +4,7 @@
   "status": "frozen",
   "parent_milestone": {
     "milestone_id": "grounded-runtime-authority-closure-v1",
-    "milestone_hash": "sha256:015d271fa7911ca132caae91971cf98180f81ea40273fb6910a7375d16e62c1b"
+    "milestone_hash": "sha256:911ca4ae0e6422adb3b77402c305e8757b441459bd7ce17bf953fee92c2802fb"
   },
   "completed_scope": [
     "bounded-first-divergent-signal-and-cycle-oracle-protocol",
@@ -33,9 +33,9 @@
     "configs/red/grounded_effect_registry_v1.json": "sha256:cafc655d3426fc0a53272f8eb998c37d87c789ee7b44fc652a7c30083237f8b2",
     "r3e/grounded/icarus.py": "sha256:3176c4cc80743d6137e6487f642ec60a18e527f4fef14c8ddff22641143fb282",
     "r3e/grounded/failure_descriptor.py": "sha256:7b88385b822bd1588b4a886034947b40bb4b525ddd172038465c2b36df600273",
-    "r3e/grounded/yosys_formal.py": "sha256:9d5f7982538462e54d45e94160975826d57325941f3060fd1df92361c81731b7",
-    "r3e/red/grounded/formal_rejection.py": "sha256:71a61e65d2e4e73338463b1838d9c7b36b476daadff6a98ec5a645eb210b068a",
-    "r3e/arena/grounded_authority.py": "sha256:a1ff580fc3cd435260ba579d9031defba41a6c4288cf2e5b97e10dedd9d8cab5"
+    "r3e/grounded/yosys_formal.py": "sha256:a6ab8117da16bb1c661c3783dc86bc0af7fbfe1ca686620010b61d3533046326",
+    "r3e/red/grounded/formal_rejection.py": "sha256:30c8454343cdc6cff716b7153fb8e26b9a52a54b1152b95beaede14331b23acf",
+    "r3e/arena/grounded_authority.py": "sha256:b4597b9c3d967dadeb9b339ddb28ad393e373b3a338df564bc8c704c5883b530"
   },
   "required_validation": [
     "pytest -q -p no:cacheprovider",
@@ -52,5 +52,5 @@
     "real-model-multi-round-pilot"
   ],
   "claim_boundary": "Frozen bounded provider-observable waveform descriptors and completed formal proof-unsatisfied rejection routing only; no complete waveform semantics, real-model discovery, bug-yield, memory-gain, multi-round evolution, or empirical-result claim.",
-  "milestone_hash": "sha256:7ebea1b0e4df731e801a2ec99cb8e0e285124c98c88a75e1e80955c97b91f226"
+  "milestone_hash": "sha256:fcce140b085b8dfeff5cc0769fba51822759722d26ed73e491d8a96c090a263c"
 }

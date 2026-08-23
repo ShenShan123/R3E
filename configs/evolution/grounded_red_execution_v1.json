@@ -4,7 +4,7 @@
   "status": "frozen",
   "parent_milestone": {
     "milestone_id": "grounded-red-protocol-foundation-v1",
-    "milestone_hash": "sha256:7d21f13bfddc9121a29b2ea87476c8ed27ff6632b31aa4cffac314990cab74a3"
+    "milestone_hash": "sha256:c78b621a243da98537d12856fa9e7387c0f2898e7987dbd0f4b359c6675f7a89"
   },
   "completed_scope": [
     "restricted-real-command-runner",
@@ -47,5 +47,5 @@
     "real-model-multi-round-pilot"
   ],
   "claim_boundary": "Frozen local Icarus-backed GRD-1 execution and one comparator materializer only; no formal-engine, full-SystemVerilog-AST, all-operator, arena, real-model, multi-round, bug-yield, or empirical-result claim.",
-  "milestone_hash": "sha256:c89c05636193c425f71365e533f5348e0e6119999a978f56e4ea9245de6c2089"
+  "milestone_hash": "sha256:0ed75ab5edc5998b481090b9d105fc9e1fd907de2a051141d632a2f39efae831"
 }

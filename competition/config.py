@@ -102,45 +102,67 @@ def _validate(raw: Mapping[str, Any], *, source_path: Path, repo_root: Path) -> 
     missing = required_sections - set(raw)
     if missing:
         raise ConfigError(f"competition config missing sections: {sorted(missing)}")
-    competition = raw["competition"]
-    repair = raw["repair"]
-    verification = raw["verification"]
-    paths = raw["paths"]
-    if not isinstance(competition, Mapping) or not isinstance(repair, Mapping):
-        raise ConfigError("competition and repair sections must be objects")
-    if not isinstance(verification, Mapping) or not isinstance(paths, Mapping):
-        raise ConfigError("verification and paths sections must be objects")
-    if int(competition.get("candidate_budget", 0)) != 3:
+    sections = {name: raw[name] for name in required_sections}
+    if any(not isinstance(value, Mapping) for value in sections.values()):
+        raise ConfigError("all competition config sections must be objects")
+    competition = sections["competition"]
+    repair = sections["repair"]
+    verification = sections["verification"]
+    paths = sections["paths"]
+    try:
+        candidate_budget = int(competition.get("candidate_budget", 0))
+    except (TypeError, ValueError) as exc:
+        raise ConfigError("competition.candidate_budget must be an integer") from exc
+    if isinstance(competition.get("candidate_budget"), bool) or candidate_budget != 3:
         raise ConfigError("M2 requires a fixed three-candidate portfolio")
-    if not isinstance(repair.get("lenses"), list) or not repair["lenses"]:
+    lenses = repair.get("lenses")
+    if (
+        not isinstance(lenses, list)
+        or not lenses
+        or any(not isinstance(item, str) or not item for item in lenses)
+        or len(set(lenses)) != len(lenses)
+    ):
         raise ConfigError("repair.lenses must be a non-empty list")
     required_stages = {
         "parse", "scope", "compile", "simulation", "oracle",
         "structural_check", "repeatability",
     }
-    stages = set(verification.get("stages", []))
-    if stages != required_stages:
+    stages = verification.get("stages")
+    expected_stages = (
+        "parse", "scope", "compile", "simulation", "oracle",
+        "structural_check", "repeatability",
+    )
+    if tuple(stages or ()) != expected_stages:
         raise ConfigError(
-            "verification.stages must be exactly the M2 gate set: "
+            "verification.stages must be exactly the ordered M2 gate set: "
             + ", ".join(sorted(required_stages))
         )
-    for key in ("timeout_seconds",):
-        if float(verification.get(key, 0)) <= 0:
-            raise ConfigError(f"verification.{key} must be positive")
+    try:
+        timeout_seconds = float(verification.get("timeout_seconds", 0))
+    except (TypeError, ValueError) as exc:
+        raise ConfigError("verification.timeout_seconds must be positive") from exc
+    if timeout_seconds <= 0:
+        raise ConfigError("verification.timeout_seconds must be positive")
+    try:
+        run_seed = int(competition.get("run_seed", 0))
+    except (TypeError, ValueError) as exc:
+        raise ConfigError("competition.run_seed must be an integer") from exc
+    if isinstance(competition.get("run_seed", 0), bool):
+        raise ConfigError("competition.run_seed must be an integer")
     for key in ("case_root", "frozen_root", "lens_registry", "descriptor_router", "portfolio"):
         value = str(paths.get(key) or "")
         if not value or Path(value).is_absolute() or ".." in Path(value).parts:
             raise ConfigError(f"paths.{key} must be repository-relative")
     normalized = deepcopy(dict(raw))
     normalized["competition"]["candidate_budget"] = 3
-    normalized["competition"]["run_seed"] = int(normalized["competition"].get("run_seed", 0))
+    normalized["competition"]["run_seed"] = run_seed
     return CompetitionConfig(repo_root=repo_root, source_path=source_path, raw=_freeze(normalized))
 
 
 def load_config(repo_root: str | Path, path: str | Path | None = None) -> CompetitionConfig:
     root = Path(repo_root).resolve()
-    source = Path(path) if path is not None else root / "competition" / "configs" / "competition.yaml"
-    source = source.resolve()
+    requested = Path(path) if path is not None else Path("competition/configs/competition.yaml")
+    source = (root / requested if not requested.is_absolute() else requested).resolve()
     try:
         source.relative_to(root)
     except ValueError as exc:

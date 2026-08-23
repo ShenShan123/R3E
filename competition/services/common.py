@@ -5,6 +5,7 @@ import hashlib
 import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -63,7 +64,9 @@ def run_capture(command: list[str], cwd: Path, timeout: float) -> dict[str, Any]
 def executable_versions() -> dict[str, Any]:
     result: dict[str, Any] = {}
     specs = {
-        "python": ("python3", ["python3", "--version"]),
+        # Toolchain receipts must describe the interpreter executing the
+        # runner, not an unrelated python3 found earlier on PATH.
+        "python": (sys.executable, [sys.executable, "--version"]),
         "iverilog": ("iverilog", ["iverilog", "-V"]),
         "vvp": ("vvp", ["vvp", "-V"]),
         "yosys": ("yosys", ["yosys", "-V"]),

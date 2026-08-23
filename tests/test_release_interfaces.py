@@ -12,6 +12,10 @@ def test_release_contains_no_experiment_launchers() -> None:
     for path in ROOT.rglob("*"):
         if not path.is_file():
             continue
+        # Competition entrypoint scripts are part of the public AIC package;
+        # this guard applies to the research release outside that facade.
+        if path.relative_to(ROOT).parts and path.relative_to(ROOT).parts[0] == "competition":
+            continue
         if path.suffix == ".sh" or path.name.startswith(("run_", "launch_")):
             forbidden.append(str(path.relative_to(ROOT)))
     assert forbidden == []

@@ -34,7 +34,7 @@
     "r3e-memory-red-plan-v1"
   ],
   "frozen_assets": {
-    "configs/memory/control_whitelist_v1.json": "sha256:a67300092fbe7b857f673db029d058a35153102c2e727654c6dbc95c14f534aa"
+    "configs/memory/control_whitelist_v1.json": "sha256:edb948598f7b4716f67f8624d44006cb362deabe469137326ca0fe27c52a71d4"
   },
   "required_validation": [
     "pytest -q -p no:cacheprovider",
@@ -57,5 +57,5 @@
     "parser_backed_rtl_semantic_diff"
   ],
   "claim_boundary": "Deterministic protocol skeleton and partial authority closure only; no grounded-runtime completion, real-model memory effectiveness, or continual-learning result.",
-  "milestone_hash": "sha256:7e70a241b01a15621122fa8b08c31c97b79abd7be335580181551fa7939c1b99"
+  "milestone_hash": "sha256:e94b89a15dade83b67ede8463be7008e61cec490ac59fc1977f8e1a1d6c27d3a"
 }

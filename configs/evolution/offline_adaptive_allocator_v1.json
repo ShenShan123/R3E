@@ -4,7 +4,7 @@
   "status": "frozen",
   "parent_milestone": {
     "milestone_id": "semantic-patch-diversity-v1",
-    "milestone_hash": "sha256:0038eecc76bf3ef48ffe678cfcd9cff38d2ff4c7c6407359ca6585af1ab9d466"
+    "milestone_hash": "sha256:c7c5b0e709919b2cac3253bec5a4d8bd02d03d8758f8bfa424e760623a8dde5e"
   },
   "completed_scope": [
     "adaptation-only-frozen-portfolio-statistics",
@@ -33,34 +33,34 @@
     "candidate_portfolio_v1"
   ],
   "frozen_assets": {
-    "README.md": "sha256:b94e54daa177c7555b17e947e3dc363945372ada676434598f672a894b35a073",
+    "README.md": "sha256:c876095fe4630afa58dee7a336da995a16a7b5100ba1fe09bf801f98abcca312",
     "configs/blue/offline_allocator_state_v1.json": "sha256:911bc6d9ada13a40a285fcdc28cdba71c2b1ed4fa746457b493d3d0e4e00e397",
     "configs/blue/adaptive_portfolio_v1.json": "sha256:285ca54ffa228f35fa5d0dd9352d80214ba56ed4e4c543f02d18729e6e8d706e",
     "configs/blue/portfolio_operator_space_v1.json": "sha256:2c6f7d8397713f333b7256756f0d3a13039c414bad0b63d7a8e4fd9ee1037265",
     "configs/evolution/round_acp4_offline_allocator_v1.json": "sha256:4c61bed0ae1e3a3f83ff5138acabf2fcae8b1f28b520fe596c3cb63d20042e35",
     "r3e/policy/search.py": "sha256:4ddbcec0bbd98420bdff2809ba22e32c170a77e9cd6c7c284eab4a97e1e919c3",
     "r3e/policy/schema.py": "sha256:48237ed039169241728901abcc5ecd10fe1dd4b197d9bb00b9961dae69705591",
-    "r3e/arena/portfolio.py": "sha256:08c13b9a0da5acb05461d9a311d0b0ba4bbec167bed6f260298642473d48f0cb",
-    "r3e/arena/runner.py": "sha256:d56f9eb7be61e3d832d69b9c7d66e8e1b4db49afe2d547882edf784b3d59a3b9",
-    "r3e/arena/audit.py": "sha256:2be158785066b06a2dd1f688a30b136198135b541192f6f163f89abb508357c8",
+    "r3e/arena/portfolio.py": "sha256:223a3c93097c2a0ba80ed88f0484bbe4a43f5b3329d860905bbc8e40fd1fe3db",
+    "r3e/arena/runner.py": "sha256:e4f932dd223eaafebd551d65f4d2efc87966ac1ac8d9a06ddf429c08515ac2fd",
+    "r3e/arena/audit.py": "sha256:808111df5bc77d6223fa3dbb4ca6ac9a0803c0550401d997cb02fd6a82c3ce7c",
     "r3e/memory/execution_trace.py": "sha256:c28c88f450c4d5f12eab7f0ff31453e9e985cf9a4ef98a6c2ad51824176e7a6d",
     "r3e/red/poison_payload.py": "sha256:2ec147aeb0b72a61b8f6286d5d80d56bacb419fed7da175fac617971e0dedf8d",
-    "r3e/blue/portfolio/__init__.py": "sha256:afde2d98d68139b86202758f189031a9b5bc563dcf5ff701cb9d0054db71e135",
+    "r3e/blue/portfolio/__init__.py": "sha256:35ebe034817e7e656fa4894347f8510fd9782c587e82f1cfc76af1fe25275668",
     "r3e/blue/portfolio/allocator.py": "sha256:7d1f1324f45f0abf8ac2162aea10f5dc1a2bd7ba1e386e499e0abe3117bea03d",
-    "r3e/blue/portfolio/schema.py": "sha256:901c0751367eaed32d7ecb8a00b4a999431ab91e634a7b9bae9f70ca3eb0e317",
-    "r3e/blue/portfolio/candidate_executor.py": "sha256:1172b0ac72efac4250bb2a30260d6cf53d2ca83523dded96ed4ba8a7e65f115f",
-    "r3e/blue/portfolio/candidate_receipts.py": "sha256:6109c88abc86767f88df215769cc555738bcbb2fd988a13dd8da829bace7790c",
-    "r3e/blue/portfolio/audit.py": "sha256:31c44f4422556918ad4bab10aaf5ee31ffc256847e67881257dc0041a2fba367",
-    "r3e/blue/portfolio/fake.py": "sha256:05e5ad8984055668f32e870ad3bfca8c2a2c5a69644ed761a7a404867da9c11f",
+    "r3e/blue/portfolio/schema.py": "sha256:fab92822ffa59cfa6da546b8d1fcb445641b4e16a8e9de9a5f7c43287237dcf0",
+    "r3e/blue/portfolio/candidate_executor.py": "sha256:69bca1e9c5e480b9f02af29c46ba654d10ffa972f17d14faf0ebb8a750eac117",
+    "r3e/blue/portfolio/candidate_receipts.py": "sha256:9a5035db12ac1d2dd0ba28f3db71059187f749cbbc3d4b88702a0a7ca155b9ac",
+    "r3e/blue/portfolio/audit.py": "sha256:30b9b49ed8d4157e25db60dd8abbd69b78ef4ad6e24152556a1697a1f209b57c",
+    "r3e/blue/portfolio/fake.py": "sha256:c85cba5ec27039a5d3b33109c5dfc63dc5e697611dab9c94fefdaa3ba36a5a74",
     "r3e/blue/portfolio/fake_system.py": "sha256:ba839c9de03911e5ba48ef7e8811c73e9b3640046ca31a8c2c99c8d2573f3e71",
-    "r3e/blue/portfolio/semantic_signature.py": "sha256:cdcddf3000e540161d80fdcc2b0444e0d8c45de2cb308473e239136c511bee36",
+    "r3e/blue/portfolio/semantic_signature.py": "sha256:9fb66280229d6048b54ae2799a8be60f463c0b89f8396c45a8c68a0e5b0e2059",
     "r3e/blue/portfolio/statistics.py": "sha256:04ded5f27e7d7f5d7b385563bcea81b1eda7e6dfa72969f7318cb12f7cc302c9",
-    "tests/test_adaptive_candidate_protocol.py": "sha256:86734a06127b632b4ecf3bdfe92c3ab13c017eade8ecd60fc66de1da5a29890a",
-    "tests/test_adaptive_candidate_fixed_mixed.py": "sha256:6af18babff5a8ffb95501d83921ab348b7b8693fe820a8a878b397cf2502ca25",
-    "tests/test_adaptive_candidate_descriptor_routed.py": "sha256:4e4eca3910834b8267161892575d900a4a4f160dbb5ba825178e0d9f48dffb22",
-    "tests/test_adaptive_candidate_semantic_diversity.py": "sha256:a074725969bc17c9f76eed3aa23e7bfda23c5dc5cbb3788169bb898b52b8a08e",
-    "tests/test_adaptive_candidate_offline_allocator.py": "sha256:3c1ac1d9f7da39913850dd4e811d2fd600c99f43ba84e1e27b2de48809512983",
-    "tests/test_grounded_planner_raam_closure.py": "sha256:b301c48e291d0c5990810cf08e700092fa258778f06b79e3dff91c61a909a12d"
+    "tests/test_adaptive_candidate_protocol.py": "sha256:a1d708bf51303a63875c6faad4330de5d78835ba9cc84309a3fdf4287b5c3fe7",
+    "tests/test_adaptive_candidate_fixed_mixed.py": "sha256:e50ecd8d4787bf52b41659bd3d467d0dad14b88796a1d953dbfc7aedb56d97a3",
+    "tests/test_adaptive_candidate_descriptor_routed.py": "sha256:8ded0c3cd6af88815dd865d62973b2e16c48ce14e565ad79d1aa0cdafe9bb69b",
+    "tests/test_adaptive_candidate_semantic_diversity.py": "sha256:8cd573afd0ab36a2d7013ec822bbbe4e931dcc0d018d1d93c469f9e7f7366707",
+    "tests/test_adaptive_candidate_offline_allocator.py": "sha256:00a40e8aa3aa69af56b3dbabf6d7950b946830c60e5c27cb12e6db31fe94659e",
+    "tests/test_grounded_planner_raam_closure.py": "sha256:9578ea0f2c1f445b6cec188707d31b74b6232682b10500446caa3714f404a306"
   },
   "required_validation": [
     "pytest -q -p no:cacheprovider tests/test_adaptive_candidate_protocol.py tests/test_adaptive_candidate_fixed_mixed.py tests/test_adaptive_candidate_descriptor_routed.py tests/test_adaptive_candidate_semantic_diversity.py tests/test_adaptive_candidate_offline_allocator.py",
@@ -80,5 +80,5 @@
     "acp7-real-model-multi-round-experiment"
   ],
   "claim_boundary": "Frozen deterministic ACP-4 adaptation-only allocator authority and synthetic conformance state only. No target/non-target feedback, online update, extra model call, real-model adaptive gain, held-out generalization, or multi-round experimental result is claimed.",
-  "milestone_hash": "sha256:620bd7dfdc39ffd85ce150d244a631c2039c747eb69d09956c74f2e56df83ee3"
+  "milestone_hash": "sha256:6f962897a0470f960ebc5dea9900132d23b228da93ddfb7438957a468298dab4"
 }

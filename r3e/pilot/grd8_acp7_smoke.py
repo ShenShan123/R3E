@@ -65,6 +65,7 @@ from r3e.red.grounded.proposal_planner import (
     verify_proposal_candidates,
 )
 from r3e.red.grounded.registry import load_grounded_registries
+from r3e.red.poison_payload import bind_poison_payload
 from r3e.red.operators import (
     load_operator_space,
     make_lineage_plan,
@@ -414,6 +415,9 @@ def _run_grd8(
         poison_id=descriptor["poison_id"],
     )
     candidate = materialize_fresh(lineage, descriptor)
+    # Fresh materialization is intentionally unbound until all descriptor
+    # fields are assembled; this pilot has no later enrichment step.
+    candidate = bind_poison_payload(candidate)
     candidate = bind_adapter_output(
         candidate,
         "generate_red",

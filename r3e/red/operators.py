@@ -310,6 +310,9 @@ def materialize_fresh(
             },
         }),
     )
+    # The caller may still add runner-owned lineage/provenance fields before
+    # the immutable payload hash is bound.  Binding here would make those
+    # legitimate additions look like tampering.
     return result
 
 

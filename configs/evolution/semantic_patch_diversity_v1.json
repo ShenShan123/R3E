@@ -4,7 +4,7 @@
   "status": "frozen",
   "parent_milestone": {
     "milestone_id": "descriptor-routed-portfolio-v1",
-    "milestone_hash": "sha256:d6c3016145eed9dbef3f2300d07df7249e822143c4895b6d8a1c568861a6cbdb"
+    "milestone_hash": "sha256:df870a30fd352455f39d63b4ec6413a2a8f32d3e6b6ada06e89c50a405474161"
   },
   "completed_scope": [
     "runner-owned-structured-semantic-patch-signature-v1",
@@ -29,29 +29,29 @@
     "candidate_portfolio_v1"
   ],
   "frozen_assets": {
-    "README.md": "sha256:60f8edbe228163a31a44dda1929ad8820708c5ae675fc23efe277f915c71aefc",
+    "README.md": "sha256:c876095fe4630afa58dee7a336da995a16a7b5100ba1fe09bf801f98abcca312",
     "configs/blue/semantic_diversity_portfolio_v1.json": "sha256:adf99ae679c9c911a84c877a7804960a0d6c8be5da196158f19eb4e1cedd2a94",
     "configs/blue/descriptor_router_v1.json": "sha256:bac10968691e62797c469bbc69611c56faa588b4f6e7c3037caec9d28ffbd2ba",
-    "configs/blue/portfolio_operator_space_v1.json": "sha256:b99091a22698ea2aa943ad939ea1fc2a46350c1fb512c316e6128b659c199623",
+    "configs/blue/portfolio_operator_space_v1.json": "sha256:2c6f7d8397713f333b7256756f0d3a13039c414bad0b63d7a8e4fd9ee1037265",
     "configs/evolution/round_acp3_semantic_diversity_v1.json": "sha256:0fcac577b270c7be23f8727d711f1726169f1fc18471c54c28b2d6658896af61",
-    "r3e/policy/search.py": "sha256:4748acbd2f862df9b9e7dad8342fa698af918b1ecdd79985dec032c5359c690f",
-    "r3e/arena/portfolio.py": "sha256:ffcbc8fc1dcaf88778c30abc23a2c22a4381288634308fd960e6f4ab7ad3f61f",
-    "r3e/arena/runner.py": "sha256:d1129e264aa19e1b50fdfd05c2f708eb3670ffcc79628f2da72c79ab376d60ad",
-    "r3e/arena/audit.py": "sha256:6b5ae2fa7bf1dd1565f35cebec5bcc2650c3de70fe891187fb18d896f99743cd",
-    "r3e/memory/execution_trace.py": "sha256:3a6f0b7e8d0cfd0a363d713dd25ef719d25ab0242e788957086a1b719c3d68f4",
-    "r3e/blue/portfolio/__init__.py": "sha256:10fdcde5b8deee6319eea8b8ef2e2ddda7160609a04ed8d74524704fd34a3509",
-    "r3e/blue/portfolio/candidate_executor.py": "sha256:7024ec7318d37ae5bd70dde24e403e61797969b5aba0b971fd7aab1a6d4ce5d7",
-    "r3e/blue/portfolio/candidate_receipts.py": "sha256:34bb44b44cd8f0b0109da7d2035d133a66af0bdf09d08a7a84172b1a34aac7bb",
-    "r3e/blue/portfolio/audit.py": "sha256:af7a157b18730b7ea409183e7368c94fa987d8e9dfda0e0cef0e862e36dd260c",
-    "r3e/blue/portfolio/semantic_signature.py": "sha256:cdcddf3000e540161d80fdcc2b0444e0d8c45de2cb308473e239136c511bee36",
+    "r3e/policy/search.py": "sha256:4ddbcec0bbd98420bdff2809ba22e32c170a77e9cd6c7c284eab4a97e1e919c3",
+    "r3e/arena/portfolio.py": "sha256:223a3c93097c2a0ba80ed88f0484bbe4a43f5b3329d860905bbc8e40fd1fe3db",
+    "r3e/arena/runner.py": "sha256:e4f932dd223eaafebd551d65f4d2efc87966ac1ac8d9a06ddf429c08515ac2fd",
+    "r3e/arena/audit.py": "sha256:808111df5bc77d6223fa3dbb4ca6ac9a0803c0550401d997cb02fd6a82c3ce7c",
+    "r3e/memory/execution_trace.py": "sha256:c28c88f450c4d5f12eab7f0ff31453e9e985cf9a4ef98a6c2ad51824176e7a6d",
+    "r3e/blue/portfolio/__init__.py": "sha256:35ebe034817e7e656fa4894347f8510fd9782c587e82f1cfc76af1fe25275668",
+    "r3e/blue/portfolio/candidate_executor.py": "sha256:69bca1e9c5e480b9f02af29c46ba654d10ffa972f17d14faf0ebb8a750eac117",
+    "r3e/blue/portfolio/candidate_receipts.py": "sha256:9a5035db12ac1d2dd0ba28f3db71059187f749cbbc3d4b88702a0a7ca155b9ac",
+    "r3e/blue/portfolio/audit.py": "sha256:30b9b49ed8d4157e25db60dd8abbd69b78ef4ad6e24152556a1697a1f209b57c",
+    "r3e/blue/portfolio/semantic_signature.py": "sha256:9fb66280229d6048b54ae2799a8be60f463c0b89f8396c45a8c68a0e5b0e2059",
     "r3e/blue/portfolio/statistics.py": "sha256:04ded5f27e7d7f5d7b385563bcea81b1eda7e6dfa72969f7318cb12f7cc302c9",
-    "r3e/blue/portfolio/fake.py": "sha256:d6219d4a4f4459653b18d0fc888bcafc4ced5506155df2988ab392f07c2cea2a",
-    "r3e/blue/portfolio/fake_system.py": "sha256:31fa9bfd50896c5be3aeb45ebbf7e946da3f96e945889b3d25e71b55c8fcae40",
-    "tests/test_adaptive_candidate_protocol.py": "sha256:4f14fbee2bab5447d679199d804072589df63f551a3f23baf574b4aa8fc5a12f",
-    "tests/test_adaptive_candidate_fixed_mixed.py": "sha256:3276d8332aefd852d4316ed89076bf2bb50e5232c1c2aca08aa7d7c4c29270bc",
-    "tests/test_adaptive_candidate_descriptor_routed.py": "sha256:b16964f8250c936f3761bf1286d760b547e6bbb9d0e4ba8dc91551fbcbcff2e8",
-    "tests/test_adaptive_candidate_semantic_diversity.py": "sha256:933ba07e98be6f3d95e9108da4f0cb15cb397e5318babc663a59a94453fc135a",
-    "tests/test_grounded_planner_raam_closure.py": "sha256:f2517b160a35825b3b1357a3934aacf0d075e1d190db8cc5afba4a31679ecaff"
+    "r3e/blue/portfolio/fake.py": "sha256:c85cba5ec27039a5d3b33109c5dfc63dc5e697611dab9c94fefdaa3ba36a5a74",
+    "r3e/blue/portfolio/fake_system.py": "sha256:ba839c9de03911e5ba48ef7e8811c73e9b3640046ca31a8c2c99c8d2573f3e71",
+    "tests/test_adaptive_candidate_protocol.py": "sha256:a1d708bf51303a63875c6faad4330de5d78835ba9cc84309a3fdf4287b5c3fe7",
+    "tests/test_adaptive_candidate_fixed_mixed.py": "sha256:e50ecd8d4787bf52b41659bd3d467d0dad14b88796a1d953dbfc7aedb56d97a3",
+    "tests/test_adaptive_candidate_descriptor_routed.py": "sha256:8ded0c3cd6af88815dd865d62973b2e16c48ce14e565ad79d1aa0cdafe9bb69b",
+    "tests/test_adaptive_candidate_semantic_diversity.py": "sha256:8cd573afd0ab36a2d7013ec822bbbe4e931dcc0d018d1d93c469f9e7f7366707",
+    "tests/test_grounded_planner_raam_closure.py": "sha256:9578ea0f2c1f445b6cec188707d31b74b6232682b10500446caa3714f404a306"
   },
   "required_validation": [
     "pytest -q -p no:cacheprovider tests/test_adaptive_candidate_protocol.py tests/test_adaptive_candidate_fixed_mixed.py tests/test_adaptive_candidate_descriptor_routed.py tests/test_adaptive_candidate_semantic_diversity.py",
@@ -70,5 +70,5 @@
     "acp7-real-model-multi-round-experiment"
   ],
   "claim_boundary": "Frozen deterministic ACP-3 semantic signature and measurement-only diversity authority only; duplicates still receive full verification and retry_calls is zero. No real-model lens-collapse, unique-solve, repair-gain, adaptive-allocation, or multi-round ACP result is claimed.",
-  "milestone_hash": "sha256:0038eecc76bf3ef48ffe678cfcd9cff38d2ff4c7c6407359ca6585af1ab9d466"
+  "milestone_hash": "sha256:c7c5b0e709919b2cac3253bec5a4d8bd02d03d8758f8bfa424e760623a8dde5e"
 }

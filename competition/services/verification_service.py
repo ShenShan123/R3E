@@ -354,7 +354,12 @@ class CompetitionCandidateVerifier:
             "compile_receipt_hash": payload_hash(by_name.get("compile", {})),
             "simulation_receipt_hash": payload_hash(by_name.get("simulation", {})),
             "formal_receipt_hash": payload_hash(by_name.get("structural_check", {})),
-            "oracle_ok": bool(core.get("ok")),
+            # The Core receipt's oracle_ok field is the only correctness
+            # signal consumed by ACP selection.  Competition acceptance is
+            # the conjunction of all seven runner-owned gates, so exposing
+            # only the inner differential-oracle result could select a
+            # candidate that failed structural or repeatability checks.
+            "oracle_ok": bool(result.get("accepted")),
             "changed_modules": len(scope.get("changed_modules", [])),
             "changed_blocks": len(scope.get("changed_blocks", [])),
             "ast_edit_count": int(scope.get("ast_edit_count", 0)),

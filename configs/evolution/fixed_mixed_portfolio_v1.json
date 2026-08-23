@@ -4,7 +4,7 @@
   "status": "frozen",
   "parent_milestone": {
     "milestone_id": "adaptive-candidate-protocol-v1",
-    "milestone_hash": "sha256:9a689e8084a415e5415301ec5ba8f426318fab80598c2c89efb3343a00790446"
+    "milestone_hash": "sha256:84b4f124c8aa0e9fdecf05b1b067525c9ae623b38f9ecf1099adca7b3fd6b28b"
   },
   "completed_scope": [
     "policy-v3-explicit-candidate-portfolio-binding",
@@ -28,23 +28,23 @@
     "fixed-mixed-temporal-control-dataflow-v1"
   ],
   "frozen_assets": {
-    "README.md": "sha256:20c28aaabb5b2836004f94eace61cdba024d339ee9373a15832517b05e347d5c",
+    "README.md": "sha256:c876095fe4630afa58dee7a336da995a16a7b5100ba1fe09bf801f98abcca312",
     "configs/blue/fixed_mixed_portfolio_v1.json": "sha256:c61e0b4efc19223d3d69a6139aa3d1fb808ce07f70df9d4e21ca79debe0394f0",
     "configs/evolution/round_acp1_fixed_mixed_v1.json": "sha256:1e57dc679bbe4d6681e1bd884724d2c380be57c3025d4ebe1d57aa7f88e3cdc8",
     "r3e/policy/schema.py": "sha256:48237ed039169241728901abcc5ecd10fe1dd4b197d9bb00b9961dae69705591",
-    "r3e/policy/search.py": "sha256:9a657a06269230a874254932a71c95a204f3bb4a1f1ffa6732533a2e2af4d7a5",
-    "r3e/arena/portfolio.py": "sha256:a0d2646ec6feef3f49f4fca3856c9a52b20854d45100cfa0b94436529c29ce91",
-    "r3e/arena/runner.py": "sha256:8d2a74b5ad1cc8aeeef67684b4e0068c4747bb0b5946b023e25f8ef035881e36",
-    "r3e/arena/audit.py": "sha256:260dac6519e5c99a940ec6f3a55e74283d966e9dfc86bf56100786814c2c7abd",
-    "r3e/blue/portfolio/__init__.py": "sha256:a52ff62dc6952ecd7214ddd1c5641b13645a1d8cffd09871db44debe1335bf5e",
-    "r3e/blue/portfolio/schema.py": "sha256:76a928c4e0665bdc569b4184929c9ab307fb1b75ecfdda051a175237c81b853b",
-    "r3e/blue/portfolio/candidate_executor.py": "sha256:916a9d13a04d2041b297e5227bdd261bf1688717b8d6d5ac1eab8c066a4a76dc",
-    "r3e/blue/portfolio/audit.py": "sha256:2e64c468aa9a0cb2d539758353f3f9c177f60e8742c533c7544d13e79a697d88",
-    "r3e/blue/portfolio/fake.py": "sha256:bc60a9227b504ce2cd25d2f1dcd0c9434bd8cd01cc39e0e109ef2300eba226c0",
-    "r3e/blue/portfolio/fake_system.py": "sha256:2e19b175fabd07997ebabf533077b29182478f9bd0475c09fbdc2b62172e21f4",
-    "tests/test_adaptive_candidate_protocol.py": "sha256:9a376ddabf88340e5676fe3282cc45bd27a39a4e3723cee34e7323a6b80ca709",
-    "tests/test_adaptive_candidate_fixed_mixed.py": "sha256:d26179399bc4ebb0c7c52a1d268b23ac2dcae3be11233afd407f5dc120f3555e",
-    "tests/test_grounded_planner_raam_closure.py": "sha256:18d648f7bc8c383e828dc4c6a89cc96bec82353dcea6589eaf3af00236bc1174"
+    "r3e/policy/search.py": "sha256:4ddbcec0bbd98420bdff2809ba22e32c170a77e9cd6c7c284eab4a97e1e919c3",
+    "r3e/arena/portfolio.py": "sha256:223a3c93097c2a0ba80ed88f0484bbe4a43f5b3329d860905bbc8e40fd1fe3db",
+    "r3e/arena/runner.py": "sha256:e4f932dd223eaafebd551d65f4d2efc87966ac1ac8d9a06ddf429c08515ac2fd",
+    "r3e/arena/audit.py": "sha256:808111df5bc77d6223fa3dbb4ca6ac9a0803c0550401d997cb02fd6a82c3ce7c",
+    "r3e/blue/portfolio/__init__.py": "sha256:35ebe034817e7e656fa4894347f8510fd9782c587e82f1cfc76af1fe25275668",
+    "r3e/blue/portfolio/schema.py": "sha256:fab92822ffa59cfa6da546b8d1fcb445641b4e16a8e9de9a5f7c43287237dcf0",
+    "r3e/blue/portfolio/candidate_executor.py": "sha256:69bca1e9c5e480b9f02af29c46ba654d10ffa972f17d14faf0ebb8a750eac117",
+    "r3e/blue/portfolio/audit.py": "sha256:30b9b49ed8d4157e25db60dd8abbd69b78ef4ad6e24152556a1697a1f209b57c",
+    "r3e/blue/portfolio/fake.py": "sha256:c85cba5ec27039a5d3b33109c5dfc63dc5e697611dab9c94fefdaa3ba36a5a74",
+    "r3e/blue/portfolio/fake_system.py": "sha256:ba839c9de03911e5ba48ef7e8811c73e9b3640046ca31a8c2c99c8d2573f3e71",
+    "tests/test_adaptive_candidate_protocol.py": "sha256:a1d708bf51303a63875c6faad4330de5d78835ba9cc84309a3fdf4287b5c3fe7",
+    "tests/test_adaptive_candidate_fixed_mixed.py": "sha256:e50ecd8d4787bf52b41659bd3d467d0dad14b88796a1d953dbfc7aedb56d97a3",
+    "tests/test_grounded_planner_raam_closure.py": "sha256:9578ea0f2c1f445b6cec188707d31b74b6232682b10500446caa3714f404a306"
   },
   "required_validation": [
     "pytest -q -p no:cacheprovider tests/test_adaptive_candidate_protocol.py tests/test_adaptive_candidate_fixed_mixed.py",
@@ -65,5 +65,5 @@
     "acp7-real-model-multi-round-experiment"
   ],
   "claim_boundary": "Frozen deterministic ACP-1 Policy V3, fixed mixed temporal-control-dataflow allocation, formal arena challenge adoption, checkpoint/event/audit authority, and fake-provider conformance only; no real-model comparison, lens-collapse measurement, unique-solve evidence, adaptive routing, repair gain, or multi-round ACP result.",
-  "milestone_hash": "sha256:b25a3df2ecadca0ed609af15d13fbc225239ec21e468878fe965f068f9a25af4"
+  "milestone_hash": "sha256:9afc5408cd59cfab17dc66d11d5df8f220ab92b396d997f8952c52ba52b94104"
 }

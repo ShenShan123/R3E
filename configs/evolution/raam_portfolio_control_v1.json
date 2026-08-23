@@ -4,7 +4,7 @@
   "status": "frozen",
   "parent_milestone": {
     "milestone_id": "offline-adaptive-allocator-v1",
-    "milestone_hash": "sha256:620bd7dfdc39ffd85ce150d244a631c2039c747eb69d09956c74f2e56df83ee3"
+    "milestone_hash": "sha256:6f962897a0470f960ebc5dea9900132d23b228da93ddfb7438957a468298dab4"
   },
   "completed_scope": [
     "policy-frozen-portfolio-template-registry-and-template-hashes",
@@ -34,16 +34,16 @@
     "candidate_portfolio_v1"
   ],
   "frozen_assets": {
-    "README.md": "sha256:a68cf7661fdf082e71632affa046436775b05554a7fc4de5eb6c36b7af35e487",
+    "README.md": "sha256:c876095fe4630afa58dee7a336da995a16a7b5100ba1fe09bf801f98abcca312",
     "configs/blue/portfolio_template_registry_v1.json": "sha256:8c49df7d7de17367fa9b1ebfe1c565a28a8e1a58388b895eded35f5197f0be54",
     "configs/memory/control_whitelist_v1.json": "sha256:edb948598f7b4716f67f8624d44006cb362deabe469137326ca0fe27c52a71d4",
     "configs/evolution/round_acp5_raam_portfolio_control_v1.json": "sha256:ed027f6246990f3c504d9d89da027f96573dfd3c9053cc69476c29e2929d095c",
-    "r3e/arena/portfolio.py": "sha256:7dfe4b1ea0e414703d066ddfb22d1e2a3e4ff9a22447f2bd2c75e36683463526",
-    "r3e/arena/runner.py": "sha256:4fde6f36c3db7e910e67b5fd0a72def05bdb0adea5c42eaafb01c4829af8f688",
+    "r3e/arena/portfolio.py": "sha256:223a3c93097c2a0ba80ed88f0484bbe4a43f5b3329d860905bbc8e40fd1fe3db",
+    "r3e/arena/runner.py": "sha256:e4f932dd223eaafebd551d65f4d2efc87966ac1ac8d9a06ddf429c08515ac2fd",
     "r3e/blue/portfolio/portfolio_control.py": "sha256:092d004e142f6e8bf129663ae4f8d741353c1f80e86bd8d010235c49f81bf635",
     "r3e/blue/portfolio/schema.py": "sha256:fab92822ffa59cfa6da546b8d1fcb445641b4e16a8e9de9a5f7c43287237dcf0",
-    "r3e/blue/portfolio/candidate_executor.py": "sha256:a8c051be4d0327ba47e205a70470858832e560620d9b277038aab4f747c00b78",
-    "r3e/blue/portfolio/audit.py": "sha256:51df0b0777391034d189d127f1c3a8a55f80315cf62b7da4bb8b1a516b8f1a97",
+    "r3e/blue/portfolio/candidate_executor.py": "sha256:69bca1e9c5e480b9f02af29c46ba654d10ffa972f17d14faf0ebb8a750eac117",
+    "r3e/blue/portfolio/audit.py": "sha256:30b9b49ed8d4157e25db60dd8abbd69b78ef4ad6e24152556a1697a1f209b57c",
     "r3e/memory/schema.py": "sha256:6893ebe74feb766d3ddb2be6e7523ed5d4c94dad52e5772ded1f5c6ea68d280e",
     "r3e/memory/activation_guard.py": "sha256:80eee96ff830cbd000900d956ff46a6e8e0ea4c7d36bec888314547f0b7d010d",
     "r3e/memory/plan_compiler.py": "sha256:b188429beb6ab648d0e0eb1d3cc5e6b5830e232db505ece3b9e156fc35731003",
@@ -56,14 +56,14 @@
     "r3e/memory/promotion.py": "sha256:cc0fea89813b70dc1c945b2f5f8c036c24048440f8dff5a74de81313257614d0",
     "r3e/memory/authority.py": "sha256:a21d45c762a8aeab5582a6cb80930460e8276ca56c44e9b56240b445a2ba1d23",
     "r3e/memory/authority_dag.py": "sha256:6ff4487e1eb920076429fbc88897a0d242f566e1d838b51abb8ef2436d2f47cd",
-    "tests/test_adaptive_candidate_raam_portfolio_control.py": "sha256:97a90c203f81fef9cd3bd78f38d10a908c1469a4edb0ba9cf01b5c828a4db2b7",
-    "tests/test_adaptive_candidate_protocol.py": "sha256:09ba8e967f0a29affde5831627f935d0b47c717f591bbf9c330f89854a127341",
-    "tests/test_adaptive_candidate_fixed_mixed.py": "sha256:f485d1a7a021253b74ef3c8e91192cab0f11df2efcb6811339dd84dd1a80d6ba",
-    "tests/test_adaptive_candidate_descriptor_routed.py": "sha256:88eb37996faaf2773128219f649bd74a0a6c82ed6f0ade143d868c39484f81cf",
-    "tests/test_adaptive_candidate_semantic_diversity.py": "sha256:17663ca0e166265709c5364d2d77dc609cdde26abe89eeb80c0c7879704aaaa7",
-    "tests/test_adaptive_candidate_offline_allocator.py": "sha256:8ce58e4280dba3764e8f524c860790f64dba3bb3ba893719dfca2d549c524098",
-    "tests/test_grounded_planner_raam_closure.py": "sha256:58a4ad4100c3e91c98669424cade9157900b2e527131c0e5851a53947cbbdb3f",
-    "tests/test_raam_system_upgrade_milestone.py": "sha256:bc30189da9cd1816690edc9b09a50d08e1a96384af28e034f0d74205a55702c4"
+    "tests/test_adaptive_candidate_raam_portfolio_control.py": "sha256:41029e2aba1e6db33f390c79f885d723bcc6c99c6061aef31be33159eabce22d",
+    "tests/test_adaptive_candidate_protocol.py": "sha256:a1d708bf51303a63875c6faad4330de5d78835ba9cc84309a3fdf4287b5c3fe7",
+    "tests/test_adaptive_candidate_fixed_mixed.py": "sha256:e50ecd8d4787bf52b41659bd3d467d0dad14b88796a1d953dbfc7aedb56d97a3",
+    "tests/test_adaptive_candidate_descriptor_routed.py": "sha256:8ded0c3cd6af88815dd865d62973b2e16c48ce14e565ad79d1aa0cdafe9bb69b",
+    "tests/test_adaptive_candidate_semantic_diversity.py": "sha256:8cd573afd0ab36a2d7013ec822bbbe4e931dcc0d018d1d93c469f9e7f7366707",
+    "tests/test_adaptive_candidate_offline_allocator.py": "sha256:00a40e8aa3aa69af56b3dbabf6d7950b946830c60e5c27cb12e6db31fe94659e",
+    "tests/test_grounded_planner_raam_closure.py": "sha256:9578ea0f2c1f445b6cec188707d31b74b6232682b10500446caa3714f404a306",
+    "tests/test_raam_system_upgrade_milestone.py": "sha256:444a4416cb97386982ab9ec103cc7f5ea1886a502b3fe8333f70da5ab99605e6"
   },
   "required_validation": [
     "pytest -q -p no:cacheprovider tests/test_adaptive_candidate_raam_portfolio_control.py",
@@ -81,5 +81,5 @@
     "acp7-real-model-multi-round-experiment"
   ],
   "claim_boundary": "Frozen deterministic ACP-5 Policy-authorized RAAM portfolio-control infrastructure and fake-provider conformance only. No runtime memory bank, real qualification evidence, real-model repair gain, adaptive benefit, or multi-round experimental result is claimed.",
-  "milestone_hash": "sha256:8f6db6870a7cdb8f99cb3fbd53e54376704cc9b9928aa24f562a8eea43168b07"
+  "milestone_hash": "sha256:b926f488a94bc2291127fed2eaac627e1641ef706546979a0b95112a91f9feb9"
 }

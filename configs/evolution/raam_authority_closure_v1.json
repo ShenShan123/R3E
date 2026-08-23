@@ -4,7 +4,7 @@
   "status": "frozen",
   "parent_milestone": {
     "milestone_id": "raam-protocol-skeleton-v1",
-    "milestone_hash": "sha256:7e70a241b01a15621122fa8b08c31c97b79abd7be335580181551fa7939c1b99"
+    "milestone_hash": "sha256:e94b89a15dade83b67ede8463be7008e61cec490ac59fc1977f8e1a1d6c27d3a"
   },
   "closed_authority_gates": [
     "episode-backed-strict-evidence-set-reconstruction",
@@ -45,5 +45,5 @@
     "fully_verified_authority_dag"
   ],
   "claim_boundary": "Authority objects, evidence reconstruction, stable identities, and promotion no-op gates only; no grounded-runtime completion or empirical memory-gain claim.",
-  "milestone_hash": "sha256:77eac802aa67c64facb1905d9540ad27658e0e3106023a85d8b943ee64ba7a16"
+  "milestone_hash": "sha256:13858206d198cfe4b6095645f446e76d90a8af6d3092103f7e7cfa1e2ef43d9b"
 }

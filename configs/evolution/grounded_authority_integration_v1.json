@@ -4,7 +4,7 @@
   "status": "frozen",
   "parent_milestone": {
     "milestone_id": "grounded-red-grd2-formal-v1",
-    "milestone_hash": "sha256:b01137b62e4fd2ebd770c9eb0edcde73e5e34dcb3c698bf229fe782c58095eee"
+    "milestone_hash": "sha256:046624e32a9b5ba9b2c76d3ee4d80b0451431e69c26bec099e2458710127b1f7"
   },
   "completed_scope": [
     "runner-owned-grounded-arena-validity",
@@ -45,5 +45,5 @@
     "real-model-multi-round-pilot"
   ],
   "claim_boundary": "Frozen runner-owned Icarus Grounded arena authority and reconstructable protocol integration only; no required Yosys arena proof, real-model discovery, bug-yield, multi-round evolution, memory-gain, or empirical-result claim.",
-  "milestone_hash": "sha256:9c090596407990479db9d6fe192903f608836d67f2149320a71aa42642528917"
+  "milestone_hash": "sha256:c66a5d9ea25c8f58bdca3c9d4c926db2afb400c251dd5b688aa5435f60d1dbcf"
 }

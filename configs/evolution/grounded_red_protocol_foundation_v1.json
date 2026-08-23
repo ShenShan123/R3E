@@ -4,7 +4,7 @@
   "status": "frozen",
   "parent_milestone": {
     "milestone_id": "raam-authority-closure-v1",
-    "milestone_hash": "sha256:77eac802aa67c64facb1905d9540ad27658e0e3106023a85d8b943ee64ba7a16"
+    "milestone_hash": "sha256:13858206d198cfe4b6095645f446e76d90a8af6d3092103f7e7cfa1e2ef43d9b"
   },
   "completed_scope": [
     "grd-0-ontology-and-protocol",
@@ -55,5 +55,5 @@
     "real_model_multi_round_pilot"
   ],
   "claim_boundary": "Frozen Grounded Red authority protocols and deterministic fake state-machine validation only; no real parser, EDA, oracle, model, bug admission, or empirical discovery result.",
-  "milestone_hash": "sha256:7d21f13bfddc9121a29b2ea87476c8ed27ff6632b31aa4cffac314990cab74a3"
+  "milestone_hash": "sha256:c78b621a243da98537d12856fa9e7387c0f2898e7987dbd0f4b359c6675f7a89"
 }
