@@ -712,7 +712,7 @@ provider request or runner hard gate fails. A failed workspace cannot be
 resumed into another provider request; start a new authorized workspace after
 fixing the binding or budget.
 
-Seven separately authorized real shadow admissions have been executed under
+Eight separately authorized real shadow admissions have been executed under
 this boundary. The first completed 12 ACP calls and stopped at the old Red
 output ceiling; the second completed 12 ACP calls plus one Red request that
 returned empty content; the third stopped on empty Blue content at call 9; the
@@ -720,12 +720,15 @@ fourth completed 12 ACP calls plus one Red request that returned empty content;
 the fifth stopped on empty Blue content at call 9 with a length-finish
 diagnostic; the sixth completed 12 ACP calls plus one Red request before its
 empty-content gate; and the seventh stopped on empty Blue content at call 9
-with `finish_reason=length` and `output_tokens=4096`. None produced formal poison,
-`VerifiedEpisode`, policy promotion, or RAAM qualification. These runs validate
-call accounting and fail-closed handling only; they are not ACP-7 gain,
-GRD-8 yield, or multi-round coevolution evidence. Empty responses are recorded
-only with categorical, privacy-safe envelope diagnostics; retries require a
-new authorization, workspace, and explicit budget.
+with `finish_reason=length` and `output_tokens=4096`. The eighth completed the
+full 12+1 budget: Grounded Red was formally admitted with a clean/poison/revert
+triplet, the poison entered the runner-owned ACP path, and the archive,
+`VerifiedEpisode`, and zero-call resume checkpoints were reconstructed. All
+eight runs kept policy promotion and RAAM qualification disabled. These runs
+validate call accounting and fail-closed handling only; they are not ACP-7
+gain, GRD-8 yield, or multi-round coevolution evidence. Empty responses are
+recorded only with categorical, privacy-safe envelope diagnostics; retries
+require a new authorization, workspace, and explicit budget.
 
 The real Grounded shadow profile reserves the frozen 60-second wall-time
 ceiling even for a D0 proposal. Legacy deterministic population profiles keep
