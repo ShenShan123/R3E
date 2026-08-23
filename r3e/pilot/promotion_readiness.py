@@ -401,6 +401,42 @@ def _verify_integrated_shadow(
             blockers.append("integrated_shadow_episode_manifest_binding")
         if not episode_manifest.get("episode_ids"):
             blockers.append("integrated_shadow_episode_manifest_empty")
+    renewed_path = workspace / "renewed_challenge_binding.json"
+    renewed = _read(renewed_path)
+    if renewed is None:
+        blockers.append("integrated_shadow_renewed_challenge_missing")
+    else:
+        if not _hash_matches(renewed, "binding_hash"):
+            blockers.append("integrated_shadow_renewed_challenge_hash")
+        for field in (
+            "poison_payload_hash",
+            "failure_descriptor_hash",
+            "verified_episode_manifest_hash",
+            "archive_entry_hash",
+        ):
+            if not renewed.get(field):
+                blockers.append(f"integrated_shadow_renewed_{field}")
+        if renewed.get("challenged_policy_hash") != summary.get(
+            "challenged_policy_hash"
+        ):
+            blockers.append("integrated_shadow_renewed_policy_binding")
+        if renewed.get("poison_id") != summary.get("challenged_poison_id"):
+            blockers.append("integrated_shadow_renewed_poison_binding")
+        if renewed.get("poison_payload_hash") != summary.get(
+            "challenged_poison_payload_hash"
+        ):
+            blockers.append("integrated_shadow_renewed_payload_binding")
+        registry_path = workspace / "policy_registry.json"
+        if not registry_path.is_file():
+            blockers.append("integrated_shadow_registry_missing")
+        else:
+            registry_file_hash = hash_file(registry_path)
+            if registry_file_hash != summary.get("registry_hash_before"):
+                blockers.append("integrated_shadow_registry_before_hash")
+            if registry_file_hash != summary.get("registry_hash_after"):
+                blockers.append("integrated_shadow_registry_after_hash")
+            if renewed.get("registry_hash_before") != registry_file_hash:
+                blockers.append("integrated_shadow_renewed_registry_binding")
     blue_events = workspace / "same_poison_blue" / "events.jsonl"
     if not blue_events.is_file():
         blockers.append("integrated_shadow_blue_events_missing")

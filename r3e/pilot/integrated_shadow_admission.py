@@ -20,6 +20,8 @@ from r3e.pilot.shadow_matrix import load_shadow_pilot_matrix
 from r3e.memory.episode_builder import episode_from_challenge
 from r3e.memory.episode_store import EpisodeStore
 from r3e.policy.schema import PolicyState
+from r3e.policy.registry_v2 import initialize_registry
+from r3e.arena.renewed_challenge import assert_renewed_challenge_binding
 from r3e.red.archive import update_archive
 from r3e.protocol.hashing import hash_file
 from r3e.protocol.hashing import atomic_write_json, hash_payload, read_json
@@ -153,6 +155,54 @@ def _persist_episode_and_archive(
     }
 
 
+def _persist_renewed_challenge(
+    *,
+    output: Path,
+    base_policy_path: Path,
+    policy: PolicyState,
+    candidate: dict[str, Any],
+    downstream: dict[str, Any],
+) -> dict[str, Any]:
+    """Rebuild the next-round challenge input without changing registry state."""
+    registry_path = output / "policy_registry.json"
+    if not registry_path.is_file():
+        initialize_registry(
+            base_policy_path,
+            registry_path,
+            base_path_record="configs/base_policy/frozen_base_policy_v3.json",
+        )
+    registry_hash_before = hash_file(registry_path)
+    renewed = assert_renewed_challenge_binding(
+        str(registry_path), policy.policy_hash
+    )
+    renewed.update({
+        "schema_version": "r3e-integrated-renewed-challenge-v1",
+        "round_id": "integrated-shadow-R000",
+        "poison_id": candidate["poison_id"],
+        "poison_payload_hash": candidate["poison_payload_hash"],
+        "failure_descriptor_hash": candidate[
+            "grounded_authority_bundle"
+        ]["failure_descriptor"]["descriptor_hash"],
+        "verified_episode_manifest_hash": downstream[
+            "verified_episode_manifest_hash"
+        ],
+        "archive_entry_hash": downstream["archive_entry_hash"],
+        "registry_hash_before": registry_hash_before,
+    })
+    renewed["binding_hash"] = hash_payload(renewed)
+    atomic_write_json(output / "renewed_challenge_binding.json", renewed)
+    registry_hash_after = hash_file(registry_path)
+    if registry_hash_after != registry_hash_before:
+        raise IntegratedShadowAdmissionViolation(
+            "renewed challenge changed the policy registry"
+        )
+    return {
+        "binding_hash": renewed["binding_hash"],
+        "registry_hash_before": registry_hash_before,
+        "registry_hash_after": registry_hash_after,
+    }
+
+
 def _verify_hash(payload: Any, field: str, label: str) -> dict[str, Any]:
     if not isinstance(payload, dict) or payload.get(field) != hash_payload({
         key: value for key, value in payload.items() if key != field
@@ -257,6 +307,13 @@ def run_integrated_shadow_admission(
         candidate=candidate,
         blue=blue,
     )
+    renewed = _persist_renewed_challenge(
+        output=output,
+        base_policy_path=root / "configs/base_policy/frozen_base_policy_v3.json",
+        policy=policy,
+        candidate=candidate,
+        downstream=downstream,
+    )
     event = {
         "schema_version": INTEGRATED_EVENT_SCHEMA,
         "matrix_id": matrix.matrix_id,
@@ -276,6 +333,9 @@ def run_integrated_shadow_admission(
             "verified_episode_manifest_hash"
         ],
         "archive_path_hash": downstream["archive_path_hash"],
+        "renewed_challenge_hash": renewed["binding_hash"],
+        "registry_hash_before": renewed["registry_hash_before"],
+        "registry_hash_after": renewed["registry_hash_after"],
         "provider_calls": expected_red + expected_blue,
         "promotion_executed": False,
         "memory_qualification_executed": False,
@@ -302,6 +362,9 @@ def run_integrated_shadow_admission(
         ],
         "episode_hash": downstream["episode_hash"],
         "archive_path_hash": downstream["archive_path_hash"],
+        "renewed_challenge_hash": renewed["binding_hash"],
+        "registry_hash_before": renewed["registry_hash_before"],
+        "registry_hash_after": renewed["registry_hash_after"],
         "formal_triplet": blue["formal_triplet"],
         "expected_red_provider_calls": expected_red,
         "expected_blue_provider_calls": expected_blue,

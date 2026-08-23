@@ -108,6 +108,13 @@ def test_integrated_shadow_is_one_red_plus_twelve_same_poison_blue_calls(tmp_pat
     assert episode_manifest["episode_ids"]
     assert first["archive_kind"] in {"residual", "covered"}
     assert first["verified_episode_manifest_hash"] == episode_manifest["manifest_hash"]
+    renewed = json.loads(
+        (workspace / "renewed_challenge_binding.json").read_text(encoding="utf-8")
+    )
+    assert renewed["challenged_policy_hash"] == first["challenged_policy_hash"]
+    assert renewed["poison_payload_hash"] == first["challenged_poison_payload_hash"]
+    assert first["renewed_challenge_hash"] == renewed["binding_hash"]
+    assert first["registry_hash_before"] == first["registry_hash_after"]
 
     # The policy-transition gate must consume the new integrated workspace,
     # not silently downgrade it to the historical independent-lane format.
