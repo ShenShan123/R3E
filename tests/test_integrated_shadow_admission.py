@@ -9,6 +9,7 @@ import pytest
 from r3e.pilot.integrated_shadow_admission import (
     run_integrated_shadow_admission,
 )
+from r3e.pilot.promotion_readiness import assess_policy_promotion_readiness
 from r3e.providers.openai_compatible import (
     OpenAICompatibleClientConfig,
     OpenAICompatibleJSONClient,
@@ -94,6 +95,56 @@ def test_integrated_shadow_is_one_red_plus_twelve_same_poison_blue_calls(tmp_pat
     for forbidden in ("clean_rtl", "replacement_rtl", str(ROOT)):
         assert forbidden not in event_text
 
+    # The policy-transition gate must consume the new integrated workspace,
+    # not silently downgrade it to the historical independent-lane format.
+    target = tmp_path / "target.jsonl"
+    target.write_text(
+        '{"case_id":"c0","design":"d0"}\n'
+        '{"case_id":"c1","design":"d1"}\n',
+        encoding="utf-8",
+    )
+    non_target = tmp_path / "non_target.jsonl"
+    non_target.write_text('{"case_id":"n0","design":"n0"}\n', encoding="utf-8")
+    registry_before = tmp_path / "registry-before.json"
+    registry_after = tmp_path / "registry-after.json"
+    registry_before.write_text('{"registry_hash":"same"}\n', encoding="utf-8")
+    registry_after.write_text('{"registry_hash":"same"}\n', encoding="utf-8")
+    from r3e.protocol.hashing import hash_file
+    binding = {
+        "schema_version": "r3e-real-policy-promotion-rehearsal-binding-v1",
+        "shadow_mode": "integrated_same_poison",
+        "execution_mode": "real_provider",
+        "round_ids": ["R000", "R001"],
+        "challenge_seeds": [17],
+        "promotion_seeds": [17],
+        "policy_promotion_enabled": True,
+        "memory_promotion_enabled": False,
+        "memory_qualification_enabled": False,
+        "at_most_one_registry_commit": True,
+        "model_binding": {"provider_id": "p", "model_id": "m", "model_version": "1"},
+        "toolchain_fingerprint_hash": "sha256:" + "a" * 64,
+        "budget_binding": {
+            "maximum_llm_calls_per_case": 3,
+            "maximum_input_tokens_per_case": 2048,
+            "maximum_output_tokens_per_case": 4096,
+            "maximum_wall_time_ms_per_case": 60000,
+        },
+        "promotion_thresholds": {"min_target_recovery_ratio": 0.5},
+        "target_manifest": {"path": "target.jsonl", "file_hash": hash_file(target)},
+        "non_target_manifest": {"path": "non_target.jsonl", "file_hash": hash_file(non_target)},
+        "registry_snapshots": {
+            "before": {"path": "registry-before.json", "file_hash": hash_file(registry_before)},
+            "after": {"path": "registry-after.json", "file_hash": hash_file(registry_after)},
+        },
+    }
+    readiness = assess_policy_promotion_readiness(
+        shadow_workspace=workspace,
+        rehearsal_binding=binding,
+        project_root=tmp_path,
+    )
+    assert readiness["ready"] is True
+    assert readiness["blockers"] == []
+
     resumed = run_integrated_shadow_admission(
         project_root=ROOT,
         workspace=workspace,
@@ -101,4 +152,3 @@ def test_integrated_shadow_is_one_red_plus_twelve_same_poison_blue_calls(tmp_pat
     )
     assert resumed == first
     assert len(calls) == 13
-

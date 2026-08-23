@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from r3e.protocol.hashing import hash_file, hash_payload, read_json
+from r3e.red.poison_payload import verify_poison_payload
 
 
 READINESS_SCHEMA = "r3e-policy-promotion-readiness-v1"
@@ -22,6 +23,8 @@ SHADOW_ADMISSION_SCHEMA = "r3e-real-provider-shadow-admission-v1"
 BLUE_SUMMARY_SCHEMA = "r3e-shadow-pilot-run-summary-v1"
 RED_SUMMARY_SCHEMA = "r3e-grounded-red-shadow-summary-v1"
 RED_EVENT_SCHEMA = "r3e-grounded-red-shadow-event-v1"
+INTEGRATED_SHADOW_SCHEMA = "r3e-integrated-grounded-red-acp-shadow-v1"
+INTEGRATED_EVENT_SCHEMA = "r3e-integrated-grounded-red-acp-event-v1"
 
 
 class PromotionReadinessViolation(RuntimeError):
@@ -259,6 +262,129 @@ def _verify_shadow(
     return dict(summary)
 
 
+def _verify_integrated_shadow(
+    workspace: Path,
+    *,
+    blockers: list[str],
+) -> dict[str, Any]:
+    """Verify the formal 1+12 same-poison shadow workspace read-only."""
+    summary = _read(workspace / "summary.json")
+    if summary is None:
+        blockers.append("integrated_shadow_summary_missing")
+        return {}
+    if not _hash_matches(summary, "summary_hash"):
+        blockers.append("integrated_shadow_summary_hash")
+    expected = {
+        "schema_version": INTEGRATED_SHADOW_SCHEMA,
+        "expected_red_provider_calls": 1,
+        "expected_blue_provider_calls": 12,
+        "expected_total_provider_calls": 13,
+        "provider_calls": 13,
+        "call_matched": True,
+        "promotion_executed": False,
+        "memory_qualification_executed": False,
+        "resume_additional_calls": 0,
+    }
+    for key, value in expected.items():
+        if summary.get(key) != value:
+            blockers.append(f"integrated_shadow_{key}")
+    event = _read(workspace / "event.json")
+    if event is None:
+        blockers.append("integrated_shadow_event_missing")
+    else:
+        if not _hash_matches(event, "event_hash"):
+            blockers.append("integrated_shadow_event_hash")
+        for key, value in {
+            "schema_version": INTEGRATED_EVENT_SCHEMA,
+            "provider_calls": 13,
+            "promotion_executed": False,
+            "memory_qualification_executed": False,
+        }.items():
+            if event.get(key) != value:
+                blockers.append(f"integrated_shadow_event_{key}")
+        if summary.get("event_hash") != event.get("event_hash"):
+            blockers.append("integrated_shadow_event_binding")
+        for field in (
+            "challenged_poison_id",
+            "challenged_poison_payload_hash",
+            "challenged_policy_hash",
+            "failure_descriptor_hash",
+        ):
+            if summary.get(field) != event.get(field):
+                blockers.append(f"integrated_shadow_{field}_binding")
+
+    red = _read(workspace / "grounded_red" / "summary.json")
+    red_result = _read(workspace / "grounded_red" / "red_result.json")
+    candidate = _read(workspace / "grounded_red" / "execution" / "candidate.json")
+    if red is None:
+        blockers.append("integrated_shadow_red_summary_missing")
+    elif (
+        red.get("status") != "admitted"
+        or red.get("promotion_executed") is not False
+        or red.get("memory_qualification_executed") is not False
+        or not _hash_matches(red, "summary_hash")
+    ):
+        blockers.append("integrated_shadow_red_admission")
+    if red_result is None:
+        blockers.append("integrated_shadow_red_result_missing")
+    else:
+        if red_result.get("formal_triplet") != {
+            "clean": "proved",
+            "poison": "counterexample",
+            "revert": "proved",
+        } or red_result.get("admitted") is not True:
+            blockers.append("integrated_shadow_red_formal_triplet")
+    if candidate is None:
+        blockers.append("integrated_shadow_candidate_missing")
+    else:
+        try:
+            candidate_hash = verify_poison_payload(candidate)
+        except Exception:
+            blockers.append("integrated_shadow_candidate_payload")
+        else:
+            if candidate_hash != summary.get("challenged_poison_payload_hash"):
+                blockers.append("integrated_shadow_candidate_binding")
+            if candidate.get("poison_id") != summary.get("challenged_poison_id"):
+                blockers.append("integrated_shadow_candidate_identity")
+
+    blue = _read(workspace / "same_poison_blue" / "summary.json")
+    if blue is None:
+        blockers.append("integrated_shadow_blue_summary_missing")
+    else:
+        if not _hash_matches(blue, "summary_hash"):
+            blockers.append("integrated_shadow_blue_summary_hash")
+        for key, value in {
+            "blue_provider_calls": 12,
+            "expected_blue_provider_calls": 12,
+            "completed_cells": 4,
+            "call_matched": True,
+            "promotion_executed": False,
+            "memory_qualification_executed": False,
+        }.items():
+            if blue.get(key) != value:
+                blockers.append(f"integrated_shadow_blue_{key}")
+        if summary.get("blue_summary_hash") != blue.get("summary_hash"):
+            blockers.append("integrated_shadow_blue_binding")
+        for field in (
+            "challenged_poison_id",
+            "challenged_poison_payload_hash",
+            "challenged_policy_hash",
+            "failure_descriptor_hash",
+        ):
+            if summary.get(field) != blue.get(field):
+                blockers.append(f"integrated_shadow_blue_{field}_binding")
+        if blue.get("formal_triplet") != {
+            "clean": "proved",
+            "poison": "counterexample",
+            "revert": "proved",
+        }:
+            blockers.append("integrated_shadow_blue_formal_triplet")
+    blue_events = workspace / "same_poison_blue" / "events.jsonl"
+    if not blue_events.is_file():
+        blockers.append("integrated_shadow_blue_events_missing")
+    return dict(summary)
+
+
 def _verify_binding(
     raw: Any,
     *,
@@ -359,7 +485,13 @@ def assess_policy_promotion_readiness(
     root = Path(project_root).resolve()
     workspace = Path(shadow_workspace).resolve()
     blockers: list[str] = []
-    summary = _verify_shadow(workspace, blockers=blockers)
+    if isinstance(rehearsal_binding, Mapping) and (
+        rehearsal_binding.get("shadow_mode") == "integrated_same_poison"
+        or rehearsal_binding.get("require_same_poison") is True
+    ):
+        summary = _verify_integrated_shadow(workspace, blockers=blockers)
+    else:
+        summary = _verify_shadow(workspace, blockers=blockers)
     _verify_binding(
         rehearsal_binding,
         root=root,
