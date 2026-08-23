@@ -350,6 +350,7 @@ class OpenAICompatibleJSONClient:
         *,
         messages: list[dict[str, str]],
         seed: int,
+        maximum_output_tokens: int | None = None,
     ) -> dict[str, Any]:
         if (
             not messages
@@ -358,11 +359,23 @@ class OpenAICompatibleJSONClient:
             raise OpenAICompatibleProviderViolation(
                 "provider messages schema mismatch"
             )
+        request_output_tokens = self.config.maximum_output_tokens
+        if maximum_output_tokens is not None:
+            if (
+                isinstance(maximum_output_tokens, bool)
+                or not isinstance(maximum_output_tokens, int)
+                or maximum_output_tokens <= 0
+                or maximum_output_tokens > self.config.maximum_output_tokens
+            ):
+                raise OpenAICompatibleProviderViolation(
+                    "requested output budget exceeds client authority"
+                )
+            request_output_tokens = maximum_output_tokens
         request = {
             "model": self.config.model_id,
             "messages": deepcopy(messages),
             "temperature": self.config.temperature,
-            "max_tokens": self.config.maximum_output_tokens,
+            "max_tokens": request_output_tokens,
             "response_format": {"type": "json_object"},
         }
         if self.config.require_seed:

@@ -78,6 +78,10 @@ def test_integrated_shadow_is_one_red_plus_twelve_same_poison_blue_calls(tmp_pat
         client=_client(calls),
     )
     assert len(calls) == 13
+    # Grounded target choice uses the small proposal-only request budget;
+    # Blue RTL repair retains the frozen per-cell client budget.
+    assert calls[0]["max_tokens"] == 512
+    assert all(call["max_tokens"] == 4096 for call in calls[1:])
     assert first["expected_red_provider_calls"] == 1
     assert first["expected_blue_provider_calls"] == 12
     assert first["expected_total_provider_calls"] == 13

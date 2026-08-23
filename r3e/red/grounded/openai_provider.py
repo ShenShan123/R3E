@@ -17,6 +17,10 @@ from .operator_ast import OperatorAstNode
 
 
 CHOICE_SCHEMA = "r3e-grounded-model-target-choice-v1"
+# Target choice is a tiny strict-JSON control response.  Keep the request
+# budget materially below the larger Blue RTL-repair budget while remaining
+# bounded by the frozen assignment budget and client authority.
+TARGET_CHOICE_REQUEST_MAX_OUTPUT_TOKENS = 512
 
 
 class RealGroundedPlannerViolation(RuntimeError):
@@ -141,6 +145,10 @@ class OpenAICompatibleGroundedChoiceProvider:
                 {"role": "user", "content": user},
             ],
             seed=int(seed),
+            maximum_output_tokens=min(
+                TARGET_CHOICE_REQUEST_MAX_OUTPUT_TOKENS,
+                int(assignment["output_token_budget"]),
+            ),
         )
         wall_time_ms = int((time.monotonic() - started) * 1000)
         choice = response["result"]
@@ -214,6 +222,10 @@ class OpenAICompatibleGroundedChoiceProvider:
                 self.toolchain_fingerprint_hash
             ),
             "budget_hash": assignment["budget_hash"],
+            "request_max_output_tokens": min(
+                TARGET_CHOICE_REQUEST_MAX_OUTPUT_TOKENS,
+                int(assignment["output_token_budget"]),
+            ),
             "request_hash": response["request_hash"],
             "raw_response_hash": response["raw_response_hash"],
             "input_tokens": response["input_tokens"],
