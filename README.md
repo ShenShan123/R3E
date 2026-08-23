@@ -726,9 +726,12 @@ the separate manifest-backed Grounded Red call was admitted with a
 clean/poison/revert triplet. Both child lanes reconstructed their authority and
 zero-call resume checkpoints, and all eight runs kept policy promotion and RAAM
 qualification disabled. The real 12+1 wrapper is call-matched shadow evidence;
-same-poison Red-to-Blue chaining remains covered by the injected four-call
-integrated fixture and is not claimed as a real-provider result here. These runs
-are not ACP-7 gain, GRD-8 yield, or multi-round coevolution evidence. Empty
+same-poison Red-to-Blue chaining is now implemented by
+`r3e.pilot.same_poison_shadow`: an admitted Red payload is routed to all four
+ACP arms (12 Blue calls), with poison/policy/descriptor hashes bound in every
+cell and zero-call resume. Its conformance test uses the injected integrated
+fixture; it is not claimed as a real-provider result here. These runs are not
+ACP-7 gain, GRD-8 yield, or multi-round coevolution evidence. Empty
 responses are recorded only with categorical, privacy-safe envelope
 diagnostics; retries require a new authorization, workspace, and explicit
 budget.
