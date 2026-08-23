@@ -821,6 +821,20 @@ three ACP calls), proves the formal poison triplet, and resumes the same round
 without another provider call. It is protocol/shadow evidence only; it does
 not claim real-model repair gain, multi-round coevolution, or promotion.
 
+The formal same-poison admission wrapper is:
+
+```bash
+python -m r3e.pilot.integrated_shadow_admission \
+  --workspace runtime/pilots/integrated-shadow-admission-v1
+```
+
+It performs exactly one Grounded Red provider call, persists the admitted
+hash-bound candidate in the ignored execution workspace, and routes that same
+candidate through the four ACP arms (12 Blue calls). Resume verifies the Red
+candidate, poison payload, FailureDescriptor, and cell summaries before doing
+any provider work. Promotion and RAAM qualification remain disabled; the
+checked-in conformance test uses an injected transport.
+
 ### Policy-only promotion rehearsal
 
 After shadow admission, the deterministic rehearsal freezes the smallest

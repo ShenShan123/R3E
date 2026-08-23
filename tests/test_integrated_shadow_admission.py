@@ -1,0 +1,104 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+import shutil
+
+import pytest
+
+from r3e.pilot.integrated_shadow_admission import (
+    run_integrated_shadow_admission,
+)
+from r3e.providers.openai_compatible import (
+    OpenAICompatibleClientConfig,
+    OpenAICompatibleJSONClient,
+)
+
+
+ROOT = Path(__file__).resolve().parents[1]
+TOOLS_PRESENT = bool(shutil.which("yosys") and shutil.which("iverilog"))
+
+
+def _client(calls: list[dict]) -> OpenAICompatibleJSONClient:
+    golden = (ROOT / "configs/pilot/assets/real_integrated_shadow_golden.v").read_text(
+        encoding="utf-8"
+    )
+
+    def transport(**request):
+        calls.append(request)
+        prompt = json.loads(request["messages"][1]["content"])
+        if "allowed_nodes" in prompt:
+            result = {
+                "target_module": prompt["target_module"],
+                "node_ordinal": prompt["allowed_nodes"][0]["node_ordinal"],
+                "rationale": "integrated same-poison target",
+            }
+        else:
+            result = {
+                "replacement_rtl": golden,
+                "edit": "restore the frozen public golden behavior",
+            }
+        return {
+            "content": json.dumps(result),
+            "input_tokens": 100,
+            "output_tokens": 20,
+            "provider_request_id": f"integrated-shadow-{len(calls)}",
+        }
+
+    config = OpenAICompatibleClientConfig.from_dict({
+        "schema_version": "r3e-openai-compatible-client-config-v1",
+        "provider_id": "deepseek",
+        "provider_version": "injected-integrated-v1",
+        "endpoint_id": "local-test",
+        "model_id": "deepseek-v4-pro",
+        "model_version": "deepseek-v4-pro",
+        "api_key_env": "R3E_TEST_API_KEY",
+        "base_url_env": "R3E_TEST_BASE_URL",
+        "timeout_seconds": 30,
+        "maximum_output_tokens": 4096,
+        "temperature": 0,
+        "require_seed": True,
+    })
+    return OpenAICompatibleJSONClient(config, transport=transport, environ={})
+
+
+@pytest.mark.skipif(not TOOLS_PRESENT, reason="Yosys/Icarus are required")
+def test_integrated_shadow_is_one_red_plus_twelve_same_poison_blue_calls(tmp_path):
+    calls: list[dict] = []
+    workspace = tmp_path / "integrated"
+    first = run_integrated_shadow_admission(
+        project_root=ROOT,
+        workspace=workspace,
+        client=_client(calls),
+    )
+    assert len(calls) == 13
+    assert first["expected_red_provider_calls"] == 1
+    assert first["expected_blue_provider_calls"] == 12
+    assert first["expected_total_provider_calls"] == 13
+    assert first["provider_calls"] == 13
+    assert first["call_matched"] is True
+    assert first["formal_triplet"] == {
+        "clean": "proved",
+        "poison": "counterexample",
+        "revert": "proved",
+    }
+    assert first["promotion_executed"] is False
+    assert first["memory_qualification_executed"] is False
+    assert first["challenged_poison_id"]
+    assert first["challenged_poison_payload_hash"].startswith("sha256:")
+    assert (workspace / "grounded_red" / "execution" / "candidate.json").is_file()
+    event_text = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in workspace.rglob("*.jsonl")
+    )
+    for forbidden in ("clean_rtl", "replacement_rtl", str(ROOT)):
+        assert forbidden not in event_text
+
+    resumed = run_integrated_shadow_admission(
+        project_root=ROOT,
+        workspace=workspace,
+        client=_client(calls),
+    )
+    assert resumed == first
+    assert len(calls) == 13
+

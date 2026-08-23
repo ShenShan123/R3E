@@ -38,6 +38,7 @@ from r3e.red.grounded.proposal_planner import (
     verify_proposal_candidates,
 )
 from r3e.red.grounded.registry import load_grounded_registries
+from r3e.red.poison_payload import bind_poison_payload
 
 
 RED_EVENT_SCHEMA = "r3e-grounded-red-shadow-event-v1"
@@ -393,6 +394,15 @@ def _run_manifest_grounded(
     atomic_write_json(workspace / "population_schedule.json", schedule)
     atomic_write_json(workspace / "model_choice.json", choice)
     atomic_write_json(workspace / "authority.json", verified)
+    # Persist the exact runner-bound poison so the integrated 1+12 admission
+    # can route this Red result into every ACP arm without regenerating Red.
+    # The file stays in the caller-owned ignored workspace and is validated by
+    # verify_poison_payload before any Blue provider boundary is crossed.
+    admitted_candidate = deepcopy(candidate)
+    admitted_candidate["validity"] = validity_result["validity"]
+    admitted_candidate["grounded_authority_bundle"] = verified
+    admitted_candidate = bind_poison_payload(admitted_candidate)
+    atomic_write_json(workspace / "candidate.json", admitted_candidate)
     triplet = verified["formal_proof_triplet"]
     proven_valid = validity_result["validity"]["proven_valid"]
     return {
