@@ -8,6 +8,7 @@ import pytest
 
 import r3e.pilot.integrated_shadow_admission as integrated
 from r3e.pilot.integrated_shadow_admission import (
+    build_integrated_shadow_preflight,
     run_integrated_shadow_admission,
     run_safe_integrated_shadow_admission,
 )
@@ -23,6 +24,24 @@ from r3e.protocol.hashing import hash_payload
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOLS_PRESENT = bool(shutil.which("yosys") and shutil.which("iverilog"))
+
+
+def test_integrated_shadow_preflight_is_secret_free_and_no_network():
+    plan = build_integrated_shadow_preflight(project_root=ROOT)
+    assert plan["schema_version"] == "r3e-integrated-shadow-preflight-v1"
+    assert plan["expected_red_provider_calls"] == 1
+    assert plan["expected_blue_provider_calls"] == 12
+    assert plan["expected_total_provider_calls"] == 13
+    assert plan["grounded_target_choice_request_max_output_tokens"] == 512
+    assert plan["blue_repair_request_max_output_tokens"] == 4096
+    assert plan["promotion_enabled"] is False
+    assert plan["memory_qualification_enabled"] is False
+    assert plan["registry_mutation_allowed"] is False
+    assert plan["resume_additional_calls"] == 0
+    assert plan["network_calls"] == 0
+    assert plan["preflight_hash"] == hash_payload({
+        key: value for key, value in plan.items() if key != "preflight_hash"
+    })
 
 
 def _client(calls: list[dict]) -> OpenAICompatibleJSONClient:

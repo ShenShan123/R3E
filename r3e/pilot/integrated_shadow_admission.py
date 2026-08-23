@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import shutil
 from typing import Any
 
 from r3e.pilot.grd8_acp7_smoke import _client_from_environment
@@ -32,10 +33,64 @@ from r3e.providers.openai_compatible import sanitize_provider_diagnostics
 INTEGRATED_SHADOW_SCHEMA = "r3e-integrated-grounded-red-acp-shadow-v1"
 INTEGRATED_EVENT_SCHEMA = "r3e-integrated-grounded-red-acp-event-v1"
 INTEGRATED_FAILURE_SCHEMA = "r3e-integrated-shadow-terminal-failure-v1"
+INTEGRATED_PREFLIGHT_SCHEMA = "r3e-integrated-shadow-preflight-v1"
 
 
 class IntegratedShadowAdmissionViolation(RuntimeError):
     """Raised when the formal 1+12 admission cannot be reconstructed."""
+
+
+def build_integrated_shadow_preflight(
+    *,
+    project_root: str | Path,
+    matrix_path: str | Path = "configs/pilot/shadow_pilot_matrix_v1.json",
+) -> dict[str, Any]:
+    """Return a secret-free, no-network execution plan for the 1+12 lane."""
+    root = Path(project_root).resolve()
+    matrix = load_shadow_pilot_matrix(matrix_path, project_root=root)
+    expected_red = int(matrix.red_shadow["provider_calls_per_round"])
+    expected_blue = len(matrix.arms) * int(
+        matrix.controls["call_budget_per_cell"]
+    )
+    if (
+        len(matrix.smoke_case_ids) != 1
+        or len(matrix.smoke_seeds) != 1
+        or expected_red != 1
+        or expected_blue != 12
+        or matrix.controls["promotion_enabled"] is not False
+        or matrix.controls["raam_execution_enabled"] is not False
+    ):
+        raise IntegratedShadowAdmissionViolation(
+            "frozen matrix cannot satisfy the integrated 1+12 shadow contract"
+        )
+    payload: dict[str, Any] = {
+        "schema_version": INTEGRATED_PREFLIGHT_SCHEMA,
+        "matrix_id": matrix.matrix_id,
+        "matrix_hash": matrix.matrix_hash,
+        "case_id": matrix.smoke_case_ids[0],
+        "seed": int(matrix.smoke_seeds[0]),
+        "model_binding": dict(matrix.model_binding),
+        "expected_red_provider_calls": expected_red,
+        "expected_blue_provider_calls": expected_blue,
+        "expected_total_provider_calls": expected_red + expected_blue,
+        "grounded_target_choice_request_max_output_tokens": 512,
+        "blue_repair_request_max_output_tokens": 4096,
+        "formal_toolchain_present": {
+            name: bool(shutil.which(name))
+            for name in ("iverilog", "vvp", "yosys")
+        },
+        "promotion_enabled": False,
+        "memory_qualification_enabled": False,
+        "registry_mutation_allowed": False,
+        "resume_additional_calls": 0,
+        "network_calls": 0,
+        "claim_scope": (
+            "No-network integrated shadow preflight only; this is an execution "
+            "plan and not provider, formal, promotion, or empirical evidence."
+        ),
+    }
+    payload["preflight_hash"] = hash_payload(payload)
+    return payload
 
 
 def _started_calls(path: Path) -> int:
@@ -582,7 +637,18 @@ def _main() -> int:
         "--matrix", default="configs/pilot/shadow_pilot_matrix_v1.json"
     )
     parser.add_argument("--no-resume", action="store_true")
+    parser.add_argument(
+        "--preflight-only",
+        action="store_true",
+        help="print the secret-free no-network 1+12 execution plan",
+    )
     args = parser.parse_args()
+    if args.preflight_only:
+        print(json.dumps(build_integrated_shadow_preflight(
+            project_root=args.project_root,
+            matrix_path=args.matrix,
+        ), sort_keys=True))
+        return 0
     result = run_safe_integrated_shadow_admission(
         project_root=args.project_root,
         workspace=args.workspace,
