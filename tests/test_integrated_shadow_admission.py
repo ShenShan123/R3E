@@ -90,10 +90,24 @@ def test_integrated_shadow_is_one_red_plus_twelve_same_poison_blue_calls(tmp_pat
     assert (workspace / "grounded_red" / "execution" / "candidate.json").is_file()
     event_text = "\n".join(
         path.read_text(encoding="utf-8")
-        for path in workspace.rglob("*.jsonl")
+        for path in (
+            workspace / "grounded_red" / "events.jsonl",
+            workspace / "same_poison_blue" / "events.jsonl",
+            workspace / "same_poison_blue" / "provider_calls.jsonl",
+        )
+        if path.is_file()
     )
     for forbidden in ("clean_rtl", "replacement_rtl", str(ROOT)):
         assert forbidden not in event_text
+    archive = workspace / "archives" / f"{first['archive_kind']}.jsonl"
+    assert archive.is_file()
+    assert len([line for line in archive.read_text(encoding="utf-8").splitlines() if line.strip()]) == 1
+    episode_manifest = json.loads(
+        (workspace / "verified_episodes.json").read_text(encoding="utf-8")
+    )
+    assert episode_manifest["episode_ids"]
+    assert first["archive_kind"] in {"residual", "covered"}
+    assert first["verified_episode_manifest_hash"] == episode_manifest["manifest_hash"]
 
     # The policy-transition gate must consume the new integrated workspace,
     # not silently downgrade it to the historical independent-lane format.

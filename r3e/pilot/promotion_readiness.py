@@ -379,6 +379,28 @@ def _verify_integrated_shadow(
             "revert": "proved",
         }:
             blockers.append("integrated_shadow_blue_formal_triplet")
+    archive_kind = summary.get("archive_kind")
+    if archive_kind not in {"residual", "covered"}:
+        blockers.append("integrated_shadow_archive_kind")
+    else:
+        archive_path = workspace / "archives" / f"{archive_kind}.jsonl"
+        if not archive_path.is_file():
+            blockers.append("integrated_shadow_archive_missing")
+        elif summary.get("archive_path_hash") != hash_file(archive_path):
+            blockers.append("integrated_shadow_archive_hash")
+    episode_manifest_path = workspace / "verified_episodes.json"
+    episode_manifest = _read(episode_manifest_path)
+    if episode_manifest is None:
+        blockers.append("integrated_shadow_episode_manifest_missing")
+    else:
+        if not _hash_matches(episode_manifest, "manifest_hash"):
+            blockers.append("integrated_shadow_episode_manifest_hash")
+        if summary.get("verified_episode_manifest_hash") != episode_manifest.get(
+            "manifest_hash"
+        ):
+            blockers.append("integrated_shadow_episode_manifest_binding")
+        if not episode_manifest.get("episode_ids"):
+            blockers.append("integrated_shadow_episode_manifest_empty")
     blue_events = workspace / "same_poison_blue" / "events.jsonl"
     if not blue_events.is_file():
         blockers.append("integrated_shadow_blue_events_missing")
