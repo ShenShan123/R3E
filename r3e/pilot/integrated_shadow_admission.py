@@ -25,14 +25,139 @@ from r3e.arena.renewed_challenge import assert_renewed_challenge_binding
 from r3e.red.archive import update_archive
 from r3e.protocol.hashing import hash_file
 from r3e.protocol.hashing import atomic_write_json, hash_payload, read_json
+from r3e.protocol.ledger import read_ledger
+from r3e.providers.openai_compatible import sanitize_provider_diagnostics
 
 
 INTEGRATED_SHADOW_SCHEMA = "r3e-integrated-grounded-red-acp-shadow-v1"
 INTEGRATED_EVENT_SCHEMA = "r3e-integrated-grounded-red-acp-event-v1"
+INTEGRATED_FAILURE_SCHEMA = "r3e-integrated-shadow-terminal-failure-v1"
 
 
 class IntegratedShadowAdmissionViolation(RuntimeError):
     """Raised when the formal 1+12 admission cannot be reconstructed."""
+
+
+def _started_calls(path: Path) -> int:
+    """Count durable provider-boundary entries without trusting summaries."""
+    if not path.is_file():
+        return 0
+    try:
+        rows = read_ledger(path)
+    except Exception:
+        # A malformed ledger is itself a terminal failure.  Counting only
+        # syntactically readable start rows is conservative for the failure
+        # record and never authorizes a resume.
+        try:
+            rows = [
+                json.loads(line)
+                for line in path.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+        except Exception:
+            return 0
+    return sum(row.get("event_type") == "provider_call_started" for row in rows)
+
+
+def _failure_payload(
+    *,
+    output: Path,
+    matrix: Any,
+    expected_red_calls: int,
+    expected_blue_calls: int,
+    error: Exception,
+) -> dict[str, Any]:
+    """Build a privacy-safe, terminal checkpoint for an interrupted batch."""
+    red_calls = _started_calls(
+        output / "grounded_red" / "execution" / "provider_calls.jsonl"
+    )
+    blue_calls = _started_calls(
+        output / "same_poison_blue" / "provider_calls.jsonl"
+    )
+    if blue_calls:
+        failed_stage = (
+            "same_poison_blue"
+            if blue_calls < expected_blue_calls
+            else "post_blue_authority"
+        )
+    else:
+        failed_stage = "grounded_red"
+    body: dict[str, Any] = {
+        "schema_version": INTEGRATED_FAILURE_SCHEMA,
+        "matrix_id": matrix.matrix_id,
+        "matrix_hash": matrix.matrix_hash,
+        "execution_mode": "integrated_same_poison",
+        "failed_stage": failed_stage,
+        "failure_class": type(error).__name__,
+        "provider_calls_consumed": red_calls + blue_calls,
+        "provider_calls_by_stage": {
+            "grounded_red": red_calls,
+            "same_poison_blue": blue_calls,
+        },
+        "expected_red_provider_calls": expected_red_calls,
+        "expected_blue_provider_calls": expected_blue_calls,
+        "expected_total_provider_calls": expected_red_calls + expected_blue_calls,
+        "promotion_executed": False,
+        "memory_qualification_executed": False,
+        "terminal": True,
+        "claim_scope": (
+            "Terminal integrated shadow failure only; no provider gain, policy "
+            "transition, RAAM qualification, or empirical claim."
+        ),
+    }
+    current: BaseException | None = error
+    seen: set[int] = set()
+    while current is not None and len(seen) < 4:
+        if id(current) in seen:
+            break
+        seen.add(id(current))
+        diagnostics = sanitize_provider_diagnostics(
+            getattr(current, "diagnostics", None)
+        )
+        if diagnostics:
+            body["provider_diagnostics"] = diagnostics
+            break
+        current = current.__cause__ or current.__context__
+    body["failure_hash"] = hash_payload(body)
+    return body
+
+
+def _verify_failure(payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise IntegratedShadowAdmissionViolation(
+            "integrated shadow terminal failure is not an object"
+        )
+    expected = hash_payload({
+        key: value for key, value in payload.items() if key != "failure_hash"
+    })
+    if payload.get("schema_version") != INTEGRATED_FAILURE_SCHEMA:
+        raise IntegratedShadowAdmissionViolation(
+            "integrated shadow terminal failure schema mismatch"
+        )
+    if payload.get("failure_hash") != expected:
+        raise IntegratedShadowAdmissionViolation(
+            "integrated shadow terminal failure hash mismatch"
+        )
+    if payload.get("terminal") is not True:
+        raise IntegratedShadowAdmissionViolation(
+            "integrated shadow terminal failure is not terminal"
+        )
+    if (
+        payload.get("promotion_executed") is not False
+        or payload.get("memory_qualification_executed") is not False
+    ):
+        raise IntegratedShadowAdmissionViolation(
+            "integrated shadow terminal failure has invalid evolution controls"
+        )
+    if "provider_diagnostics" in payload:
+        diagnostics = sanitize_provider_diagnostics(
+            payload.get("provider_diagnostics")
+        )
+        if diagnostics != payload.get("provider_diagnostics"):
+            raise IntegratedShadowAdmissionViolation(
+                "integrated shadow provider diagnostics are invalid"
+            )
+    return payload
 
 
 def _aggregate_blue_results(
@@ -392,6 +517,59 @@ def run_integrated_shadow_admission(
     return summary
 
 
+def run_safe_integrated_shadow_admission(
+    *,
+    project_root: str | Path,
+    workspace: str | Path,
+    client: Any,
+    matrix_path: str | Path = "configs/pilot/shadow_pilot_matrix_v1.json",
+    resume: bool = True,
+) -> dict[str, Any]:
+    """Run the integrated lane with a terminal, no-retry failure boundary.
+
+    A provider-boundary failure is durable even when no child summary exists.
+    Once ``terminal_failure.json`` is written, a subsequent invocation cannot
+    issue another provider request from that workspace.  A fresh authorized
+    workspace is required for every new batch.
+    """
+    root = Path(project_root).resolve()
+    output = Path(workspace).resolve()
+    output.mkdir(parents=True, exist_ok=True)
+    failure_path = output / "terminal_failure.json"
+    if failure_path.is_file():
+        failure = _verify_failure(read_json(failure_path))
+        raise IntegratedShadowAdmissionViolation(
+            "integrated shadow terminal failure already recorded; start a new "
+            f"workspace for another authorized batch ({failure['failed_stage']})"
+        )
+    matrix = load_shadow_pilot_matrix(matrix_path, project_root=root)
+    expected_red = int(matrix.red_shadow["provider_calls_per_round"])
+    expected_blue = len(matrix.arms) * int(
+        matrix.controls["call_budget_per_cell"]
+    )
+    try:
+        return run_integrated_shadow_admission(
+            project_root=root,
+            workspace=output,
+            client=client,
+            matrix_path=matrix_path,
+            resume=resume,
+        )
+    except Exception as exc:
+        failure = _failure_payload(
+            output=output,
+            matrix=matrix,
+            expected_red_calls=expected_red,
+            expected_blue_calls=expected_blue,
+            error=exc,
+        )
+        atomic_write_json(failure_path, failure)
+        raise IntegratedShadowAdmissionViolation(
+            "integrated shadow terminally checkpointed; start a new workspace "
+            f"for another authorized batch ({failure['failed_stage']})"
+        ) from exc
+
+
 def _main() -> int:
     parser = argparse.ArgumentParser(
         description="Run the formal 1+12 same-poison shadow admission"
@@ -405,7 +583,7 @@ def _main() -> int:
     )
     parser.add_argument("--no-resume", action="store_true")
     args = parser.parse_args()
-    result = run_integrated_shadow_admission(
+    result = run_safe_integrated_shadow_admission(
         project_root=args.project_root,
         workspace=args.workspace,
         client=_client_from_environment(),

@@ -6,14 +6,19 @@ import shutil
 
 import pytest
 
+import r3e.pilot.integrated_shadow_admission as integrated
 from r3e.pilot.integrated_shadow_admission import (
     run_integrated_shadow_admission,
+    run_safe_integrated_shadow_admission,
 )
 from r3e.pilot.promotion_readiness import assess_policy_promotion_readiness
 from r3e.providers.openai_compatible import (
     OpenAICompatibleClientConfig,
     OpenAICompatibleJSONClient,
+    OpenAICompatibleEmptyContentViolation,
 )
+from r3e.protocol.ledger import append_ledger
+from r3e.protocol.hashing import hash_payload
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -173,3 +178,79 @@ def test_integrated_shadow_is_one_red_plus_twelve_same_poison_blue_calls(tmp_pat
     )
     assert resumed == first
     assert len(calls) == 13
+
+
+def test_integrated_shadow_failure_is_terminal_and_cannot_resume(
+    tmp_path, monkeypatch
+):
+    calls: list[dict] = []
+
+    def failing_admission(**kwargs):
+        calls.append(kwargs)
+        output = Path(kwargs["workspace"])
+        append_ledger(
+            output / "grounded_red" / "execution" / "provider_calls.jsonl",
+            {
+                "schema_version": "r3e-grounded-red-provider-call-v1",
+                "matrix_id": "test-matrix",
+                "matrix_hash": "sha256:" + "0" * 64,
+                "case_id": "public-red-case",
+                "seed": 17,
+                "arm_id": "grounded_red",
+                "event_type": "provider_call_started",
+                "assignment_id": "GRD6-0001",
+                "intent_id": "intent-0",
+            },
+        )
+        raise OpenAICompatibleEmptyContentViolation(
+            "provider response must not persist",
+            diagnostics={
+                "schema_version": (
+                    "r3e-openai-compatible-response-diagnostic-v1"
+                ),
+                "content_state": "blank_content",
+                "finish_reason": "length",
+                "refusal_present": False,
+                "provider_request_id_present": True,
+                "input_tokens": 41,
+                "output_tokens": 0,
+                "prompt": "must not persist",
+            },
+        )
+
+    monkeypatch.setattr(integrated, "run_integrated_shadow_admission", failing_admission)
+    workspace = tmp_path / "terminal-integrated"
+    with pytest.raises(
+        integrated.IntegratedShadowAdmissionViolation,
+        match="terminally checkpointed",
+    ):
+        run_safe_integrated_shadow_admission(
+            project_root=ROOT,
+            workspace=workspace,
+            client=object(),
+        )
+    failure_path = workspace / "terminal_failure.json"
+    payload = json.loads(failure_path.read_text(encoding="utf-8"))
+    assert payload["schema_version"] == integrated.INTEGRATED_FAILURE_SCHEMA
+    assert payload["failed_stage"] == "grounded_red"
+    assert payload["provider_calls_consumed"] == 1
+    assert payload["terminal"] is True
+    assert payload["provider_diagnostics"]["content_state"] == "blank_content"
+    assert payload["failure_hash"] == hash_payload({
+        key: value for key, value in payload.items() if key != "failure_hash"
+    })
+    text = failure_path.read_text(encoding="utf-8")
+    assert "provider response must not persist" not in text
+    assert "must not persist" not in text
+    assert str(ROOT) not in text
+
+    with pytest.raises(
+        integrated.IntegratedShadowAdmissionViolation,
+        match="already recorded",
+    ):
+        run_safe_integrated_shadow_admission(
+            project_root=ROOT,
+            workspace=workspace,
+            client=object(),
+        )
+    assert len(calls) == 1

@@ -268,6 +268,11 @@ def _verify_integrated_shadow(
     blockers: list[str],
 ) -> dict[str, Any]:
     """Verify the formal 1+12 same-poison shadow workspace read-only."""
+    if (workspace / "terminal_failure.json").is_file():
+        # A terminal integrated failure is authoritative.  Stale success
+        # artifacts must not make a failed workspace eligible for promotion or
+        # permit another provider request on resume.
+        blockers.append("integrated_shadow_terminal_failure")
     summary = _read(workspace / "summary.json")
     if summary is None:
         blockers.append("integrated_shadow_summary_missing")

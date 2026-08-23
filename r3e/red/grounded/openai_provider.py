@@ -8,7 +8,10 @@ from typing import Any, Iterable, Mapping
 from r3e.arena.conformance import make_toolchain_fingerprint
 from r3e.policy.schema import PolicyState
 from r3e.protocol.hashing import canonical_json, hash_payload
-from r3e.providers.openai_compatible import OpenAICompatibleJSONClient
+from r3e.providers.openai_compatible import (
+    OpenAICompatibleJSONClient,
+    sanitize_provider_diagnostics,
+)
 
 from .operator_ast import OperatorAstNode
 
@@ -18,6 +21,18 @@ CHOICE_SCHEMA = "r3e-grounded-model-target-choice-v1"
 
 class RealGroundedPlannerViolation(RuntimeError):
     """Raised when a model attempts to widen frozen Grounded authority."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        diagnostics: Mapping[str, Any] | None = None,
+    ):
+        super().__init__(message)
+        # Preserve only the fixed response envelope.  This allows a terminal
+        # shadow checkpoint to explain a post-provider budget rejection without
+        # copying response text, prompts, URLs, or credentials.
+        self.diagnostics = sanitize_provider_diagnostics(diagnostics)
 
 
 class OpenAICompatibleGroundedChoiceProvider:
@@ -180,7 +195,8 @@ class OpenAICompatibleGroundedChoiceProvider:
         if budget_violations:
             raise RealGroundedPlannerViolation(
                 "Grounded target choice exceeded scheduled budget: "
-                + ",".join(budget_violations)
+                + ",".join(budget_violations),
+                diagnostics=response.get("response_diagnostics"),
             )
         body = {
             "schema_version": CHOICE_SCHEMA,
