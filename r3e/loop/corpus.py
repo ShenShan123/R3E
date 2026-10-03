@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Mapping, Sequence
 
 from r3e.protocol.hashing import hash_payload
 from r3e.knowledge.verilog_utils import is_identifier, safe_tokenize
@@ -34,17 +34,6 @@ class Carrier:
     deps: tuple[Path, ...] = ()
     sim_timeout: float = 7.0
     source: Mapping[str, Any] = field(default_factory=dict)
-
-    @property
-    def carrier_hash(self) -> str:
-        return hash_payload({
-            "clean_rtl": hash_payload(self.clean_rtl),
-            "visible_tb": [str(p) for p in self.visible_tb],
-            "hidden_tb": [str(p) for p in self.hidden_tb],
-            "deps": [str(p) for p in self.deps],
-            "top": self.top_module,
-        })
-
 
 @dataclass(frozen=True)
 class Challenge:
@@ -87,7 +76,10 @@ def load_public_manifest(
         if not golden_path.is_file():
             continue
         tb = tuple(project_root / p for p in row["tb_sources"])
-        key = str(golden_path) + "|" + "|".join(map(str, tb))
+        # Identity from manifest-relative paths plus content, never from the
+        # absolute checkout location, so IDs match across runs and machines.
+        key = "|".join([str(golden), *map(str, row["tb_sources"]),
+                        hash_payload(golden_path.read_text(encoding="utf-8"))])
         if key not in carriers:
             carriers[key] = Carrier(
                 carrier_id="CR_" + hash_payload(key).split(":", 1)[1][:12],
@@ -155,6 +147,3 @@ def split_by_cluster(
     return out
 
 
-def challenges_in(challenges: Iterable[Challenge], carriers: Iterable[Carrier]) -> list[Challenge]:
-    ids = {c.carrier_id for c in carriers}
-    return [ch for ch in challenges if ch.carrier.carrier_id in ids]

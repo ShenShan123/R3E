@@ -44,3 +44,7 @@ they are not identities of this artifact's authors.
 machine-local source manifests to this portable layout. It is a packaging
 utility, not an experiment runner, and requires all source locations to be
 passed explicitly.
+
+## Generated carriers
+
+`generated/corpus_v1/` holds the 151 clean designs (VerilogEval v2, RTLLM v2; MIT) with generated testbenches used by the red–blue loop. See `generated/README.md`. It is not a bug benchmark and is not part of the frozen sets above.

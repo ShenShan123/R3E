@@ -15,7 +15,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field
 
-from r3e.red.grounded.verilog_ast import VerilogToken
+from r3e.knowledge.verilog_ast import VerilogToken
 
 from .verilog_utils import RESET_NAME_RE, is_identifier, safe_tokenize
 
@@ -142,6 +142,34 @@ class RtlStructure:
             "has_control_dependency": has_control,
             "members": seen,
         }
+
+
+def _ternary_condition_ids(tokens: list[VerilogToken], start: int, end: int) -> set[str]:
+    """Identifiers in the condition of every ``?`` between ``start`` and ``end``.
+
+    A condition runs back from its ``?`` to the nearest ``=``, ``(``, ``,``,
+    ``:`` or ``?`` at the same bracket depth.
+    """
+    out: set[str] = set()
+    depth = 0
+    opened: list[int] = []  # start index of the current condition at each depth
+    begin = {0: start}
+    for k in range(start, end + 1):
+        value = tokens[k].value
+        if value in "([{":
+            depth += 1
+            opened.append(k)
+            begin[depth] = k + 1
+        elif value in ")]}":
+            depth = max(0, depth - 1)
+            if opened:
+                opened.pop()
+        elif value == "?":
+            out |= _identifiers(tokens[begin.get(depth, start):k])
+            begin[depth] = k + 1
+        elif value in {"=", ",", ":"}:
+            begin[depth] = k + 1
+    return out
 
 
 def _identifiers(tokens: list[VerilogToken]) -> set[str]:
@@ -355,7 +383,10 @@ def analyze_rtl(source: str) -> RtlStructure:
                 start=tokens[index].start,
                 end=tokens[min(end, len(tokens) - 1)].end,
             )
-            # treat "assign lhs = rhs ? a : b" conditions as data deps
+            # The condition of "assign lhs = c ? a : b" selects the path, like an
+            # if/case guard, so it is a control dependency (a swapped ternary and
+            # a negated if then share ``cone_has_control_dependency``).
+            block.control_ids |= _ternary_condition_ids(tokens, index + 1, min(end, len(tokens) - 1))
             _parse_assignments(tokens, block, index + 1, min(end, len(tokens) - 1), structure)
             structure.blocks.append(block)
             index = end + 1

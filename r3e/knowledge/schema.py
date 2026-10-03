@@ -28,7 +28,7 @@ from typing import Any, Mapping
 from r3e.protocol.hashing import hash_payload
 
 
-KNOWLEDGE_SCHEMA_VERSION = "r3e-repair-knowledge-v1"
+KNOWLEDGE_SCHEMA_VERSION = "r3e-repair-knowledge-v2-cases"
 EPISODE_SCHEMA_VERSION = "r3e-repair-episode-v2"
 FEEDBACK_SCHEMA_VERSION = "r3e-visible-feedback-v1"
 PROFILE_SCHEMA_VERSION = "r3e-observable-profile-v1"
@@ -64,18 +64,6 @@ BUG_TYPES = (
     "missing_or_extra_logic",
     "expression_rewrite",
 )
-SYMPTOMS = (
-    "constant_offset",
-    "step_rate_mismatch",
-    "observed_leads_one_cycle",
-    "observed_lags_one_cycle",
-    "stuck_value",
-    "single_cycle_glitch",
-    "x_or_unknown",
-    "variable_offset",
-    "compile_failure",
-    "no_divergence",
-)
 STATUS_FIELDS = (
     "oracle_stage",
     "symptom",
@@ -108,6 +96,7 @@ KNOWLEDGE_STATUSES = (
     "candidate", "qualified", "active", "rejected", "suspended", "retired",
 )
 VERDICT_TIERS = (
+    "no_answer",       # the model exhausted its own output budget without an answer
     "compile_fail",
     "visible_fail",
     "visible_pass",
@@ -314,14 +303,10 @@ class RepairEpisode:
         return deepcopy(dict(self.payload))
 
 
-CARD_FIELDS = (
-    "mechanism_hypothesis",
-    "causal_chain",
-    "diagnostic_steps",
-    "repair_principles",
-    "preservation_constraints",
-    "scope_and_limits",
-)
+CARD_FIELDS = ("cases",)
+# Each case is one verified repair's causal chain (see cases.py); no authored
+# rules, hypotheses or constraints.
+CASE_FIELDS = ("observed_failure", "fault", "repair", "verification")
 
 
 @dataclass(frozen=True)
@@ -351,18 +336,17 @@ class KnowledgeItem:
             status=dict(applicability.get("status") or {}),
             causal=dict(applicability.get("causal") or {}),
         )
-        missing = [key for key in CARD_FIELDS if key not in card]
-        if missing:
-            raise KnowledgeValidationError(f"knowledge card missing: {missing}")
-        for key in CARD_FIELDS:
-            value = card[key]
-            if key == "mechanism_hypothesis":
-                if not isinstance(value, str) or not value.strip():
-                    raise KnowledgeValidationError("mechanism_hypothesis is empty")
-            elif not isinstance(value, list) or not all(
-                isinstance(item, str) and item.strip() for item in value
-            ):
-                raise KnowledgeValidationError(f"card field {key} must be a list of text")
+        if set(card) != set(CARD_FIELDS):
+            raise KnowledgeValidationError(f"knowledge card must hold exactly {CARD_FIELDS}")
+        cases = card["cases"]
+        if not isinstance(cases, list) or not cases:
+            raise KnowledgeValidationError("knowledge card needs at least one case")
+        for case in cases:
+            missing = [key for key in CASE_FIELDS if not isinstance(case, Mapping) or key not in case]
+            if missing:
+                raise KnowledgeValidationError(f"case missing: {missing}")
+            if not (case["fault"].get("faulty_lines") or case["repair"].get("fixed_lines")):
+                raise KnowledgeValidationError("case needs the verified change")
         if not evidence.get("source_episode_hashes"):
             raise KnowledgeValidationError("knowledge needs source episodes")
         payload = {
@@ -457,6 +441,3 @@ class KnowledgeBundle:
     def bundle_hash(self) -> str:
         return hash_payload(self.to_dict())
 
-    @property
-    def prompt_payload_hash(self) -> str:
-        return hash_payload(self.prompt_payload())

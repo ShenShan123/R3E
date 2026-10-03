@@ -214,3 +214,60 @@ def compile_failure(message: str) -> VisibleFeedback:
         compile_ok=False,
         compile_message=str(message)[:2000],
     )
+
+
+def _show(bits: str) -> str:
+    """Binary up to 8 bits, hex above (when fully known)."""
+    if len(bits) <= 8 or any(b not in "01" for b in bits):
+        return bits
+    return "0x" + format(int(bits, 2), f"0{-(-len(bits) // 4)}x")
+
+
+def parse_stimulus(text: str) -> tuple[list[str], list[str], list[list[str]]]:
+    """(notes, input names, rows) from a visible-test stimulus log."""
+    notes = [line[1:].strip() for line in (text or "").splitlines() if line.startswith("#")]
+    header, rows = parse_trace("\n".join(line for line in (text or "").splitlines() if not line.startswith("#")))
+    return notes, header, rows
+
+
+def evidence_window(expected: str, observed: str, stimulus: str | None = None, *,
+                    before: int = 2, span: int = 10) -> dict:
+    """The visible test around the first wrong cycle, as Blue may see it.
+
+    For each output: how many cycles were wrong and the first few wrong cycle
+    numbers. Then a contiguous run of cycles, from ``before`` cycles ahead of
+    the first mismatch to ``span`` cycles after it, each with the inputs
+    applied in that cycle (when the testbench logs them) and expected vs.
+    observed values of every output that is wrong anywhere. A contiguous run
+    lets sequential behaviour (state, counters) be followed cycle by cycle.
+    """
+    header, exp_rows = parse_trace(expected)
+    obs_header, obs_rows = parse_trace(observed)
+    if not header or obs_header != header:
+        return {}
+    layout = bus_layout(header)
+    cols = dict(layout)
+    n = min(len(exp_rows), len(obs_rows))
+    notes, in_names, in_rows = parse_stimulus(stimulus) if stimulus else ([], [], [])
+    wrong: dict[str, list[int]] = {}
+    for i in range(n):
+        for name, c in layout:
+            if _diverges(exp_rows[i], obs_rows[i], c):
+                wrong.setdefault(name, []).append(i)
+    if not wrong:
+        return {}
+    first = min(cycles[0] for cycles in wrong.values())
+    rows = []
+    for i in range(max(0, first - before), min(n, first + span)):
+        row: dict = {"cycle": i}
+        if i < len(in_rows):
+            row["inputs"] = {name: _show(v) for name, v in zip(in_names, in_rows[i])}
+        row["outputs"] = {}
+        for name in wrong:
+            e = _show(_bus_value(exp_rows[i], cols[name])[0])
+            o = _show(_bus_value(obs_rows[i], cols[name])[0])
+            row["outputs"][name] = {"expected": e, "observed": o, "ok": i not in wrong[name]}
+        rows.append(row)
+    return {"cycles_compared": n,
+            "wrong_cycles": {name: {"count": len(c), "first_cycles": c[:8]} for name, c in wrong.items()},
+            "stimulus_notes": notes, "inputs_logged": bool(in_names), "rows": rows}

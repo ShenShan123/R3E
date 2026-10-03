@@ -69,8 +69,18 @@ for relative in tracked:
     ):
         violations.append(f"tracked local experiment data: {relative}")
 
+# git-ignored paths (local runs, raw upstream downloads) are never released
+ignored = tuple(
+    entry.rstrip("/") for entry in subprocess.run(
+        ["git", "-C", str(ROOT), "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory"],
+        check=True, stdout=subprocess.PIPE,
+    ).stdout.decode("utf-8").split("\0") if entry
+)
+
 for path in ROOT.rglob("*"):
     rel = path.relative_to(ROOT)
+    if ".git" in rel.parts or any(rel.as_posix() == i or rel.as_posix().startswith(i + "/") for i in ignored):
+        continue
     generated_result_dir = any(
         part.startswith(".cross_benchmark_r3e_") for part in rel.parts
     )
@@ -80,14 +90,10 @@ for path in ROOT.rglob("*"):
                       path.stem, re.IGNORECASE)
         is not None
     )
-    frozen_protocol_config = rel.parts[:2] in {
-        ("configs", "evolution"),
-        ("configs", "blue"),
-    }
     if (
         any(part in FORBIDDEN_NAMES for part in rel.parts)
         or generated_result_dir
-        or (generated_result_file and not frozen_protocol_config)
+        or generated_result_file
         or path.suffix in FORBIDDEN_SUFFIXES
         or path.name.startswith(("run_", "launch_", "resume_", "rerun_"))
     ):

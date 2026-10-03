@@ -23,32 +23,49 @@ from .schema import KnowledgeBundle, KnowledgeItem, ObservableProfile
 
 
 USAGE_NOTE = (
-    "These items summarize previously verified repairs on other designs. "
-    "Each states a hypothesis and the conditions it was observed under. Use an "
-    "item only if the current failure evidence is consistent with it; otherwise "
-    "ignore it. The current test feedback always takes precedence."
+    "Reference cases, not instructions. Each is a verified repair of a different design whose "
+    "failure looked similar to this one: what was observed, what was faulty, how it was fixed "
+    "(with the repairer's own explanation), and what did not work. Diagnose the current failure "
+    "from its own evidence first. Use a case only as an idea of where to look or what kind of "
+    "change to try, and only if its causal chain fits what you see here; "
+    "fit_with_current_failure lists where it agrees and where it differs. Ignore cases that do "
+    "not fit. The current test feedback always decides."
 )
-MAX_ITEM_CHARS = 3000
+MAX_ITEM_CHARS = 6000
 
 
-def render_item(item: KnowledgeItem) -> dict[str, Any]:
-    """The prompt-facing view of one item: card and example, no scores."""
-    body = item.to_dict()
-    app = body["applicability"]
-    rendered = {
-        "knowledge_id": f"{item.item_id}@v{item.version}",
-        "observed_under": {
-            "likely_bug_type": app["bug_type"],
-            **{f"status.{k}": v for k, v in sorted(app["status"].items())},
-            **{f"causal.{k}": v for k, v in sorted(app["causal"].items())},
-        },
-        **body["card"],
+def fit_notes(result, profile: ObservableProfile) -> dict[str, Any]:
+    """Where a retrieved item agrees and differs with the current failure (from the matcher)."""
+    if result is None:
+        return {}
+    wanted = result.item.applicability_profile
+
+    def value(p: ObservableProfile, label: str):
+        group, key = label.split(".", 1)
+        return (p.status if group == "status" else p.causal).get(key)
+
+    return {
+        "agrees_on": sorted(result.matched),
+        "partly_agrees_on": sorted(result.partial),
+        "differs_on": {label: {"case": value(wanted, label), "current": value(profile, label)}
+                       for label in sorted(result.mismatched)},
     }
-    if body.get("example"):
-        rendered["abstracted_example"] = body["example"]
-    text = repr(rendered)
-    if len(text) > MAX_ITEM_CHARS and "abstracted_example" in rendered:
-        rendered.pop("abstracted_example")
+
+
+def render_item(item: KnowledgeItem, fit: Mapping[str, Any] | None = None,
+                track_record: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """The prompt-facing view of one item: its past cases, how it fits, and its track record."""
+    body = item.to_dict()
+    rendered = {
+        "reference_id": f"{item.item_id}@v{item.version}",
+        "support": body["evidence"].get("support"),
+        "past_cases": list(body["card"]["cases"]),
+        "fit_with_current_failure": dict(fit or {}),
+    }
+    if track_record is not None:
+        rendered["track_record"] = dict(track_record)
+    while len(repr(rendered)) > MAX_ITEM_CHARS and len(rendered["past_cases"]) > 1:
+        rendered["past_cases"] = rendered["past_cases"][:-1]
     return rendered
 
 
@@ -62,6 +79,7 @@ def build_bundle(
     case_id: str,
     seed: int = 0,
     static_items: Sequence[KnowledgeItem] = (),
+    track_records: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> KnowledgeBundle:
     detail: dict[str, Any] = {"matcher": matcher.config(), "pool_size": len(pool)}
     matches = []
@@ -88,9 +106,12 @@ def build_bundle(
     else:
         raise ValueError(f"unknown knowledge mode: {mode}")
     detail["shown_item_ids"] = [f"{i.item_id}@v{i.version}" for i in shown]
+    fits = [fit_notes(matcher.score(item, profile, type_posterior), profile) for item in shown]
     return KnowledgeBundle(
         mode=mode,
-        items=tuple(render_item(item) for item in shown),
+        items=tuple(render_item(item, fit, None if track_records is None else
+                                track_records.get(f"{item.item_id}@v{item.version}", {"offered_before": 0}))
+                    for item, fit in zip(shown, fits)),
         matches=tuple(matches),
         query_profile_hash=profile.profile_hash,
         type_posterior=dict(type_posterior),

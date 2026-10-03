@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 
-from r3e.red.grounded.verilog_ast import (
+from r3e.knowledge.verilog_ast import (
     VerilogAstViolation,
     VerilogToken,
     tokenize_verilog,
@@ -38,14 +38,43 @@ def strip_directives(source: str) -> str:
     return _DIRECTIVE_RE.sub(lambda match: " " * len(match.group()), source)
 
 
+_TOLERANT_RE = re.compile(
+    r"(?P<whitespace>\s+)"
+    r"|(?P<line_comment>//[^\r\n]*)"
+    r"|(?P<block_comment>/\*.*?\*/)"
+    r'|(?P<string>"(?:\\.|[^"\\])*")'
+    r"|(?P<number>(?:\d+)?'[sS]?[bBoOdDhH][0-9a-fA-F_xXzZ?]+|'[01xXzZ]|\d+(?:\.\d+)?)"
+    r"|(?P<identifier>[A-Za-z_$][A-Za-z0-9_$]*)"
+    r"|(?P<operator>===|!==|<<<|>>>|<=|>=|==|!=|&&|\|\||<<|>>|::|"
+    r"\+\+|--|\*\*|[+\-*/%&|^~!<>=?:'])"
+    r"|(?P<punctuation>[()\[\]{};,\.@#])",
+    re.DOTALL,
+)
+
+
+def _tolerant_tokenize(source: str) -> list[VerilogToken]:
+    """Superset of the frozen grammar: SystemVerilog fill literals and casts."""
+    tokens = []
+    offset = 0
+    for match in _TOLERANT_RE.finditer(source):
+        if match.start() != offset:
+            return []
+        offset = match.end()
+        kind = str(match.lastgroup)
+        if kind not in {"whitespace", "line_comment", "block_comment"}:
+            tokens.append(VerilogToken(kind, match.group(), match.start(), match.end()))
+    return tokens if offset == len(source) else []
+
+
 def safe_tokenize(source: str) -> list[VerilogToken]:
-    """Tokenize RTL; return [] when the constrained tokenizer cannot."""
+    """Tokenize RTL; return [] when neither tokenizer can."""
     if not isinstance(source, str) or not source.strip():
         return []
+    stripped = strip_directives(source)
     try:
-        return tokenize_verilog(strip_directives(source))
+        return tokenize_verilog(stripped)
     except VerilogAstViolation:
-        return []
+        return _tolerant_tokenize(stripped)
 
 
 def is_identifier(token: VerilogToken) -> bool:

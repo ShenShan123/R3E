@@ -1,19 +1,14 @@
-"""Deliver a knowledge bundle to the real Blue provider without changing it.
+"""Deliver retrieved memory to Blue's model requests.
 
-``KnowledgeInjectingClient`` wraps the OpenAI-compatible JSON client that
-``OpenAICompatibleCandidateProvider`` already uses. While a bundle is active,
-the wrapper adds that bundle's prompt payload to every Blue candidate request,
-under ``retrieved_repair_knowledge``.
+``KnowledgeInjectingClient`` wraps the JSON client Blue's provider uses
+(``r3e/loop/blue_provider.py``). While a bundle is active, it adds the
+bundle's prompt payload to every Blue request under ``reference_cases``; other
+requests (Red's) pass through untouched.
 
-Integrity follows from the existing bindings:
-- the inner client hashes the exact messages it sends (``request_hash``);
-- the Blue provider binds that hash into each candidate receipt's
-  ``command_hash``.
-
-``verify_delivery_receipt`` recomputes those command hashes, so an audit can
-prove which knowledge Blue saw for each candidate. Frozen Blue files (the
-executor, provider and audit) are untouched; the global candidate budget and
-the provider call count are unchanged.
+Integrity: the inner client hashes the exact messages it sends
+(``request_hash``), and the provider binds that hash into each attempt's
+``command_hash``. ``deliveries`` records, per call, which bundle was active
+and whether it was injected.
 """
 from __future__ import annotations
 
@@ -21,13 +16,12 @@ from contextlib import contextmanager
 import json
 from typing import Any, Iterator, Mapping
 
-from r3e.protocol.hashing import canonical_json, hash_payload
+from r3e.protocol.hashing import canonical_json
 
 from .schema import KnowledgeBundle, KnowledgeValidationError
 
 
-REQUEST_KEY = "retrieved_repair_knowledge"
-DELIVERY_SCHEMA_VERSION = "r3e-knowledge-delivery-receipt-v1"
+REQUEST_KEY = "reference_cases"
 _BLUE_REQUEST_MARKERS = ("current_buggy_rtl", "lens_instruction")
 
 
@@ -92,62 +86,3 @@ class KnowledgeInjectingClient:
         return response
 
 
-def execute_with_knowledge(
-    executor: Any,
-    client: KnowledgeInjectingClient,
-    bundle: KnowledgeBundle,
-    **execute_kwargs: Any,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Run one Blue case with ``bundle`` active; return (evaluation, receipt)."""
-    start = len(client.deliveries)
-    with client.active(bundle):
-        evaluation = executor.execute(**execute_kwargs)
-    receipt = build_delivery_receipt(bundle, evaluation, client.deliveries[start:])
-    return evaluation, receipt
-
-
-def build_delivery_receipt(
-    bundle: KnowledgeBundle,
-    evaluation: Mapping[str, Any],
-    deliveries: list[Mapping[str, Any]],
-) -> dict[str, Any]:
-    receipt = {
-        "schema_version": DELIVERY_SCHEMA_VERSION,
-        "case_id": str(evaluation.get("case_id", "")),
-        "bundle": bundle.to_dict(),
-        "bundle_hash": bundle.bundle_hash,
-        "prompt_payload_hash": bundle.prompt_payload_hash,
-        "portfolio_execution_hash": evaluation["portfolio_execution_hash"],
-        "deliveries": [dict(row) for row in deliveries],
-    }
-    receipt["receipt_hash"] = hash_payload(receipt)
-    return receipt
-
-
-def verify_delivery_receipt(
-    receipt: Mapping[str, Any], evaluation: Mapping[str, Any]
-) -> dict[str, Any]:
-    """Check that the receipt matches the evaluation's provider receipts."""
-    body = {k: v for k, v in receipt.items() if k != "receipt_hash"}
-    if receipt.get("receipt_hash") != hash_payload(body):
-        raise KnowledgeValidationError("delivery receipt hash mismatch")
-    if receipt.get("portfolio_execution_hash") != evaluation.get("portfolio_execution_hash"):
-        raise KnowledgeValidationError("delivery receipt is bound to another evaluation")
-    provider_receipts = evaluation.get("candidate_provider_receipts") or []
-    deliveries = receipt.get("deliveries") or []
-    if len(deliveries) != len(provider_receipts):
-        raise KnowledgeValidationError("delivery count differs from provider calls")
-    for delivery, provider in zip(deliveries, provider_receipts):
-        if delivery["bundle_hash"] != receipt["bundle_hash"]:
-            raise KnowledgeValidationError("delivery bound to another bundle")
-        expected_command = hash_payload({
-            "provider_request_hash": delivery["request_hash"],
-            "prompt_hash": provider["prompt_hash"],
-            "current_case_artifact_hash": provider["current_case_artifact_hash"],
-        })
-        if provider.get("command_hash") != expected_command:
-            raise KnowledgeValidationError("provider command hash does not cover delivered request")
-    empty = not receipt["bundle"]["items"]
-    if any(d["injected"] == empty for d in deliveries):
-        raise KnowledgeValidationError("injection flag contradicts bundle content")
-    return dict(receipt)

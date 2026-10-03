@@ -77,27 +77,59 @@ def nearest_clean_resolver(clean_designs: list[str]) -> Callable[[str], str | No
 
 
 def knowledge_types(user: Mapping[str, Any]) -> set[str]:
-    items = (user.get("retrieved_repair_knowledge") or {}).get("items") or []
-    return {str(item.get("observed_under", {}).get("likely_bug_type")) for item in items}
+    """Reference ids of the memory cases a Blue request carried (empty: none)."""
+    items = (user.get("reference_cases") or {}).get("items") or []
+    return {str(item.get("reference_id")) for item in items}
 
 
 class FakeRedTransport:
-    """Pick a site deterministically: the ``choice``-th site of an operator."""
+    """Pick sites deterministically: the ``choice``-th site of an operator.
 
-    def __init__(self, *, operator: str | None = None, choice: int = 0):
+    Returns the candidate format (one candidate with one edit, or ``edits``
+    edits on distinct sites).
+    """
+
+    def __init__(self, *, operator: str | None = None, choice: int = 0, edits: int = 1,
+                 follow: Callable[[Mapping[str, Any]], str | None] | None = None):
         self.operator = operator
         self.choice = choice
+        self.edits = edits
+        # curriculum: ``follow(weak_point_view)`` returns a direction to pursue
+        # the first offered weak point, or None to explore
+        self.follow = follow
         self.requests: list[dict[str, Any]] = []
 
     def __call__(self, **request: Any) -> dict[str, Any]:
         self.requests.append(request)
         user = json.loads(request["messages"][-1]["content"])
-        sites = [s for s in user["sites"] if self.operator in (None, s["operator"])] or user["sites"]
-        site = sites[(self.choice + len(self.requests) - 1) % len(sites)]
-        return _reply({
+        offered = (user.get("experience_base") or {}).get("open_weak_points") or []
+        if "candidates" in user:  # curriculum over real bugs: choose one offered bug
+            return _reply(self._choose(user["candidates"], offered), len(self.requests))
+        target = offered[0] if offered and self.follow else None
+        direction = self.follow(target) if target else None
+        operators = set(target["operators"]) if direction else ({self.operator} if self.operator else None)
+        sites = [s for s in user["sites"] if operators is None or s["operator"] in operators] or user["sites"]
+        first = (self.choice + len(self.requests) - 1) % len(sites)
+        n_edits = 1 if direction == "simpler" else self.edits
+        picked = [sites[(first + k) % len(sites)] for k in range(min(n_edits, len(sites)))]
+        reply: dict[str, Any] = {"candidates": [{
             "hypothesis": "scripted weakness hypothesis",
-            "operator": site["operator"],
-            "site_id": site["site_id"],
-            "option": site["options"][0],
+            "edits": [{"site_id": s["site_id"], "option": s["options"][0]} for s in picked],
             "expected_symptom": "scripted",
-        }, len(self.requests))
+        }]}
+        if "experience_base" in user:
+            reply["decision"] = {"lineage_id": target["lineage_id"] if direction else None,
+                                 "direction": direction or "explore", "reason": "scripted"}
+        return _reply(reply, len(self.requests))
+
+
+    def _choose(self, candidates: list[dict[str, Any]], offered: list[dict[str, Any]]) -> dict[str, Any]:
+        """Pursue the first weak point a candidate can continue (``follow``), else explore."""
+        for lin in offered if self.follow else []:
+            direction = self.follow(lin)
+            for c in candidates:
+                if direction and f"type:{c['fix_type']}" in lin["operators"] and c["design"] not in lin["designs_used"]:
+                    return {"decision": {"lineage_id": lin["lineage_id"], "direction": direction,
+                                         "reason": "scripted"}, "choice": c["candidate_id"]}
+        return {"decision": {"lineage_id": None, "direction": "explore", "reason": "scripted"},
+                "choice": candidates[0]["candidate_id"]}

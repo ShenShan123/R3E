@@ -53,3 +53,15 @@ def anonymize_pair(
         )
 
     return [rewrite(line) for line in before], [rewrite(line) for line in after], len(mapping)
+
+
+def identifier_roles(lines: list[str], structure: RtlStructure) -> dict[str, str]:
+    """Role of every design identifier appearing in ``lines`` (input, state, ...)."""
+    roles: dict[str, str] = {}
+    for line in lines:
+        code = re.sub(r"\d*'[sS]?[bBoOdDhH][0-9a-fA-F_xXzZ?]+", " ", line)
+        for match in _IDENT.finditer(code):
+            word = match.group(1)
+            if word not in VERILOG_KEYWORDS and word not in roles:
+                roles[word] = structure.role(word)
+    return roles

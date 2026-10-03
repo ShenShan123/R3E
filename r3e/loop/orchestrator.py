@@ -20,7 +20,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Sequence
 
-from r3e.knowledge import DeterministicKnowledgeAuthor, KnowledgeItem
+from r3e.knowledge import CaseMemoryAuthor, KnowledgeItem
 from r3e.protocol.hashing import hash_payload
 
 from .blue import BlueConfig, BlueRunner
@@ -33,6 +33,7 @@ from .qualification import (
     monitor_usage,
     qualify_candidate,
 )
+from .memory_usage import record_memory_usage, track_record_view, usage_stats
 from .red import RedAgent
 from .sim import Simulator
 from .state import RunState
@@ -45,6 +46,7 @@ class LoopConfig:
     red_mode: str = "aware"
     seed: int = 0
     max_candidates_per_round: int = 4
+    learning: bool = True          # False: Red + Blue only (no authoring/qualification/monitor)
     frozen_mutants_per_carrier: int = 2
     blue: BlueConfig = field(default_factory=BlueConfig)
     qualification: QualificationConfig = field(default_factory=QualificationConfig)
@@ -59,10 +61,15 @@ def frozen_challenges(
     per_carrier: int,
     seed: int,
 ) -> list[Challenge]:
-    """Public challenges plus deterministic random-operator mutants (no model calls)."""
+    """Public challenges plus deterministic random-operator mutants (no model calls).
+
+    Mutants mix one- and two-edit bugs, so the frozen qualification and
+    holdout sets are not dominated by cases Blue always solves (which would
+    leave knowledge no room to show a gain).
+    """
     ids = {c.carrier_id for c in carriers}
     out = [ch for ch in public if ch.carrier.carrier_id in ids]
-    red = RedAgent(mode="random", client=None, simulator=simulator, seed=seed)
+    red = RedAgent(mode="random", client=None, simulator=simulator, seed=seed, random_max_edits=2)
     dummy = None
     for carrier in carriers:
         made, tries = 0, 0
@@ -83,8 +90,12 @@ def _next_version(state: RunState, item: KnowledgeItem) -> KnowledgeItem | None:
     if not existing:
         return item
     latest = max(existing, key=lambda i: i.version)
-    same = {k: v for k, v in latest.payload.items() if k not in {"version", "item_hash"}}
-    new = {k: v for k, v in item.payload.items() if k not in {"version", "item_hash"}}
+    # Evidence (support counts, episode ids) grows every round; a new version,
+    # and so a new paired qualification, is warranted only when what Blue
+    # would actually be shown changes.
+    ignored = {"version", "item_hash", "evidence"}
+    same = {k: v for k, v in latest.payload.items() if k not in ignored}
+    new = {k: v for k, v in item.payload.items() if k not in ignored}
     if same == new:
         return None
     body = item.to_dict()
@@ -106,6 +117,7 @@ class ClosedLoop:
         blue: BlueRunner,
         red_client: BudgetedClient | None,
         simulator: Simulator,
+        qualification_challenges: Sequence[Challenge] | None = None,
     ):
         self.config = config
         self.state = state
@@ -113,18 +125,39 @@ class ClosedLoop:
         self.blue = blue
         self.simulator = simulator
         self.red = RedAgent(mode=config.red_mode, client=red_client, simulator=simulator, seed=config.seed)
-        self.author = DeterministicKnowledgeAuthor()
-        qual = frozen_challenges(splits["qualification"], public_challenges, simulator,
-                                 per_carrier=config.frozen_mutants_per_carrier, seed=config.seed + 1000)
+        self.author = CaseMemoryAuthor()
+        # every case Blue is offered carries its usage track record (data only)
+        blue.track_records = lambda: {k: track_record_view(v) for k, v in usage_stats(state).items()}
+        # every attempt (failed branches included) goes to the population ledger
+        self._round = -1
+        blue.population_sink = lambda rec: state.append("population", {"round": self._round, **rec})
+        if qualification_challenges is not None:  # e.g. a difficulty-screened set (hardsets.py)
+            qual = list(qualification_challenges)
+        else:
+            qual = frozen_challenges(splits["qualification"], public_challenges, simulator,
+                                     per_carrier=config.frozen_mutants_per_carrier, seed=config.seed + 1000)
         self.qset = QualificationSet.build(blue, qual)
+        # The round count is not frozen: no round depends on the total, so a
+        # completed run may be extended with more rounds of the same config.
+        config_body = {k: v for k, v in asdict(config).items() if k != "rounds"}
         frozen = {"qualification": sorted(c.buggy_hash for c in qual),
                   "splits": {k: sorted(c.carrier_id for c in v) for k, v in splits.items()},
-                  "config": asdict(config)}
-        stored = self.state.checkpoint().get("frozen_hash")
+                  "config": config_body, **self._extra_frozen()}
+        checkpoint = self.state.checkpoint()
+        stored = checkpoint.get("frozen_hash")
         frozen_hash = hash_payload(frozen)
         if stored and stored != frozen_hash:
-            raise RuntimeError("resume refused: frozen sets or config differ from the checkpoint")
+            # checkpoints written before 2026-10-02 froze ``rounds`` too; accept
+            # them when the stored run completed exactly that many rounds
+            done = int(checkpoint.get("completed_rounds", 0))
+            legacy = hash_payload({**frozen, "config": {**asdict(config), "rounds": done}})
+            if stored != legacy:
+                raise RuntimeError("resume refused: frozen sets or config differ from the checkpoint")
         self.frozen_hash = frozen_hash
+
+    def _extra_frozen(self) -> dict[str, Any]:
+        """Subclasses add settings that must not change across a resume."""
+        return {}
 
     def _seed(self, *parts: Any) -> int:
         return int(hash_payload({"seed": self.config.seed, "parts": list(parts)})[7:15], 16)
@@ -132,6 +165,7 @@ class ClosedLoop:
     def run(self) -> dict[str, Any]:
         done = int(self.state.checkpoint().get("completed_rounds", 0))
         for round_index in range(done, self.config.rounds):
+            self._round = round_index
             self.round(round_index)
             self.state.save_checkpoint({"completed_rounds": round_index + 1,
                                         "frozen_hash": self.frozen_hash})
@@ -149,15 +183,28 @@ class ClosedLoop:
                 admitted.append(proposal.challenge)
 
         solved = escalated = 0
+        outcomes: dict[str, int] = {}
         for ch in admitted:
-            enc = self.blue.run(ch, mode="matched", pool=state.active_items(), inference=state.inference(),
+            pool = state.active_items()
+            enc = self.blue.run(ch, mode="matched", pool=pool, inference=state.inference(),
                                 matcher=state.matcher, seed=self._seed("blue", ch.challenge_id),
                                 allow_escalation=True)
-            state.record_episode(enc.episode, round_index=r)
+            if not enc.inconclusive:  # provider failures are not weak points
+                state.record_episode(enc.episode, round_index=r)
+                use = record_memory_usage(state, enc, round_index=r, pool=pool)
+                outcomes[use["outcome"]] = outcomes.get(use["outcome"], 0) + 1
             state.append("encounters", {"round": r, "encounter": enc.record()})
             solved += enc.solved_within_budget
             escalated += enc.solved_by_escalation
 
+        if not cfg.learning:
+            summary = {"round": r, "proposals": cfg.proposals_per_round, "admitted": len(admitted),
+                       "solved_within_budget": solved, "solved_by_escalation": escalated,
+                       "candidates": 0, "decisions": [], "suspended": [], "learning": False,
+                       "active": [[i.item_id, i.version, i.item_hash] for i in state.active_items()],
+                       "episodes_total": len(state.read("episodes")), "cost": self.blue.budget.report()}
+            state.append("rounds", summary)
+            return summary
         authored = sorted(self.author.author(state.episodes()),
                           key=lambda i: (-i.payload["evidence"]["support"], i.item_id))
         candidates = []
@@ -169,9 +216,11 @@ class ClosedLoop:
             if len(candidates) >= cfg.max_candidates_per_round:
                 break
         decisions = []
+        baseline_cache: dict = {}
         for candidate in candidates:
             report = qualify_candidate(candidate, runner=self.blue, state=state, qset=self.qset,
-                                       config=cfg.qualification, round_index=r)
+                                       config=cfg.qualification, round_index=r,
+                                       baseline_cache=baseline_cache)
             decisions.append({k: report[k] for k in ("item_id", "version", "decision", "reason",
                                                      "coverage", "helped", "harmed")})
             if report["decision"] == "active":
@@ -186,6 +235,7 @@ class ClosedLoop:
             "admitted": len(admitted),
             "solved_within_budget": solved,
             "solved_by_escalation": escalated,
+            "memory_outcomes": outcomes,
             "candidates": len(candidates),
             "decisions": decisions,
             "suspended": suspended,

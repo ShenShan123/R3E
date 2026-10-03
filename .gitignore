@@ -34,3 +34,7 @@ private_launch/
 *.spef
 *.vcd
 *.fst
+
+# raw upstream dataset downloads (see datasets/external/SOURCES.md)
+datasets/external/*
+!datasets/external/SOURCES.md

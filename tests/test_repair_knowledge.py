@@ -9,23 +9,19 @@ import pytest
 
 from r3e.knowledge import (
     BugTypeInference,
-    DeterministicKnowledgeAuthor,
+    CaseMemoryAuthor,
     KnowledgeInjectingClient,
     KnowledgeMatcher,
     KnowledgeStore,
     KnowledgeValidationError,
-    LlmKnowledgeAuthor,
     RepairEpisode,
     analyze_rtl,
     build_bundle,
-    build_delivery_receipt,
     build_profile,
     build_repair_episode,
     classify_repair,
     compare_traces,
-    verify_delivery_receipt,
 )
-from r3e.pilot.grd8_acp7_smoke import _load_manifest_case, _run_acp7
 from r3e.protocol.hashing import hash_payload
 from r3e.providers.openai_compatible import (
     OpenAICompatibleClientConfig,
@@ -176,7 +172,7 @@ def test_episode_rejects_red_labels_golden_and_foreign_repairs(episodes):
 
 
 def test_profiles_and_items_carry_no_design_identifiers(episodes):
-    items = DeterministicKnowledgeAuthor().author(episodes)
+    items = CaseMemoryAuthor().author(episodes)
     text = json.dumps([e.to_dict()["profile"] for e in episodes]) + json.dumps(
         [item.to_dict()["applicability"] for item in items]
         + [item.to_dict()["example"] for item in items]
@@ -188,23 +184,31 @@ def test_profiles_and_items_carry_no_design_identifiers(episodes):
 # ------------------------------------------------- authoring and transfer
 
 
-def test_author_generalizes_across_designs(episodes):
-    items = DeterministicKnowledgeAuthor().author(episodes)
+def test_case_memory_records_causal_chains_without_authored_rules(episodes):
+    items = CaseMemoryAuthor().author(episodes)
     assert len(items) == 1
     item = items[0]
     assert item.bug_type == "operator_compare"
     assert item.payload["evidence"]["support"] == 2
-    assert item.payload["evidence"]["source_design_clusters"] == ["cnt_alpha", "cnt_beta"]
-    # features on which the two sources disagree are dropped from applicability
+    assert item.payload["evidence"]["design_clusters"] == ["cnt_alpha", "cnt_beta"]
+    # retrieval keys: features on which the two sources disagree are dropped
     assert "delta_bucket" not in item.payload["applicability"]["status"]
+    # the card is only the sources' causal chains, one per design
     card = item.payload["card"]
-    assert any("constant_value" in line for line in card["repair_principles"])
-    example = item.payload["example"]
-    assert example and any("<" in line for line in example["after"])
+    assert set(card) == {"cases"} and len(card["cases"]) == 2
+    for case in card["cases"]:
+        assert set(case) >= {"observed_failure", "fault", "repair", "did_not_work", "verification"}
+        assert any("<" in line for line in case["repair"]["fixed_lines"])  # the verified change itself
+        assert case["fault"]["faulty_lines"] != case["repair"]["fixed_lines"]
+        assert case["identifier_roles"]  # quoted code comes with each name's role
+    text = json.dumps(item.to_dict())
+    for authored in ("mechanism_hypothesis", "repair_principles", "preservation_constraints",
+                     "diagnostic_steps", "Keep reset values"):
+        assert authored not in text
 
 
 def test_matched_knowledge_transfers_to_unseen_design(episodes, unseen_profile):
-    items = DeterministicKnowledgeAuthor().author(episodes)
+    items = CaseMemoryAuthor().author(episodes)
     posterior = BugTypeInference().fit(episodes).posterior(unseen_profile)
     matches = KnowledgeMatcher().match(items, unseen_profile, posterior)
     assert [m.item.item_id for m in matches] == [items[0].item_id]
@@ -212,7 +216,7 @@ def test_matched_knowledge_transfers_to_unseen_design(episodes, unseen_profile):
 
 
 def test_matcher_abstains_on_unrelated_failure(episodes):
-    items = DeterministicKnowledgeAuthor().author(episodes)
+    items = CaseMemoryAuthor().author(episodes)
     expected = list(range(8))
     feedback = compare_traces(_trace(expected, "y"), _trace([0] + expected[:-1], "y"))
     comb = "module c(input [3:0] a, output [3:0] y); assign y = a; endmodule\n"
@@ -232,7 +236,7 @@ def test_type_inference_is_updated_by_experience(episodes, unseen_profile):
 
 
 def test_store_lifecycle_controls_activation(tmp_path, episodes):
-    item = DeterministicKnowledgeAuthor().author(episodes)[0]
+    item = CaseMemoryAuthor().author(episodes)[0]
     store = KnowledgeStore(tmp_path)
     store.add(item)
     assert store.active_items() == []
@@ -244,7 +248,7 @@ def test_store_lifecycle_controls_activation(tmp_path, episodes):
 
 
 def test_delivery_modes_share_shape_and_differ_only_in_content(episodes, unseen_profile):
-    items = DeterministicKnowledgeAuthor().author(episodes)
+    items = CaseMemoryAuthor().author(episodes)
     distractor_eps = [
         build_repair_episode(
             case_id="lag_case",
@@ -258,7 +262,7 @@ def test_delivery_modes_share_shape_and_differ_only_in_content(episodes, unseen_
                                   "  always @(posedge clk) y <= d;\nendmodule\n",
         )
     ]
-    pool = items + DeterministicKnowledgeAuthor().author(distractor_eps)
+    pool = items + CaseMemoryAuthor().author(distractor_eps)
     posterior = BugTypeInference().fit(episodes).posterior(unseen_profile)
     matcher = KnowledgeMatcher()
     common = dict(profile=unseen_profile, type_posterior=posterior, pool=pool,
@@ -269,8 +273,10 @@ def test_delivery_modes_share_shape_and_differ_only_in_content(episodes, unseen_
     static = build_bundle("static", **common)
     assert none.is_empty
     assert len(matched.items) == len(shuffled.items) == 1
-    assert matched.items[0]["knowledge_id"] != shuffled.items[0]["knowledge_id"]
-    assert static.items[0]["knowledge_id"] == f"{pool[-1].item_id}@v1"
+    assert matched.items[0]["reference_id"] != shuffled.items[0]["reference_id"]
+    assert static.items[0]["reference_id"] == f"{pool[-1].item_id}@v1"
+    fit = matched.items[0]["fit_with_current_failure"]
+    assert fit["agrees_on"] and set(fit) == {"agrees_on", "partly_agrees_on", "differs_on"}
     assert set(matched.prompt_payload()) == {"usage_note", "items"}
     assert "score" not in json.dumps(matched.prompt_payload())
 
@@ -310,54 +316,10 @@ def _injected_client(calls):
     return OpenAICompatibleJSONClient(config, transport=transport, environ={})
 
 
-def _acp7_with(bundle, tmp_path, name):
-    calls = []
-    client = KnowledgeInjectingClient(_injected_client(calls))
-    row = _load_manifest_case(ROOT / "datasets/manifests/strider14.jsonl", "strider:mux_4_1_1")
-    with client.active(bundle):
-        _run_acp7(root=ROOT, workspace=tmp_path / name, client=client,
-                  manifest_row=row, seed=17)
-    evaluation = json.loads((tmp_path / name / "blue_evaluation.json").read_text(encoding="utf-8"))
-    receipt = build_delivery_receipt(bundle, evaluation, client.deliveries)
-    return calls, evaluation, receipt
-
-
-@pytest.mark.skipif(not HAS_AUTHORITY_TOOLS, reason="Icarus or Yosys is unavailable")
-def test_matched_knowledge_reaches_real_blue_requests_and_is_hash_bound(
-    tmp_path, episodes, unseen_profile
-):
-    items = DeterministicKnowledgeAuthor().author(episodes)
-    posterior = BugTypeInference().fit(episodes).posterior(unseen_profile)
-    matched = build_bundle("matched", profile=unseen_profile, type_posterior=posterior,
-                           pool=items, matcher=KnowledgeMatcher(), case_id="strider:mux_4_1_1")
-    none = build_bundle("none", profile=unseen_profile, type_posterior=posterior,
-                        pool=items, matcher=KnowledgeMatcher(), case_id="strider:mux_4_1_1")
-    calls, evaluation, receipt = _acp7_with(matched, tmp_path, "matched")
-    base_calls, base_eval, base_receipt = _acp7_with(none, tmp_path, "none")
-
-    assert len(calls) == len(base_calls) == evaluation["resource_usage"]["provider_calls"] == 3
-    for request in calls:
-        user = json.loads(request["messages"][-1]["content"])
-        assert user["retrieved_repair_knowledge"] == matched.prompt_payload()
-    for request in base_calls:
-        assert "retrieved_repair_knowledge" not in json.loads(request["messages"][-1]["content"])
-    assert verify_delivery_receipt(receipt, evaluation)["bundle_hash"] == matched.bundle_hash
-    assert verify_delivery_receipt(base_receipt, base_eval)["bundle_hash"] == none.bundle_hash
-    # the knowledge changes the bound request, not the budget
-    assert [r["command_hash"] for r in evaluation["candidate_provider_receipts"]] != [
-        r["command_hash"] for r in base_eval["candidate_provider_receipts"]
-    ]
-
-    forged = dict(receipt, deliveries=base_receipt["deliveries"])
-    forged["receipt_hash"] = hash_payload({k: v for k, v in forged.items() if k != "receipt_hash"})
-    with pytest.raises(KnowledgeValidationError):
-        verify_delivery_receipt(forged, evaluation)
-
-
 def test_injecting_client_leaves_non_blue_requests_untouched(episodes, unseen_profile):
     calls = []
     client = KnowledgeInjectingClient(_injected_client(calls))
-    items = DeterministicKnowledgeAuthor().author(episodes)
+    items = CaseMemoryAuthor().author(episodes)
     bundle = build_bundle("static", profile=unseen_profile, type_posterior={}, pool=items,
                           matcher=KnowledgeMatcher(), case_id="x", static_items=items)
     red_like = [{"role": "system", "content": "choose"},
@@ -371,37 +333,42 @@ def test_injecting_client_leaves_non_blue_requests_untouched(episodes, unseen_pr
     assert client.deliveries[0]["injected"] is False
 
 
-# ------------------------------------------------------------- LLM author
+def test_ternary_condition_in_assign_is_a_control_dependency():
+    from r3e.knowledge.structure import analyze_rtl
+    sel = analyze_rtl("module m(input a,b,sel,output out); assign out = sel ? b : a; endmodule")
+    plain = analyze_rtl("module m(input c,d,output y); assign y = c & d; endmodule")
+    assert sel.cone("out")["has_control_dependency"]
+    assert not plain.cone("y")["has_control_dependency"]
 
 
-def test_llm_author_is_disabled_without_client_and_validates_output(episodes):
-    with pytest.raises(RuntimeError):
-        LlmKnowledgeAuthor().author(episodes)
-
-    class FakeClient:
-        def __init__(self, result):
-            self.result = result
-            self.messages = None
-
-        def complete_json(self, *, messages, seed):
-            self.messages = messages
-            return {"result": self.result}
-
-    card = {
-        "mechanism_hypothesis": "A boundary comparison admits one extra value.",
-        "causal_chain": ["counter compare feeds the wrap condition"],
-        "diagnostic_steps": ["check the compare at the wrap cycle"],
-        "repair_principles": ["tighten the comparison"],
-        "preservation_constraints": ["keep reset behaviour"],
-        "scope_and_limits": ["two sources"],
-    }
-    client = FakeClient(card)
-    items = LlmKnowledgeAuthor(client).author(episodes)
-    assert items[0].payload["card"] == card
-    assert items[0].payload["author"]["author_id"] == "llm-knowledge-author"
-    request_text = json.dumps(client.messages)
-    assert "golden" not in request_text and "mutation_type" not in request_text
-    with pytest.raises(KnowledgeValidationError):
-        LlmKnowledgeAuthor(FakeClient({**card, "diagnostic_steps": "not a list"})).author(episodes)
-
-
+def test_structural_view_states_the_failing_outputs_structure_without_advice():
+    from r3e.knowledge.structural_view import build_structural_view
+    rtl = """module m(input clk, input areset, input in, output out);
+  parameter A=0, B=1;
+  reg state, next;
+  always @(*) begin
+    case (state)
+      A: next = in ? A : B;
+      B: next = in ? B : A;
+    endcase
+  end
+  always @(posedge clk, posedge areset) begin
+    if (areset) state <= B;
+    else state <= next;
+  end
+  assign out = (state == B);
+endmodule
+"""
+    view = build_structural_view(rtl, ["out"])
+    out = view["failing_outputs"]["out"]
+    assert out["driven_by"] == "combinational"
+    assert out["state_registers_in_cone"] == ["state"] and "in" in out["inputs_in_cone"]
+    assert any(s["assigns"] == "state" and s["block"] == "sequential" and "areset" in s["guarded_by"]
+               for s in view["statements"])
+    assert out["statement_lines"][0] == 14 and view["statements"][0]["assigns"] == "out"
+    shared = build_structural_view("module d(input a, b, output y1, y2);\n  assign {y1, y2} = {a, b};\nendmodule\n",
+                                   ["y1", "y2"])
+    assert len(shared["statements"]) == 1  # a statement shared by two outputs is listed once
+    assert shared["failing_outputs"]["y1"]["statement_lines"] == shared["failing_outputs"]["y2"]["statement_lines"]
+    text = json.dumps(view).lower()
+    assert not any(word in text for word in ("should", "fix", "likely", "suggest"))

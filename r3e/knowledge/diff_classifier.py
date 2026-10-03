@@ -10,7 +10,7 @@ from __future__ import annotations
 from difflib import SequenceMatcher
 from typing import Any
 
-from r3e.red.grounded.verilog_ast import VerilogToken
+from r3e.knowledge.verilog_ast import VerilogToken
 
 from .structure import RtlStructure, analyze_rtl
 from .verilog_utils import (

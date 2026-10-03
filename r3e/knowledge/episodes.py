@@ -10,7 +10,7 @@ from typing import Any, Mapping, Sequence
 
 from r3e.protocol.hashing import hash_payload
 
-from .anonymize import anonymize_pair
+from .anonymize import anonymize_pair, identifier_roles
 from .diff_classifier import classify_repair
 from .profile import build_profile
 from .schema import VERIFIED_REPAIR_TIERS, RepairEpisode, VisibleFeedback
@@ -40,11 +40,9 @@ def build_repair_episode(
             structure=structure,
             failing_signals=[d.signal for d in feedback.divergences],
         )
-        before, after, renamed = anonymize_pair(
-            classification.pop("before_lines"),
-            classification.pop("after_lines"),
-            structure,
-        )
+        raw_before = classification.pop("before_lines")
+        raw_after = classification.pop("after_lines")
+        before, after, renamed = anonymize_pair(raw_before, raw_after, structure)
         verified = {
             "source": "blue_candidate",
             "verdict_tier": passing_verdict_tier,
@@ -54,6 +52,13 @@ def build_repair_episode(
                 "before": before,
                 "after": after,
                 "renamed_identifiers": renamed,
+            },
+            # the verified change as it was, with each identifier's role, so a
+            # later case record can quote it faithfully
+            "lines": {
+                "before": list(raw_before),
+                "after": list(raw_after),
+                "identifier_roles": identifier_roles([*raw_before, *raw_after], structure),
             },
         }
     outcome = "resolved" if verified is not None else (
