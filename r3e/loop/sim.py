@@ -18,7 +18,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from r3e.knowledge.feedback import compare_traces, compile_failure, evidence_window
+from r3e.knowledge.feedback import _bus_value, bus_layout, compare_traces, compile_failure, evidence_window, parse_trace
+from r3e.knowledge.register_trace import VCD_NAME, cone_registers, inject_dump, parameter_values, parse_vcd, show, value_at
 from r3e.knowledge.schema import VisibleFeedback
 
 from .corpus import Carrier
@@ -128,14 +129,63 @@ class Simulator:
                 "first_mismatch": bad[0] if bad else None,
                 "sampled_prefix": n == STEALTH_MAX_CYCLES}
 
-    def verdict(self, rtl: str, carrier: Carrier) -> Verdict:
+    def register_samples(self, rtl: str, carrier: Carrier, failing: list[str],
+                         observed: str) -> dict[int, dict[str, str]]:
+        """The design's register values per sample of ``observed`` (``register_trace.py``).
+
+        Empty when there are no registers to show, the dump does not compile,
+        or the dumped failing outputs disagree with the logged ones anywhere
+        (sampling not aligned with register updates).
+        """
+        registers, state = cone_registers(rtl, failing)
+        lines = [l for l in observed.splitlines() if l.strip()]
+        if not registers or len(lines) < 2 or lines[0].split(",")[0].strip().lower() != "time":
+            return {}
+        try:
+            times = [int(float(l.split(",")[0])) for l in lines[1:]]
+        except ValueError:
+            return {}
+        header, rows = parse_trace(observed)
+        layout = {name: cols for name, cols in bus_layout(header) if name in failing}
+        dumped = inject_dump(rtl, carrier.top_module, registers, list(layout))
+        if dumped is None:
+            return {}
+        text, _ = self.run(dumped, carrier, carrier.visible_tb)
+        vcd = self._last_cell / "sim" / VCD_NAME
+        if text is None or not vcd.is_file():
+            return {}
+        signals = parse_vcd(vcd.read_text(errors="ignore"))
+        if not layout or any(name not in signals for name in layout) or any(r not in signals for r in registers):
+            return {}
+        # The trace's time unit may differ from the dump's resolution, and a
+        # testbench logs either at the end of a time step ($fstrobe) or before
+        # that step's updates ($fdisplay ahead of new inputs): the dump gives
+        # the value at the end of a step, so "before" reads the previous step.
+        # Take the first reading that reproduces every logged output exactly.
+        def reading(scale: int, before: bool):
+            return lambda signal, t: value_at(signal, t * scale - before)
+        for at in (reading(scale, before) for before in (False, True)
+                   for scale in (1, 10, 100, 1000, 10000, 100000, 1000000)):
+            if all(at(signals[name], t) == _bus_value(row, cols)[0]
+                   for t, row in zip(times, rows) for name, cols in layout.items()):
+                break
+        else:
+            return {}
+        names = parameter_values(rtl)
+        return {i: {r: show(at(signals[r], t) or "x", names if r in state else None) for r in registers}
+                for i, t in enumerate(times[:len(rows)])}
+
+    def verdict(self, rtl: str, carrier: Carrier, *, registers: bool = False) -> Verdict:
+        """``registers``: add the design's register values to the evidence window rows."""
         observed, err = self.run(rtl, carrier, carrier.visible_tb)
         if observed is None:
             return Verdict("compile_fail", compile_failure(err))
         feedback = compare_traces(self.expected(carrier, "visible"), observed)
         if feedback.divergences:
+            samples = (self.register_samples(rtl, carrier, [d.signal for d in feedback.divergences], observed)
+                       if registers else None)
             window = evidence_window(self.expected(carrier, "visible"), observed,
-                                     self._stimulus.get(carrier.carrier_id))
+                                     self._stimulus.get(carrier.carrier_id), registers=samples)
             return Verdict("visible_fail", feedback, window=window)
         if not carrier.hidden_tb:
             return Verdict("visible_pass", feedback)

@@ -19,7 +19,7 @@ module r3e_tb;
       arrived = $random(s);
       gas_tank_empty = $random(s);
       #5;
-      $fdisplay(f, "%0d,%b,%b", i, shut_off_computer, keep_driving);
+      $fdisplay(f, "%0d,%b,%b", $time, shut_off_computer, keep_driving);
     end
     $fclose(f);
     $finish;

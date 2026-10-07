@@ -15,7 +15,7 @@ module r3e_tb;
       c = $random(s);
       d = $random(s);
       #5;
-      $fdisplay(f, "%0d,%b,%b,%b,%b", i, mux_in[3], mux_in[2], mux_in[1], mux_in[0]);
+      $fdisplay(f, "%0d,%b,%b,%b,%b", $time, mux_in[3], mux_in[2], mux_in[1], mux_in[0]);
     end
     $fclose(f);
     $finish;

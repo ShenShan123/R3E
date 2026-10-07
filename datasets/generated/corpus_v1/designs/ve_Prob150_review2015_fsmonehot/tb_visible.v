@@ -31,8 +31,8 @@ module r3e_tb;
       ack = $random(s);
       state = $random(s);
       #5;
-      $fdisplay(f, "%0d,%b,%b,%b,%b,%b,%b,%b,%b", i, B3_next, S_next, S1_next, Count_next, Wait_next, done, counting, shift_ena);
-      $fdisplay(r3e_stim, "%0d,%b,%b,%b,%b", i, d, done_counting, ack, state);
+      $fdisplay(f, "%0d,%b,%b,%b,%b,%b,%b,%b,%b", $time, B3_next, S_next, S1_next, Count_next, Wait_next, done, counting, shift_ena);
+      $fdisplay(r3e_stim, "%0d,%b,%b,%b,%b", $time, d, done_counting, ack, state);
     end
     $fclose(f);
     $fclose(r3e_stim);

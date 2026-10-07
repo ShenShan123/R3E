@@ -19,7 +19,7 @@ module r3e_tb;
     for (i = 0; i < 160; i = i + 1) begin
       a = $random(s);
       @(negedge clk);
-      $fdisplay(f, "%0d,%b,%b", i, rise, down);
+      $fdisplay(f, "%0d,%b,%b", $time, rise, down);
     end
     $fclose(f);
     $finish;

@@ -1,0 +1,8 @@
+
+Consider the following adder-subtractor with a zero flag:
+
+The supplied buggy example uses Verilog-2001 and is named TopModule. Its inputs are do_sub (one bit), a (8 bits), and b (8 bits); its outputs are out (8 bits) and result_is_zero (one bit). In its combinational process, do_sub equal to 0 selects a plus b, and do_sub equal to 1 selects a minus b, storing the result in out. It then sets result_is_zero to 1 if the bitwise complement of out is nonzero, with no assignment to result_is_zero in the other case. This describes the supplied faulty implementation, not the intended zero-flag behavior.
+
+Unfortunately, this module has a bug. Implement a new version of this
+module that fixes the bug.
+

@@ -15,9 +15,12 @@ loop phase active at that time. The phases are:
 
 - ``cross_model`` (mastery tests repeated with other Blue models; measurement
   only, never fed back into either side)
+- ``localization`` (repository tasks: Blue's file-selection call before a repair)
+- ``confirmation`` (curriculum loop: repeat runs on a bug Blue failed, so
+  only reproducible failures count as weak points; part of Red's cost)
 
-Learning cost is ``red + escalation + qualification + authoring + mastery``.
-Inference cost is ``blue_inference + evaluation``.
+Learning cost is ``red + escalation + qualification + authoring + mastery + confirmation``.
+Inference cost is ``blue_inference + evaluation + localization``.
 
 When ``on_call`` is set, every call is reported as it happens, successful or
 failed. The CLI writes these reports to the run's hash-chained ``calls``
@@ -31,8 +34,8 @@ from contextlib import contextmanager
 from typing import Any, Callable, Iterable, Iterator, Mapping
 
 PHASES = ("red", "blue_inference", "escalation", "qualification", "evaluation", "authoring", "mastery",
-          "cross_model")
-LEARNING_PHASES = ("red", "escalation", "qualification", "authoring", "mastery")
+          "cross_model", "confirmation", "localization")
+LEARNING_PHASES = ("red", "escalation", "qualification", "authoring", "mastery", "confirmation")
 
 
 class CallBudgetExceeded(RuntimeError):
@@ -87,6 +90,10 @@ class BudgetedClient:
             self.phase = previous
 
     def complete_json(self, **kwargs: Any) -> dict[str, Any]:
+        # JSON mode is refused by the provider unless the prompt mentions JSON;
+        # catch that here, before a call is spent (fake transports do not check)
+        if not any("json" in str(m.get("content", "")).lower() for m in kwargs.get("messages") or []):
+            raise ValueError("a JSON-mode request must mention 'json' in its prompt (provider rule)")
         if self.total_calls >= self.max_calls:
             raise CallBudgetExceeded(
                 f"call cap {self.max_calls} reached; raise it only with explicit approval"
@@ -131,7 +138,7 @@ class BudgetedClient:
             "by_phase": {p: {"calls": self.calls[p], "failed_calls": self.failed[p], **self.tokens[p]}
                          for p in PHASES},
             "learning": total(LEARNING_PHASES),
-            "inference": total(("blue_inference", "evaluation")),
+            "inference": total(("blue_inference", "evaluation", "localization")),
             "total_calls": self.total_calls,
         }
 
@@ -149,5 +156,5 @@ def cost_from_calls(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
                         "input_tokens": sum(by_phase[p]["input"] for p in ps),
                         "output_tokens": sum(by_phase[p]["output"] for p in ps)}
     return {"by_phase": by_phase, "learning": total(LEARNING_PHASES),
-            "inference": total(("blue_inference", "evaluation")),
+            "inference": total(("blue_inference", "evaluation", "localization")),
             "total_calls": sum(v["calls"] for v in by_phase.values())}

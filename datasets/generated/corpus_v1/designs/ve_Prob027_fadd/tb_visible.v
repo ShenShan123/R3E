@@ -22,8 +22,8 @@ module r3e_tb;
       b = $random(s);
       cin = $random(s);
       #5;
-      $fdisplay(f, "%0d,%b,%b", i, cout, sum);
-      $fdisplay(r3e_stim, "%0d,%b,%b,%b", i, a, b, cin);
+      $fdisplay(f, "%0d,%b,%b", $time, cout, sum);
+      $fdisplay(r3e_stim, "%0d,%b,%b,%b", $time, a, b, cin);
     end
     $fclose(f);
     $fclose(r3e_stim);

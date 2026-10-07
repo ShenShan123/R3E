@@ -28,8 +28,8 @@ module r3e_tb;
       mul_b = $random(s);
       mul_en_in = $random(s);
       @(negedge clk);
-      $fdisplay(f, "%0d,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b", i, mul_en_out, mul_out[15], mul_out[14], mul_out[13], mul_out[12], mul_out[11], mul_out[10], mul_out[9], mul_out[8], mul_out[7], mul_out[6], mul_out[5], mul_out[4], mul_out[3], mul_out[2], mul_out[1], mul_out[0]);
-      $fdisplay(r3e_stim, "%0d,%b,%b,%b", i, mul_a, mul_b, mul_en_in);
+      $fdisplay(f, "%0d,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b", $time, mul_en_out, mul_out[15], mul_out[14], mul_out[13], mul_out[12], mul_out[11], mul_out[10], mul_out[9], mul_out[8], mul_out[7], mul_out[6], mul_out[5], mul_out[4], mul_out[3], mul_out[2], mul_out[1], mul_out[0]);
+      $fdisplay(r3e_stim, "%0d,%b,%b,%b", $time, mul_a, mul_b, mul_en_in);
     end
     $fclose(f);
     $fclose(r3e_stim);

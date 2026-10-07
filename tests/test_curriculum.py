@@ -32,7 +32,7 @@ def corpus():
     return load_public_manifest(ROOT / "datasets/manifests/cirfix39.jsonl", ROOT)
 
 
-def _loop(corpus, root, *, succeed, follow, rounds=4, curriculum=None, cross=None):
+def _loop(corpus, root, *, succeed, follow, rounds=4, curriculum=None, cross=None, red_mode="aware", learning=True):
     carriers, public = corpus
     splits = {name: [c for c in carriers if c.cluster_id in fams] for name, fams in LAYOUT.items()}
     blue_t = FakeBlueTransport(nearest_clean_resolver([c.clean_rtl for c in carriers]), succeed=succeed)
@@ -44,8 +44,8 @@ def _loop(corpus, root, *, succeed, follow, rounds=4, curriculum=None, cross=Non
 
     budget = BudgetedClient(build_client({"DEEPSEEK_MODEL": "fake-local"}, transport=transport), max_calls=5000)
     sim = Simulator(root / "sim")
-    cfg = LoopConfig(rounds=rounds, proposals_per_round=3, seed=0, blue=BlueConfig(),
-                     qualification=QualificationConfig(max_cases=6))
+    cfg = LoopConfig(rounds=rounds, proposals_per_round=3, seed=0, blue=BlueConfig(), red_mode=red_mode,
+                     qualification=QualificationConfig(max_cases=6), learning=learning)
     # flow test: retrieval always returns the pool (matcher quality is tested elsewhere)
     state = RunState(root / "run", matcher=KnowledgeMatcher(threshold=0.0))
     blue = BlueRunner(json_client=budget, simulator=sim, project_root=ROOT, config=cfg.blue)
@@ -261,3 +261,128 @@ def test_pool_red_chooses_real_bugs_and_pursues_weak_points_on_new_designs(corpu
     # holdout bugs are on designs the loop never touched
     held = holdout_pool(loop)
     assert held and not {h.challenge_id for h in held} & set(chosen)
+
+
+@needs_icarus
+@pytest.mark.parametrize("chance", [False, True])
+def test_only_reproducible_failures_open_weak_points(corpus, tmp_path, chance):
+    calls = {}
+
+    def succeed(user, n):  # chance=True: the first run fails, every later run fixes the bug
+        key = user["current_buggy_rtl"]
+        calls[key] = calls.get(key, 0) + 1
+        return chance and calls[key] > 3
+    loop, state, _, _, _ = _loop(corpus, tmp_path, succeed=succeed, follow=lambda view: None, rounds=1,
+                                 learning=False)
+    loop.run()
+    screens = state.read("screens")
+    assert screens and all(s["runs"] == 3 and s["fails"] == (1 if chance else 3) for s in screens)
+    assert all(s["reproducible"] is not chance for s in screens)
+    assert (len(lineages(state)) == 0) is chance  # one failure in three is not a weak point
+    assert not state.store.items_with_status("candidate")  # no learning: no memory is authored
+
+
+@needs_icarus
+def test_random_red_explores_in_the_curriculum_without_llm_calls(corpus, tmp_path):
+    loop, state, _, red_t, _ = _loop(corpus, tmp_path, succeed=lambda u, n: False, follow=_pursue, rounds=2,
+                                     red_mode="random", learning=False)
+    loop.run()
+    assert not any(c.get("phase") == "red" for c in state.read("calls"))
+    red = state.read("red")
+    assert red and all(r["decision"]["direction"] == "explore" for r in red)
+    # the same action space as the curriculum Red: up to 3 candidates of up to 2 edits
+    assert all(len(r.get("candidates", [])) <= 3 and all(len(c["edits"]) <= 2 for c in r.get("candidates", []))
+               for r in red)
+    assert any(len(r.get("candidates", [])) > 1 for r in red)
+    assert {s["red_mode"] for s in state.read("screens")} == {"random"}
+
+
+@needs_icarus
+def test_a_memory_free_run_cannot_resume_a_state_with_memory(corpus, tmp_path):
+    loop, state, _, _, _ = _loop(corpus, tmp_path / "with", succeed=lambda u, n: n >= 3 or bool(knowledge_types(u)),
+                                 follow=_pursue)
+    loop.run()
+    assert state.active_items()  # a learning run left active memory behind
+    with pytest.raises(RuntimeError, match="resume refused"):  # learning is part of the frozen config
+        _loop(corpus, tmp_path / "with", succeed=lambda u, n: False, follow=_pursue, rounds=5, learning=False)
+
+
+def test_rotation_shuffles_the_discovery_designs_with_the_seed(corpus, tmp_path):
+    loop, _, _, _, splits = _loop(corpus, tmp_path, succeed=lambda u, n: True, follow=lambda v: None, rounds=1)
+    order = loop._rotation()
+    assert sorted(c.carrier_id for c in order) == sorted(c.carrier_id for c in splits["discovery"])
+    assert [c.carrier_id for c in order] == [c.carrier_id for c in loop._rotation()]  # stable across calls
+    assert [c.carrier_id for c in order] != [c.carrier_id for c in splits["discovery"]]  # not manifest order
+
+
+@needs_icarus
+def test_pool_random_baseline_draws_from_all_discovery_bugs_without_red_calls(corpus, tmp_path):
+    from r3e.loop.pool import PoolCurriculumLoop
+    carriers, public = corpus
+    splits = {name: [c for c in carriers if c.cluster_id in fams] for name, fams in LAYOUT.items()}
+    blue_t = FakeBlueTransport(nearest_clean_resolver([c.clean_rtl for c in carriers]), succeed=lambda u, n: False)
+    budget = BudgetedClient(build_client({"DEEPSEEK_MODEL": "fake-local"}, transport=blue_t), max_calls=5000)
+    sim = Simulator(tmp_path / "sim")
+    cfg = LoopConfig(rounds=3, proposals_per_round=3, seed=0, blue=BlueConfig(), red_mode="random", learning=False,
+                     qualification=QualificationConfig(max_cases=6))
+    state = RunState(tmp_path / "run")
+    blue = BlueRunner(json_client=budget, simulator=sim, project_root=ROOT, config=cfg.blue)
+    loop = PoolCurriculumLoop(pool=public, config=cfg, state=state, splits=splits, public_challenges=public,
+                              blue=blue, red_client=None, simulator=sim)
+    loop.run()
+    rows = state.read("red")
+    chosen = [r["challenge_id"] for r in rows]
+    discovery = {c.cluster_id for c in splits["discovery"]}
+    pool = {ch.challenge_id: ch for ch in public}
+    assert len(chosen) == 9 and len(set(chosen)) == 9 and all(pool[c].carrier.cluster_id in discovery for c in chosen)
+    assert all(r["decision"]["direction"] == "explore" for r in rows)  # never pursues weak points
+    assert lineages(state)  # Blue always fails: weak points open, but the baseline ignores them
+    assert not any(c.get("phase") == "red" for c in state.read("calls"))
+    assert {s["red_mode"] for s in state.read("screens")} == {"random"}
+
+
+@needs_icarus
+def test_candidate_hits_count_only_after_review(corpus, tmp_path):
+    from experiments.loop_probes.hit_review import candidates, decisions_path
+    from experiments.loop_probes.red_hits import arm_report
+    loop, state, _, _, _ = _loop(corpus, tmp_path, succeed=lambda u, n: False, follow=lambda v: None, rounds=1,
+                                 learning=False)
+    loop.run()
+    items = candidates(tmp_path / "run", [Path("datasets/manifests/cirfix39.jsonl")], registers=False)
+    assert items and all(i["change"].startswith("--- correct") and i["evidence_blue_saw"]["stage"] for i in items)
+    assert all(len(i["blue_runs"]) == 3 and i["specification"] is not None for i in items)
+    report = arm_report(tmp_path / "run")["M1_hit_rate"]
+    assert report["candidate_hits"] == len(items) and report["hits"] == 0 and report["pending"] == len(items)
+    first, second = items[0]["challenge_id"], items[1]["challenge_id"]
+    decisions_path(tmp_path / "run").write_text(json.dumps({
+        first: {"decision": "PASS", "reason": "spec names the reset value"},
+        second: {"decision": "EXCLUDED", "reason": "intent not in spec"}}))
+    report = arm_report(tmp_path / "run")["M1_hit_rate"]
+    assert (report["hits"], report["excluded"], report["pending"]) == (1, 1, len(items) - 2)
+    assert report["candidate_hits"] == len(items)  # the raw count is kept
+
+
+@needs_icarus
+def test_a_screen_cut_by_the_call_cap_still_counts_when_the_rule_is_met(corpus, tmp_path):
+    from experiments.loop_probes.hit_review import cut_screens
+    from experiments.loop_probes.red_hits import arm_report
+    from r3e.loop.budget import CallBudgetExceeded
+    loop, state, _, _, _ = _loop(corpus, tmp_path, succeed=lambda u, n: False, follow=lambda v: None, rounds=1,
+                                 learning=False)
+    loop.blue.budget.max_calls = 12  # 3 Red calls; one bug: first run 3 + 3 escalation, first confirmation 3
+    with pytest.raises(CallBudgetExceeded):
+        loop.run()
+    assert not state.read("screens")
+    cut = cut_screens(state)
+    assert len(cut) == 1 and cut[0]["fails"] == 2 and cut[0]["cut_by_call_cap"] and cut[0]["cluster_id"]
+    assert arm_report(tmp_path / "run")["M1_hit_rate"]["candidate_hits"] == 1
+
+
+def test_observations_keep_no_answer_apart_from_wrong_repairs():
+    from experiments.loop_probes.red_hits import _observation
+    enc = lambda tiers, solved: {"attempts": [{"verdict_tier": t} for t in tiers], "solved_within_budget": solved}
+    assert _observation(enc(["visible_pass"], True)) == "fixed_first_attempt"
+    assert _observation(enc(["no_answer", "visible_pass"], True)) == "fixed_after_no_answer"
+    assert _observation(enc(["visible_fail", "visible_pass"], True)) == "fixed_after_wrong_repair"
+    assert _observation(enc(["no_answer", "no_answer", "no_answer"], False)) == "not_fixed_no_answer_only"
+    assert _observation(enc(["no_answer", "visible_fail", "no_answer"], False)) == "not_fixed_wrong_repair"

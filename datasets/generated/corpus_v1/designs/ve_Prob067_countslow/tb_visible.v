@@ -21,8 +21,8 @@ module r3e_tb;
     for (i = 0; i < 64; i = i + 1) begin
       slowena = $random(s);
       @(negedge clk);
-      $fdisplay(f, "%0d,%b,%b,%b,%b", i, q[3], q[2], q[1], q[0]);
-      $fdisplay(r3e_stim, "%0d,%b", i, slowena);
+      $fdisplay(f, "%0d,%b,%b,%b,%b", $time, q[3], q[2], q[1], q[0]);
+      $fdisplay(r3e_stim, "%0d,%b", $time, slowena);
     end
     $fclose(f);
     $fclose(r3e_stim);

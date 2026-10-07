@@ -230,16 +230,39 @@ def parse_stimulus(text: str) -> tuple[list[str], list[str], list[list[str]]]:
     return notes, header, rows
 
 
+def _clock_column(in_rows: Sequence[Sequence[str]]) -> int | None:
+    """Index of an input that alternates 0/1 from one sample to the next (a logged clock)."""
+    if len(in_rows) < 4:
+        return None
+    for col in range(len(in_rows[0])):
+        values = [row[col] if col < len(row) else "" for row in in_rows]
+        if not set(values) <= {"0", "1"}:
+            continue
+        toggles = sum(a != b for a, b in zip(values, values[1:]))
+        if toggles >= 0.95 * (len(values) - 1):
+            return col
+    return None
+
+
 def evidence_window(expected: str, observed: str, stimulus: str | None = None, *,
-                    before: int = 2, span: int = 10) -> dict:
+                    before: int = 2, span: int = 10,
+                    registers: dict[int, dict[str, str]] | None = None) -> dict:
     """The visible test around the first wrong cycle, as Blue may see it.
 
     For each output: how many cycles were wrong and the first few wrong cycle
-    numbers. Then a contiguous run of cycles, from ``before`` cycles ahead of
-    the first mismatch to ``span`` cycles after it, each with the inputs
-    applied in that cycle (when the testbench logs them) and expected vs.
-    observed values of every output that is wrong anywhere. A contiguous run
-    lets sequential behaviour (state, counters) be followed cycle by cycle.
+    numbers. Then a contiguous run of samples, from ``before`` samples ahead
+    of the first mismatch to ``span`` samples after it, each with the inputs
+    applied (when the testbench logs them) and expected vs. observed values of
+    every output that is wrong anywhere.
+
+    When the logged inputs contain a clock (an input alternating 0/1 from one
+    sample to the next), the testbench samples after both clock edges. Rows
+    are then labelled with their clock cycle and edge (``rising``: sampled
+    after the rising edge), counts are given in clock cycles, and the clock
+    itself is left out of the inputs.
+
+    ``registers`` (sample index -> values, from ``Simulator.register_samples``)
+    adds the design's own register values to each row.
     """
     header, exp_rows = parse_trace(expected)
     obs_header, obs_rows = parse_trace(observed)
@@ -249,6 +272,15 @@ def evidence_window(expected: str, observed: str, stimulus: str | None = None, *
     cols = dict(layout)
     n = min(len(exp_rows), len(obs_rows))
     notes, in_names, in_rows = parse_stimulus(stimulus) if stimulus else ([], [], [])
+    clock = _clock_column(in_rows[:n])
+    cycle_of, edge_of = list(range(n)), [None] * n
+    if clock is not None:
+        rising = 0
+        for i in range(n):
+            high = i < len(in_rows) and in_rows[i][clock] == "1"
+            if high:
+                rising += 1
+            cycle_of[i], edge_of[i] = max(rising - 1, 0), "rising" if high else "falling"
     wrong: dict[str, list[int]] = {}
     for i in range(n):
         for name, c in layout:
@@ -256,18 +288,31 @@ def evidence_window(expected: str, observed: str, stimulus: str | None = None, *
                 wrong.setdefault(name, []).append(i)
     if not wrong:
         return {}
-    first = min(cycles[0] for cycles in wrong.values())
+    first = min(samples[0] for samples in wrong.values())
     rows = []
     for i in range(max(0, first - before), min(n, first + span)):
-        row: dict = {"cycle": i}
+        row: dict = {"cycle": cycle_of[i]}
+        if clock is not None:
+            row["edge"] = edge_of[i]
         if i < len(in_rows):
-            row["inputs"] = {name: _show(v) for name, v in zip(in_names, in_rows[i])}
+            row["inputs"] = {name: _show(v) for k, (name, v) in enumerate(zip(in_names, in_rows[i])) if k != clock}
+        if registers and i in registers:
+            row["registers"] = registers[i]
         row["outputs"] = {}
         for name in wrong:
             e = _show(_bus_value(exp_rows[i], cols[name])[0])
             o = _show(_bus_value(obs_rows[i], cols[name])[0])
             row["outputs"][name] = {"expected": e, "observed": o, "ok": i not in wrong[name]}
         rows.append(row)
-    return {"cycles_compared": n,
-            "wrong_cycles": {name: {"count": len(c), "first_cycles": c[:8]} for name, c in wrong.items()},
-            "stimulus_notes": notes, "inputs_logged": bool(in_names), "rows": rows}
+    out = {"cycles_compared": (cycle_of[n - 1] + 1) if n else 0,
+           "wrong_cycles": {name: {"count": len(dict.fromkeys(cycle_of[i] for i in s)),
+                                   "first_cycles": list(dict.fromkeys(cycle_of[i] for i in s))[:8]}
+                            for name, s in wrong.items()},
+           "stimulus_notes": notes, "inputs_logged": bool(in_names), "rows": rows}
+    if registers:
+        out["registers_note"] = ("registers: values of the current design's own registers at each sample, "
+                                 "from simulating it")
+    if clock is not None:
+        out["sampling"] = (f"two samples per clock cycle (after the rising and after the falling edge of "
+                           f"{in_names[clock]}); {n} samples")
+    return out

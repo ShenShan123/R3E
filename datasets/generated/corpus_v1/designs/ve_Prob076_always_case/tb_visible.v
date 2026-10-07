@@ -33,8 +33,8 @@ module r3e_tb;
       data4 = $random(s);
       data5 = $random(s);
       #5;
-      $fdisplay(f, "%0d,%b,%b,%b,%b", i, out[3], out[2], out[1], out[0]);
-      $fdisplay(r3e_stim, "%0d,%b,%b,%b,%b,%b,%b,%b", i, sel, data0, data1, data2, data3, data4, data5);
+      $fdisplay(f, "%0d,%b,%b,%b,%b", $time, out[3], out[2], out[1], out[0]);
+      $fdisplay(r3e_stim, "%0d,%b,%b,%b,%b,%b,%b,%b", $time, sel, data0, data1, data2, data3, data4, data5);
     end
     $fclose(f);
     $fclose(r3e_stim);

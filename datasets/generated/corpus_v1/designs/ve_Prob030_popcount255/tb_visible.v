@@ -15,8 +15,8 @@ module r3e_tb;
     for (i = 0; i < 64; i = i + 1) begin
       in = {$random(s), $random(s), $random(s), $random(s), $random(s), $random(s), $random(s), $random(s)};
       #5;
-      $fdisplay(f, "%0d,%b,%b,%b,%b,%b,%b,%b,%b", i, out[7], out[6], out[5], out[4], out[3], out[2], out[1], out[0]);
-      $fdisplay(r3e_stim, "%0d,%b", i, in);
+      $fdisplay(f, "%0d,%b,%b,%b,%b,%b,%b,%b,%b", $time, out[7], out[6], out[5], out[4], out[3], out[2], out[1], out[0]);
+      $fdisplay(r3e_stim, "%0d,%b", $time, in);
     end
     $fclose(f);
     $fclose(r3e_stim);

@@ -19,7 +19,7 @@ module r3e_tb;
     for (i = 0; i < 160; i = i + 1) begin
       d = $random(s);
       @(negedge clk);
-      $fdisplay(f, "%0d,%b,%b", i, valid_out, dout);
+      $fdisplay(f, "%0d,%b,%b", $time, valid_out, dout);
     end
     $fclose(f);
     $finish;

@@ -1,0 +1,21 @@
+
+I would like you to implement a module named TopModule with the following
+interface. All input and output ports are one bit unless otherwise
+specified.
+
+ - input  clk
+ - input  L
+ - input  q_in
+ - input  r_in
+ - output Q
+
+Consider this Verilog module "full_module":
+
+The parent full_module has inputs r (3 bits), L (one bit), and clk (one bit), and a registered output q (3 bits). On each rising edge of clk, when L is asserted all three bits of q load r. Otherwise, the next q[2] is the XOR of the old q[1] and q[2], the next q[1] is the old q[0], and the next q[0] is the old q[2]. All three updates use the values before the edge.
+
+Note that q[2:0] is three bits wide, representing three flip-flops that can be
+loaded from r when L is asserted. You want to factor full_module into a hierarchical
+design, flipflop and 2:1 multiplexer are in a submodule "TopModule", and that submodule
+will be instantiated three times in full_module code. Create the submodule called "TopModule".
+You do not have to provide the revised full_module.
+

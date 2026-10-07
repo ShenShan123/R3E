@@ -16,7 +16,7 @@ module r3e_tb;
     for (i = 0; i < 160; i = i + 1) begin
       a = $random(s);
       @(negedge clock);
-      $fdisplay(f, "%0d,%b,%b", i, p, q);
+      $fdisplay(f, "%0d,%b,%b", $time, p, q);
     end
     $fclose(f);
     $finish;

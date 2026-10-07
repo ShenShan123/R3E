@@ -1,0 +1,25 @@
+I would like you to implement a module named TopModule with the following
+interface. All input and output ports are one bit unless otherwise
+specified.
+
+ - input  A
+ - input  B
+ - input  Ci
+ - output D
+ - output Co
+
+Implement a full subtractor using a 3-to-8 decoder and necessary logic
+gates. In the full subtractor: A is the minuend (the number being
+subtracted from), B is the subtrahend (the number being subtracted), Ci
+is the borrow input from the lower bit position, D is the difference, and
+Co is the borrow output to the higher bit position.
+
+You are provided with the following 3-to-8 decoder module code, which you
+should include and instantiate in your solution:
+
+
+
+You should instantiate this decoder module in your implementation and use
+it along with logic gates to implement the full subtractor functionality.
+The decoder outputs are active-low, where only one output is low (0) at a
+time based on the input address.

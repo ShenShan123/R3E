@@ -26,7 +26,7 @@ module r3e_tb;
       bump_right = $random(s);
       ground = $random(s);
       @(negedge clk);
-      $fdisplay(f, "%0d,%b,%b,%b", i, walk_left, walk_right, aaah);
+      $fdisplay(f, "%0d,%b,%b,%b", $time, walk_left, walk_right, aaah);
     end
     $fclose(f);
     $finish;

@@ -18,8 +18,8 @@ module r3e_tb;
     rst = 0;
     for (i = 0; i < 64; i = i + 1) begin
       @(negedge clk);
-      $fdisplay(f, "%0d,%b,%b,%b,%b", i, out[3], out[2], out[1], out[0]);
-      $fdisplay(r3e_stim, "%0d", i);
+      $fdisplay(f, "%0d,%b,%b,%b,%b", $time, out[3], out[2], out[1], out[0]);
+      $fdisplay(r3e_stim, "%0d", $time);
     end
     $fclose(f);
     $fclose(r3e_stim);

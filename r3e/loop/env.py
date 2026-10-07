@@ -113,7 +113,8 @@ class ThinkingTransport:
     """
 
     def __init__(self, env: Mapping[str, str], *, key_name: str, url_name: str,
-                 thinking: str, timeout_seconds: float, failure_dir: Path | None = None):
+                 thinking: str, timeout_seconds: float, failure_dir: Path | None = None,
+                 reasoning_log: Path | None = None):
         if thinking not in THINKING_CHOICES or thinking == "default":
             raise ValueError("ThinkingTransport needs disabled/low/high/max")
         self._env = dict(env)
@@ -124,6 +125,10 @@ class ThinkingTransport:
         # only; requests and credentials are never written)
         self.failure_dir = Path(failure_dir) if failure_dir else None
         self.recovered = 0
+        # diagnosis only: each call's reasoning text (returned by the provider
+        # separately from the answer) is appended here; it is never shown to
+        # any agent and never enters memory
+        self.reasoning_log = Path(reasoning_log) if reasoning_log else None
 
     def __call__(self, **request):
         from openai import OpenAI  # imported lazily; same SDK the client uses
@@ -143,6 +148,16 @@ class ThinkingTransport:
             raise OpenAICompatibleProviderViolation(
                 "real provider request failed: " + type(exc).__name__) from exc
         choice = response.choices[0]
+        if self.reasoning_log is not None:
+            reasoning = getattr(choice.message, "reasoning_content", None) or ""
+            self.reasoning_log.parent.mkdir(parents=True, exist_ok=True)
+            with self.reasoning_log.open("a", encoding="utf-8") as log:
+                log.write(json.dumps({
+                    "provider_request_id": str(getattr(response, "id", "") or ""),
+                    "finish_reason": getattr(choice, "finish_reason", None),
+                    "output_tokens": int(getattr(response.usage, "completion_tokens", 0) or 0),
+                    "answer_chars": len(choice.message.content or ""),
+                    "reasoning": reasoning}) + "\n")
         content = recover_json_object(choice.message.content, self)
         return {
             "content": content,
@@ -166,6 +181,7 @@ def build_client(
     thinking: str = "default",
     transport=None,
     failure_dir: Path | None = None,
+    reasoning_log: Path | None = None,
 ) -> OpenAICompatibleJSONClient:
     """OpenAI-compatible client whose credentials come only from ``env``."""
     key_name, url_name, model_name = (
@@ -183,7 +199,7 @@ def build_client(
         if thinking != "default":
             transport = ThinkingTransport(env, key_name=key_name, url_name=url_name,
                                           thinking=thinking, timeout_seconds=timeout_seconds,
-                                          failure_dir=failure_dir)
+                                          failure_dir=failure_dir, reasoning_log=reasoning_log)
     config = OpenAICompatibleClientConfig.from_dict({
         "schema_version": "r3e-openai-compatible-client-config-v1",
         "provider_id": prefix.lower(),

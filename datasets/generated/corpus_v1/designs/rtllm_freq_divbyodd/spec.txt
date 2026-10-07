@@ -1,0 +1,25 @@
+Please act as a professional verilog designer.
+
+A frequency divider that divides the input clock frequency by odd numbers. The module generates a divided clock output by an odd divisor value provided as a parameter.
+
+Module name:
+    freq_divbyodd
+
+Input ports:
+    clk: Input clock signal.
+    rst_n: Active low reset signal that initializes the divider.
+    
+Output ports:
+    clk_div: Divided clock output.  
+
+Implementation:
+
+The module divides the input clock frequency by an odd number defined by the parameter NUM_DIV, which defaults to 5.
+Two counters, cnt1 and cnt2, are used for tracking the rising and falling edges of the clock. Each counter counts from 0 up to NUM_DIV - 1 and then wraps back to 0.
+Two separate clock dividers, clk_div1 and clk_div2, are used for positive and negative edges of the clock, respectively. Each divider output is high during the first half of its counter sequence and low during the remaining counter values. For an odd NUM_DIV, the half count uses integer truncation.
+After each counter wraps to 0, its corresponding divider output starts a new high interval on that clock edge sequence.
+The final divided clock output, clk_div, is derived by logically OR-ing clk_div1 and clk_div2 to account for both clock edges.
+The active low reset signal rst_n asynchronously initializes the counters to 0 and the clock divider outputs to 1.
+
+
+Give me the complete code.

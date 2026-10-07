@@ -34,6 +34,7 @@ class Carrier:
     deps: tuple[Path, ...] = ()
     sim_timeout: float = 7.0
     source: Mapping[str, Any] = field(default_factory=dict)
+    spec: str = ""  # natural-language specification of the design, when the dataset has one
 
 @dataclass(frozen=True)
 class Challenge:
@@ -64,11 +65,17 @@ def _family(design: str) -> str:
 def load_public_manifest(
     manifest: Path, project_root: Path
 ) -> tuple[list[Carrier], list[Challenge]]:
-    """Carriers (one per clean design) and the dataset's buggy challenges."""
+    """Carriers (one per clean design) and the dataset's buggy challenges.
+
+    Rows with ``"eligible": false`` (failed qualification upstream or in
+    conversion, e.g. a reference that does not compile) are skipped.
+    """
     rows = [json.loads(line) for line in Path(manifest).read_text(encoding="utf-8").splitlines() if line.strip()]
     carriers: dict[str, Carrier] = {}
     challenges: list[Challenge] = []
     for row in rows:
+        if row.get("eligible") is False:  # kept in the manifest as a record, never run
+            continue
         golden = row.get("golden_rtl") or row.get("reference_path")
         if not golden or not row.get("tb_sources"):
             continue
@@ -81,6 +88,11 @@ def load_public_manifest(
         key = "|".join([str(golden), *map(str, row["tb_sources"]),
                         hash_payload(golden_path.read_text(encoding="utf-8"))])
         if key not in carriers:
+            spec = ""
+            if row.get("spec"):
+                spec = (project_root / row["spec"]).read_text(encoding="utf-8").strip()
+                if "endmodule" in spec or "```" in spec:  # a spec is prose; code would leak a solution
+                    raise ValueError(f"{row.get('case_id')}: specification contains code")
             carriers[key] = Carrier(
                 carrier_id="CR_" + hash_payload(key).split(":", 1)[1][:12],
                 cluster_id=_family(str(row.get("design", golden_path.stem))),
@@ -90,6 +102,7 @@ def load_public_manifest(
                 deps=tuple(project_root / p for p in row.get("deps") or []),
                 sim_timeout=float(row.get("sim_timeout") or 7.0),
                 source={"benchmark": row.get("benchmark"), "golden": str(golden)},
+                spec=spec,
             )
         carrier = carriers[key]
         buggy_path = project_root / (row.get("buggy_rtl") or row.get("buggy_path") or "")

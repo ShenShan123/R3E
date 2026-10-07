@@ -1,6 +1,6 @@
 # Upstream RTL bug datasets (raw downloads, not committed)
 
-These datasets were downloaded as-is on 2026-10-02, for choosing test suites later. Nothing here is converted or used by the loop yet. Each keeps its upstream license. The contents are git-ignored; only this file is tracked.
+These datasets were downloaded as-is on 2026-10-02. Each keeps its upstream license. The raw contents are git-ignored; only this file is tracked here. ChipBench zero-shot debugging inputs have since been converted into `datasets/chipbench/` and `datasets/manifests/chipbench89.jsonl`; see `datasets/CHIPBENCH.md` for validation and the unqualified cases retained in the manifest.
 
 | Directory | Source | Commit / version | Contents | License |
 |---|---|---|---|---|

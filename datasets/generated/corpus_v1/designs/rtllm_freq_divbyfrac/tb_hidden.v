@@ -15,7 +15,7 @@ module r3e_tb;
     rst_n = 1;
     for (i = 0; i < 160; i = i + 1) begin
       @(negedge clk);
-      $fdisplay(f, "%0d,%b", i, clk_div);
+      $fdisplay(f, "%0d,%b", $time, clk_div);
     end
     $fclose(f);
     $finish;

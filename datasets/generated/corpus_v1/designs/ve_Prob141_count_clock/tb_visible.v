@@ -24,8 +24,8 @@ module r3e_tb;
     for (i = 0; i < 64; i = i + 1) begin
       ena = $random(s);
       @(negedge clk);
-      $fdisplay(f, "%0d,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b", i, pm, hh[7], hh[6], hh[5], hh[4], hh[3], hh[2], hh[1], hh[0], mm[7], mm[6], mm[5], mm[4], mm[3], mm[2], mm[1], mm[0], ss[7], ss[6], ss[5], ss[4], ss[3], ss[2], ss[1], ss[0]);
-      $fdisplay(r3e_stim, "%0d,%b", i, ena);
+      $fdisplay(f, "%0d,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b", $time, pm, hh[7], hh[6], hh[5], hh[4], hh[3], hh[2], hh[1], hh[0], mm[7], mm[6], mm[5], mm[4], mm[3], mm[2], mm[1], mm[0], ss[7], ss[6], ss[5], ss[4], ss[3], ss[2], ss[1], ss[0]);
+      $fdisplay(r3e_stim, "%0d,%b", $time, ena);
     end
     $fclose(f);
     $fclose(r3e_stim);

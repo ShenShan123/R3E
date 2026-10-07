@@ -18,8 +18,8 @@ module r3e_tb;
       in = {$random(s), $random(s), $random(s), $random(s), $random(s), $random(s), $random(s), $random(s), $random(s), $random(s), $random(s), $random(s), $random(s), $random(s), $random(s), $random(s), $random(s), $random(s), $random(s), $random(s), $random(s), $random(s), $random(s), $random(s), $random(s), $random(s), $random(s), $random(s), $random(s), $random(s), $random(s), $random(s)};
       sel = $random(s);
       #5;
-      $fdisplay(f, "%0d,%b,%b,%b,%b", i, out[3], out[2], out[1], out[0]);
-      $fdisplay(r3e_stim, "%0d,%b,%b", i, in, sel);
+      $fdisplay(f, "%0d,%b,%b,%b,%b", $time, out[3], out[2], out[1], out[0]);
+      $fdisplay(r3e_stim, "%0d,%b,%b", $time, in, sel);
     end
     $fclose(f);
     $fclose(r3e_stim);

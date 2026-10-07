@@ -45,6 +45,14 @@ machine-local source manifests to this portable layout. It is a packaging
 utility, not an experiment runner, and requires all source locations to be
 passed explicitly.
 
+## ChipBench debugging inputs
+
+`manifests/chipbench89.jsonl` contains 89 converted zero-shot debugging
+inputs: 68 eligible repair tasks (67 functional, one compile repair) and
+21 rows excluded for incomplete, inconsistent, or specification-conflicting references. All rows remain in the full manifest. See
+[CHIPBENCH.md](CHIPBENCH.md) for conversion, trace format, validation, and
+the source-preserving exception report.
+
 ## Generated carriers
 
 `generated/corpus_v1/` holds the 151 clean designs (VerilogEval v2, RTLLM v2; MIT) with generated testbenches used by the red–blue loop. See `generated/README.md`. It is not a bug benchmark and is not part of the frozen sets above.

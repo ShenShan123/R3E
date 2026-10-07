@@ -19,7 +19,7 @@ module r3e_tb;
       a = $random(s);
       b = $random(s);
       @(negedge clk);
-      $fdisplay(f, "%0d,%b,%b", i, q, state);
+      $fdisplay(f, "%0d,%b,%b", $time, q, state);
     end
     $fclose(f);
     $finish;

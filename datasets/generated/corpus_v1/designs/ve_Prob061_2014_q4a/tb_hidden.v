@@ -24,7 +24,7 @@ module r3e_tb;
       E = $random(s);
       L = $random(s);
       @(negedge clk);
-      $fdisplay(f, "%0d,%b", i, Q);
+      $fdisplay(f, "%0d,%b", $time, Q);
     end
     $fclose(f);
     $finish;

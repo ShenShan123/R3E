@@ -17,7 +17,7 @@ module r3e_tb;
       in = $random(s);
       state = $random(s);
       #5;
-      $fdisplay(f, "%0d,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b", i, next_state[9], next_state[8], next_state[7], next_state[6], next_state[5], next_state[4], next_state[3], next_state[2], next_state[1], next_state[0], out1, out2);
+      $fdisplay(f, "%0d,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b", $time, next_state[9], next_state[8], next_state[7], next_state[6], next_state[5], next_state[4], next_state[3], next_state[2], next_state[1], next_state[0], out1, out2);
     end
     $fclose(f);
     $finish;

@@ -33,8 +33,8 @@ module r3e_tb;
       train_taken = $random(s);
       train_history = $random(s);
       @(negedge clk);
-      $fdisplay(f, "%0d,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b", i, predict_history[31], predict_history[30], predict_history[29], predict_history[28], predict_history[27], predict_history[26], predict_history[25], predict_history[24], predict_history[23], predict_history[22], predict_history[21], predict_history[20], predict_history[19], predict_history[18], predict_history[17], predict_history[16], predict_history[15], predict_history[14], predict_history[13], predict_history[12], predict_history[11], predict_history[10], predict_history[9], predict_history[8], predict_history[7], predict_history[6], predict_history[5], predict_history[4], predict_history[3], predict_history[2], predict_history[1], predict_history[0]);
-      $fdisplay(r3e_stim, "%0d,%b,%b,%b,%b,%b", i, predict_valid, predict_taken, train_mispredicted, train_taken, train_history);
+      $fdisplay(f, "%0d,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b", $time, predict_history[31], predict_history[30], predict_history[29], predict_history[28], predict_history[27], predict_history[26], predict_history[25], predict_history[24], predict_history[23], predict_history[22], predict_history[21], predict_history[20], predict_history[19], predict_history[18], predict_history[17], predict_history[16], predict_history[15], predict_history[14], predict_history[13], predict_history[12], predict_history[11], predict_history[10], predict_history[9], predict_history[8], predict_history[7], predict_history[6], predict_history[5], predict_history[4], predict_history[3], predict_history[2], predict_history[1], predict_history[0]);
+      $fdisplay(r3e_stim, "%0d,%b,%b,%b,%b,%b", $time, predict_valid, predict_taken, train_mispredicted, train_taken, train_history);
     end
     $fclose(f);
     $fclose(r3e_stim);

@@ -11,6 +11,10 @@ lines the bug changed relative to the correct design, and the bug's fix type
 (diff classifier). All of this stays on Red's side: Blue sees only the buggy
 design and its test evidence, as for every challenge.
 
+With ``red_mode`` ``random`` (the baseline) no model is called: each slot
+takes a bug drawn uniformly, with the run's seed, from all unused discovery
+bugs, so nothing of the experience base or of the offer order reaches it.
+
 Referee rules:
 - the choice is one of the offered bugs;
 - a bug is presented at most once per run;
@@ -122,8 +126,11 @@ class PoolCurriculumLoop(CurriculumLoop):
     def __init__(self, *, pool: Sequence[Challenge], **kwargs: Any):
         self.pool = {ch.challenge_id: ch for ch in pool}
         super().__init__(**kwargs)
-        self.red = PoolRed(mode="aware", client=kwargs["red_client"], simulator=self.simulator,
-                           seed=self.config.seed)
+        mode = self.config.red_mode
+        if mode not in ("aware", "random"):
+            raise ValueError("pool mode supports red_mode aware or random")
+        self.red = PoolRed(mode=mode, client=kwargs["red_client"] if mode == "aware" else None,
+                           simulator=self.simulator, seed=self.config.seed)
         self._challenges.update(self.pool)
 
     def _extra_frozen(self) -> dict[str, Any]:
@@ -142,6 +149,10 @@ class PoolCurriculumLoop(CurriculumLoop):
         return {"candidate_id": ch.challenge_id, "design": ch.carrier.cluster_id, "fix_type": fix_type(ch),
                 "failure_profile": profile.to_dict(), "changed_lines": changed_lines(ch)}
 
+    def _random_choice(self, ch: Challenge, r: int, i: int) -> RedProposal:
+        """The baseline's pick: ``available`` is already in a seeded random order."""
+        return RedProposal(_random_record(ch, r, i, self.simulator.stealth(ch.buggy_rtl, ch.carrier)), ch)
+
     def _propose_slots(self, r: int) -> list[_Slot]:
         state, cfg = self.state, self.config
         discovery = {c.cluster_id for c in self.splits["discovery"]}
@@ -153,6 +164,11 @@ class PoolCurriculumLoop(CurriculumLoop):
                                key=lambda ch: hash_payload({"s": self._seed("pool", r, i), "c": ch.challenge_id}))
             if not available:
                 break
+            if self.red.mode == "random":
+                proposal = self._random_choice(available[0], r, i)
+                state.append("red", proposal.record)
+                slots.append(_Slot(proposal.challenge, proposal.record))
+                continue
             open_lins = [lin for lin in lineages(state).values()
                          if lin["status"] in OPEN and lin["lineage_id"] not in self._claimed]
             pursuable = [lin for lin in open_lins if any(
@@ -172,6 +188,15 @@ class PoolCurriculumLoop(CurriculumLoop):
                 if claimed:
                     self._claimed.add(claimed)
         return slots
+
+
+def _random_record(ch: Challenge, r: int, i: int, stealth: Mapping[str, Any]) -> dict[str, Any]:
+    return {"round": r, "mode": "pool_random", "slot": i, "admitted": True, "reason": "admitted",
+            "decision": {"lineage_id": None, "direction": "explore", "reason": "random"},
+            "challenge_id": ch.challenge_id, "carrier_id": ch.carrier.carrier_id,
+            "mutant_hash": hash_payload(ch.buggy_rtl),
+            "chosen": {"hypothesis": "random baseline", "edit_kinds": [f"type:{fix_type(ch)}"],
+                       "edit_text": changed_lines(ch), "stealth": stealth}}
 
 
 def holdout_pool(loop: PoolCurriculumLoop) -> list[Challenge]:

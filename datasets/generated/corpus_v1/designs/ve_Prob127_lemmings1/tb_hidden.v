@@ -22,7 +22,7 @@ module r3e_tb;
       bump_left = $random(s);
       bump_right = $random(s);
       @(negedge clk);
-      $fdisplay(f, "%0d,%b,%b", i, walk_left, walk_right);
+      $fdisplay(f, "%0d,%b,%b", $time, walk_left, walk_right);
     end
     $fclose(f);
     $finish;

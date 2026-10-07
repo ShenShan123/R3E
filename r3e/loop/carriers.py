@@ -82,7 +82,7 @@ def generate_testbench(
     for p in outputs:
         columns += [f"{p.name}[{b}]" for b in range(p.width - 1, -1, -1)] if p.width > 1 else [p.name]
     fmt = ",".join(["%0d"] + ["%b"] * len(columns))
-    args = ", ".join(["i"] + [f"{p.name}[{b}]" if p.width > 1 else p.name
+    args = ", ".join(["$time"] + [f"{p.name}[{b}]" if p.width > 1 else p.name
                                for p in outputs for b in (range(p.width - 1, -1, -1) if p.width > 1 else [0])])
     lines = ["`timescale 1ns/1ps", "module r3e_tb;"]
     if clock:
@@ -115,7 +115,7 @@ def generate_testbench(
         lines += [f'    r3e_stim = $fopen("{stimulus_name}");', f'    $fdisplay(r3e_stim, "{note}");',
                   f'    $fdisplay(r3e_stim, "time,{",".join(p.name for p in inputs)}");']
     stim = ([f'      $fdisplay(r3e_stim, "{",".join(["%0d"] + ["%b"] * len(inputs))}", '
-             f'{", ".join(["i"] + [p.name for p in inputs])});'] if stimulus_name else [])
+             f'{", ".join(["$time"] + [p.name for p in inputs])});'] if stimulus_name else [])
     lines += [f"    {p.name} = 0;" for p in inputs]
     if reset:
         lines.append(f"    {reset} = {reset_on};")
@@ -222,13 +222,24 @@ DEFAULT_CARRIER_MANIFEST = REPO_ROOT / "datasets/generated/corpus_v1/carriers.js
 
 
 def load_carrier_manifest(path: Path) -> list[Carrier]:
-    """Carriers from a manifest; relative paths are relative to the repository root."""
+    """Eligible carriers; relative paths are relative to the repository root.
+
+    Rows marked ``eligible: false`` remain in the manifest for provenance but
+    never enter the Red/Blue pool. Older rows without the field remain eligible.
+    """
     resolve = lambda p: Path(p) if Path(p).is_absolute() else REPO_ROOT / p
     carriers = []
     for line in Path(path).read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
         row = json.loads(line)
+        if row.get("eligible") is False:
+            continue
+        spec = resolve(row["spec"]).read_text(encoding="utf-8").strip() if row.get("spec") else ""
+        if row.get("spec") and not spec:
+            raise ValueError(f"empty specification for {row['carrier_id']}")
+        if "endmodule" in spec or "```" in spec:
+            raise ValueError(f"specification contains code for {row['carrier_id']}")
         carriers.append(Carrier(
             carrier_id=row["carrier_id"],
             cluster_id=row["cluster_id"],
@@ -239,7 +250,6 @@ def load_carrier_manifest(path: Path) -> list[Carrier]:
             deps=tuple(resolve(p) for p in row.get("deps") or []),
             sim_timeout=float(row.get("sim_timeout", 10.0)),
             source=row.get("source") or {},
+            spec=spec,
         ))
     return carriers
-
-

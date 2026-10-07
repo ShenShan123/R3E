@@ -22,7 +22,7 @@ module r3e_tb;
       c = $random(s);
       d = $random(s);
       #5;
-      $fdisplay(f, "%0d,%b,%b", i, out, out_n);
+      $fdisplay(f, "%0d,%b,%b", $time, out, out_n);
     end
     $fclose(f);
     $finish;

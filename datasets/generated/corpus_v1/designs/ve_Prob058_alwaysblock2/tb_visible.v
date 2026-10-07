@@ -23,8 +23,8 @@ module r3e_tb;
       a = $random(s);
       b = $random(s);
       @(negedge clk);
-      $fdisplay(f, "%0d,%b,%b,%b", i, out_assign, out_always_comb, out_always_ff);
-      $fdisplay(r3e_stim, "%0d,%b,%b", i, a, b);
+      $fdisplay(f, "%0d,%b,%b,%b", $time, out_assign, out_always_comb, out_always_ff);
+      $fdisplay(r3e_stim, "%0d,%b,%b", $time, a, b);
     end
     $fclose(f);
     $fclose(r3e_stim);

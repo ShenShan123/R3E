@@ -18,8 +18,8 @@ module r3e_tb;
     for (i = 0; i < 64; i = i + 1) begin
       in = $random(s);
       @(negedge clk);
-      $fdisplay(f, "%0d,%b,%b,%b,%b,%b,%b,%b,%b", i, anyedge[7], anyedge[6], anyedge[5], anyedge[4], anyedge[3], anyedge[2], anyedge[1], anyedge[0]);
-      $fdisplay(r3e_stim, "%0d,%b", i, in);
+      $fdisplay(f, "%0d,%b,%b,%b,%b,%b,%b,%b,%b", $time, anyedge[7], anyedge[6], anyedge[5], anyedge[4], anyedge[3], anyedge[2], anyedge[1], anyedge[0]);
+      $fdisplay(r3e_stim, "%0d,%b", $time, in);
     end
     $fclose(f);
     $fclose(r3e_stim);

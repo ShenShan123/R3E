@@ -24,8 +24,8 @@ module r3e_tb;
     for (i = 0; i < 64; i = i + 1) begin
       pass_request = $random(s);
       @(negedge clk);
-      $fdisplay(f, "%0d,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b", i, clock[7], clock[6], clock[5], clock[4], clock[3], clock[2], clock[1], clock[0], red, yellow, green);
-      $fdisplay(r3e_stim, "%0d,%b", i, pass_request);
+      $fdisplay(f, "%0d,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b", $time, clock[7], clock[6], clock[5], clock[4], clock[3], clock[2], clock[1], clock[0], red, yellow, green);
+      $fdisplay(r3e_stim, "%0d,%b", $time, pass_request);
     end
     $fclose(f);
     $fclose(r3e_stim);

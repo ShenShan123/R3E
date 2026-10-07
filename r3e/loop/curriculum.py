@@ -14,6 +14,14 @@ memory that the loop rewrites from real outcomes:
   could not fix it even with escalation, so it has nothing to learn from;
   teach with a simpler sibling, then step back up).
 
+A bug counts as a weak point only when Blue fails it reproducibly: when
+Blue's run fails, ``confirm_runs`` more runs follow, and at least
+``reproducible_fails`` of all runs must fail (a single failure may be chance:
+the same bug flips between independent runs). Every admitted bug's runs are
+kept in the ``screens`` ledger. With ``red_mode`` ``blind`` or ``random`` Red
+only explores (the same catalog, edit limit and stealth choice, without the
+experience base), the baselines for what adaptation adds.
+
 The runner is only the referee:
 - admission (as in ``red.py``);
 - a variant must sit on a design cluster the lineage has not used, so
@@ -68,6 +76,7 @@ from .qualification import QualificationSet, affected_cases, monitor_usage, qual
 from .memory_usage import record_memory_usage, track_record_view, usage_stats
 from .red import (
     MAX_CANDIDATES,
+    MAX_EDITS,
     RED_AWARE_NOTE,
     RED_SYSTEM,
     RedAgent,
@@ -108,6 +117,8 @@ class CurriculumConfig:
     lineages_offered: int = 4      # weak points shown to Red per call
     gate_window_challenges: int = 12  # the most recent admitted Red bugs are qualification cases
     pending_rounds: int = 2        # rounds a candidate may wait for coverage before rejection
+    confirm_runs: int = 2          # extra Blue runs when its run fails (0: one failure counts)
+    reproducible_fails: int = 2    # failed runs (of 1 + confirm_runs) for a reproducible failure
 
 
 # ------------------------------------------------------------ lineages
@@ -187,6 +198,11 @@ class CurriculumRed(RedAgent):
 
     def propose_curriculum(self, carrier: Carrier, *, state: RunState, offered: Sequence[Mapping[str, Any]],
                            seed: int, round_index: int, context: Mapping[str, Any] | None = None) -> RedProposal:
+        if self.mode != "aware":  # baselines: explore only, without the experience base
+            proposal = self.propose(carrier, state=state, seed=seed, round_index=round_index)
+            proposal.record.update(decision={"lineage_id": None, "direction": "explore", "reason": self.mode},
+                                   offered_lineages=[], **(context or {}))
+            return proposal
         all_sites = enumerate_sites(carrier)
         sites = sample_sites(all_sites, seed=seed)
         # sites of the offered weak points' operators are always offered
@@ -280,8 +296,12 @@ class CurriculumLoop(ClosedLoop):
         self.cross_model_blues = dict(cross_model_blues or {})
         kwargs.setdefault("qualification_challenges", [])  # cases come from Red's variants
         super().__init__(**kwargs)
-        self.red = CurriculumRed(mode="aware", client=kwargs["red_client"], simulator=self.simulator,
-                                 seed=self.config.seed)
+        mode = self.config.red_mode
+        # baselines get the same action space as the curriculum Red: up to
+        # MAX_CANDIDATES candidates of up to MAX_EDITS edits, stealthiest kept
+        self.red = CurriculumRed(mode=mode, client=kwargs["red_client"] if mode != "random" else None,
+                                 simulator=self.simulator, seed=self.config.seed,
+                                 candidates_per_call=MAX_CANDIDATES, random_max_edits=MAX_EDITS)
         self._challenges: dict[str, Challenge] = {}
         self._claimed: set[str] = set()
         records = lambda: {k: track_record_view(v) for k, v in usage_stats(self.state).items()}
@@ -299,6 +319,13 @@ class CurriculumLoop(ClosedLoop):
                      if eligible(lin, carrier, sites) and lin["lineage_id"] not in self._claimed]
         open_lins.sort(key=lambda lin: (lin["steps"][-1]["round"], lin["lineage_id"]))
         return open_lins[: self.curriculum.lineages_offered]
+
+    def _rotation(self) -> list[Carrier]:
+        """Discovery designs in a seeded shuffled order. The split keeps the
+        manifest order, which runs from simple to hard problems: rotating in
+        that order would give the first rounds only the simplest designs."""
+        return sorted(self.splits["discovery"],
+                      key=lambda c: hash_payload({"rotation": self.config.seed, "carrier": c.carrier_id}))
 
     def _gate_pool(self, r: int) -> list[Challenge]:
         """The most recent admitted Red bugs, explorations and follow-ups alike.
@@ -369,7 +396,7 @@ class CurriculumLoop(ClosedLoop):
             result["by_model"] = by_model
         return result
 
-    def _status(self, direction: str, enc, mastery: Mapping[str, Any] | None) -> str:
+    def _status(self, direction: str, enc, mastery: Mapping[str, Any] | None, reproducible: bool) -> str:
         if direction == "simpler":
             return "taught" if (enc.solved_within_budget or enc.solved_by_escalation) else "stuck"
         thr = math.ceil(2 * self.curriculum.mastery_repeats / 3)
@@ -377,13 +404,29 @@ class CurriculumLoop(ClosedLoop):
             if mastery["memory_used"] and mastery["_m"] / mastery["_mn"] > mastery["_n"] / max(1, mastery["_nn"]):
                 return "mastered"
             return "too_easy"
+        if mastery is None and not reproducible:  # no memory to test: Blue fixes it on its own
+            return "too_easy"
         return "learnable" if enc.solved_by_escalation else "stuck"
+
+    def _screen(self, ch: Challenge, enc, pool, r: int) -> tuple[int, int]:
+        """(runs, failed runs): Blue's run, plus ``confirm_runs`` more when it failed."""
+        cur, state = self.curriculum, self.state
+        runs = [enc.solved_within_budget]
+        if not enc.solved_within_budget:
+            for k in range(cur.confirm_runs):
+                again = self.blue.run(ch, mode="matched", pool=pool, inference=state.inference(),
+                                      matcher=state.matcher, seed=self._seed("confirm", ch.challenge_id, k),
+                                      allow_escalation=False, phase="confirmation")
+                state.append("encounters", {"round": r, "encounter": again.record(), "confirmation": True})
+                if not again.inconclusive:
+                    runs.append(again.solved_within_budget)
+        return len(runs), runs.count(False)
 
     # -- round
     def _propose_slots(self, r: int) -> list[_Slot]:
         """Red's bugs for round ``r`` (catalog variants and explorations)."""
         state, cfg = self.state, self.config
-        discovery = self.splits["discovery"]
+        discovery = self._rotation()
         slots: list[_Slot] = []
         for i in range(cfg.proposals_per_round):
             # scheduling (referee): of the next few designs in rotation, use the
@@ -411,7 +454,9 @@ class CurriculumLoop(ClosedLoop):
         # source bugs or source designs (so passing means transfer)
         qset = QualificationSet.build(self.blue, self._gate_pool(r))
         decisions, baseline_cache = [], {}
-        for candidate in state.store.items_with_status("candidate"):
+        # without learning, stored memory is neither qualified nor offered, so a
+        # resumed state directory with memory still runs memory-free
+        for candidate in (state.store.items_with_status("candidate") if cfg.learning else []):
             sources = self._source_challenges(candidate)
             clusters = self._source_clusters(sources)
             keep = [c for c in qset.challenges
@@ -440,7 +485,7 @@ class CurriculumLoop(ClosedLoop):
         outcomes: dict[str, int] = {}
         for slot in slots:
             ch, rec = slot.challenge, slot.record
-            pool = state.active_items()
+            pool = state.active_items() if cfg.learning else []
             enc = self.blue.run(ch, mode="matched", pool=pool, inference=state.inference(),
                                 matcher=state.matcher, seed=self._seed("blue", ch.challenge_id),
                                 allow_escalation=True)
@@ -455,22 +500,31 @@ class CurriculumLoop(ClosedLoop):
                 continue
             decision = rec.get("decision") or {}
             lid, direction = decision.get("lineage_id"), decision.get("direction", "explore")
+            runs, fails = self._screen(ch, enc, pool, r)
+            reproducible = fails >= (cur.reproducible_fails if cur.confirm_runs else 1)
+            state.append("screens", {"round": r, "challenge_id": ch.challenge_id, "carrier_id": ch.carrier.carrier_id,
+                                     "cluster_id": ch.carrier.cluster_id, "red_mode": self.red.mode,
+                                     "lineage_id": lid, "direction": direction,
+                                     "edit_kinds": rec["chosen"]["edit_kinds"], "runs": runs, "fails": fails,
+                                     "reproducible": reproducible,
+                                     "fixed_by_escalation": bool(enc.solved_by_escalation)})
             step = {"round": r, "challenge_id": ch.challenge_id, "carrier_id": ch.carrier.carrier_id,
                     "direction": direction, "hypothesis": rec["chosen"]["hypothesis"],
-                    "edits": rec["chosen"].get("edit_text"), "blue_outcome": _outcome(enc)}
+                    "edits": rec["chosen"].get("edit_text"), "blue_outcome": _outcome(enc),
+                    "blue_runs": runs, "blue_fails": fails}
             if lid is None:
-                if enc.solved_within_budget:
-                    continue  # too simple: not a weak point
+                if not reproducible:
+                    continue  # fixed, or failed only by chance: not a weak point
                 status = "learnable" if enc.solved_by_escalation else "stuck"
                 event = {"event": "open", "lineage_id": "L_" + ch.challenge_id[3:], "round": r,
                          "operators": sorted(set(rec["chosen"]["edit_kinds"])),
                          "cluster_id": ch.carrier.cluster_id, "status": status, "step": step}
             else:
                 mastery = None
-                if direction in ("same", "harder"):
+                if direction in ("same", "harder") and pool:  # nothing to test without memory
                     mastery = self._mastery(ch, enc, r)
                     step["mastery"] = {k: v for k, v in mastery.items() if not k.startswith("_")}
-                status = self._status(direction, enc, mastery)
+                status = self._status(direction, enc, mastery, reproducible)
                 lin = lineages(state)[lid]
                 if status not in CLOSED and lin["generation"] + 1 >= cur.max_generations:
                     status = "unmastered"
@@ -481,7 +535,8 @@ class CurriculumLoop(ClosedLoop):
                                    "direction": direction, "status": event["status"]})
 
         # Blue's memory update: new candidates, qualified next round
-        authored = sorted(self.author.author(state.episodes()),
+        # (no authoring without learning: nothing is ever qualified or offered)
+        authored = sorted(self.author.author(state.episodes()) if cfg.learning else [],
                           key=lambda i: (-i.payload["evidence"]["support"], i.item_id))
         new = []
         for item in authored:

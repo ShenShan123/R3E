@@ -18,7 +18,7 @@ module r3e_tb;
     for (i = 0; i < 160; i = i + 1) begin
       data_in = $random(s);
       @(negedge clk);
-      $fdisplay(f, "%0d,%b", i, sequence_detected);
+      $fdisplay(f, "%0d,%b", $time, sequence_detected);
     end
     $fclose(f);
     $finish;

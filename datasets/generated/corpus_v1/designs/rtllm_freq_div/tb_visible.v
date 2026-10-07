@@ -20,8 +20,8 @@ module r3e_tb;
     RST = 0;
     for (i = 0; i < 64; i = i + 1) begin
       @(negedge CLK_in);
-      $fdisplay(f, "%0d,%b,%b,%b", i, CLK_50, CLK_10, CLK_1);
-      $fdisplay(r3e_stim, "%0d", i);
+      $fdisplay(f, "%0d,%b,%b,%b", $time, CLK_50, CLK_10, CLK_1);
+      $fdisplay(r3e_stim, "%0d", $time);
     end
     $fclose(f);
     $fclose(r3e_stim);

@@ -21,7 +21,7 @@ module r3e_tb;
       train_valid = $random(s);
       train_taken = $random(s);
       @(negedge clk);
-      $fdisplay(f, "%0d,%b,%b", i, state[1], state[0]);
+      $fdisplay(f, "%0d,%b,%b", $time, state[1], state[0]);
     end
     $fclose(f);
     $finish;

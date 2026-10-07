@@ -40,7 +40,7 @@ module r3e_tb;
       p2c = $random(s);
       p2d = $random(s);
       #5;
-      $fdisplay(f, "%0d,%b,%b", i, p1y, p2y);
+      $fdisplay(f, "%0d,%b,%b", $time, p1y, p2y);
     end
     $fclose(f);
     $finish;

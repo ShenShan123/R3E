@@ -24,8 +24,8 @@ module r3e_tb;
       q_in = $random(s);
       r_in = $random(s);
       @(negedge clk);
-      $fdisplay(f, "%0d,%b", i, Q);
-      $fdisplay(r3e_stim, "%0d,%b,%b,%b", i, L, q_in, r_in);
+      $fdisplay(f, "%0d,%b", $time, Q);
+      $fdisplay(r3e_stim, "%0d,%b,%b,%b", $time, L, q_in, r_in);
     end
     $fclose(f);
     $fclose(r3e_stim);

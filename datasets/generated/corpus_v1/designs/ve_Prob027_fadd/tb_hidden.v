@@ -19,7 +19,7 @@ module r3e_tb;
       b = $random(s);
       cin = $random(s);
       #5;
-      $fdisplay(f, "%0d,%b,%b", i, cout, sum);
+      $fdisplay(f, "%0d,%b,%b", $time, cout, sum);
     end
     $fclose(f);
     $finish;

@@ -16,7 +16,7 @@ module r3e_tb;
       a = $random(s);
       b = $random(s);
       #5;
-      $fdisplay(f, "%0d,%b,%b", i, sum, cout);
+      $fdisplay(f, "%0d,%b,%b", $time, sum, cout);
     end
     $fclose(f);
     $finish;

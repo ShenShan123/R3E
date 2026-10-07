@@ -28,7 +28,7 @@ module r3e_tb;
       ack = $random(s);
       state = $random(s);
       #5;
-      $fdisplay(f, "%0d,%b,%b,%b,%b,%b,%b,%b,%b", i, B3_next, S_next, S1_next, Count_next, Wait_next, done, counting, shift_ena);
+      $fdisplay(f, "%0d,%b,%b,%b,%b,%b,%b,%b,%b", $time, B3_next, S_next, S1_next, Count_next, Wait_next, done, counting, shift_ena);
     end
     $fclose(f);
     $finish;

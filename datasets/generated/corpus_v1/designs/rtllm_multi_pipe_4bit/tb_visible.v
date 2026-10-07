@@ -24,8 +24,8 @@ module r3e_tb;
       mul_a = $random(s);
       mul_b = $random(s);
       @(negedge clk);
-      $fdisplay(f, "%0d,%b,%b,%b,%b,%b,%b,%b,%b", i, mul_out[7], mul_out[6], mul_out[5], mul_out[4], mul_out[3], mul_out[2], mul_out[1], mul_out[0]);
-      $fdisplay(r3e_stim, "%0d,%b,%b", i, mul_a, mul_b);
+      $fdisplay(f, "%0d,%b,%b,%b,%b,%b,%b,%b,%b", $time, mul_out[7], mul_out[6], mul_out[5], mul_out[4], mul_out[3], mul_out[2], mul_out[1], mul_out[0]);
+      $fdisplay(r3e_stim, "%0d,%b,%b", $time, mul_a, mul_b);
     end
     $fclose(f);
     $fclose(r3e_stim);

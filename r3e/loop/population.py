@@ -81,6 +81,7 @@ def attempt_record(*, challenge, profile: Mapping[str, Any], record: Mapping[str
                      "wrong_cycles": {k: v.get("count") for k, v in ((window or {}).get("wrong_cycles") or {}).items()},
                      "cycles_compared": (window or {}).get("cycles_compared")},
         "reward": reward(tier, record.get("hidden"), window),
+        "cost": {"tokens": dict(record.get("tokens") or {}), "seconds": record.get("seconds")},
         "structure": None,
     }
     if rtl is not None:

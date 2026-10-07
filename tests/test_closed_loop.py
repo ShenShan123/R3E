@@ -11,7 +11,7 @@ import pytest
 from r3e.knowledge import BugTypeInference, KnowledgeMatcher
 from r3e.loop.blue import BlueConfig, BlueRunner
 from r3e.loop.budget import BudgetedClient, CallBudgetExceeded
-from r3e.loop.corpus import load_public_manifest, split_by_cluster
+from r3e.loop.corpus import Carrier, load_public_manifest, split_by_cluster
 from r3e.loop.env import LlmEnvError, build_client, load_llm_env
 from r3e.loop.evaluate import evaluate_holdout
 from r3e.loop.fakes import (
@@ -87,9 +87,9 @@ def test_call_budget_refuses_before_sending():
 
     budget = BudgetedClient(_client(transport), max_calls=1)
     with budget.in_phase("red"):
-        budget.complete_json(messages=[{"role": "user", "content": "{}"}], seed=1)
+        budget.complete_json(messages=[{"role": "user", "content": "Return a JSON object: {}"}], seed=1)
     with pytest.raises(CallBudgetExceeded):
-        budget.complete_json(messages=[{"role": "user", "content": "{}"}], seed=1)
+        budget.complete_json(messages=[{"role": "user", "content": "Return a JSON object: {}"}], seed=1)
     assert len(sent) == 1
     assert budget.report()["learning"]["calls"] == 1
 
@@ -264,7 +264,7 @@ def test_failed_calls_still_count_tokens_and_sign_test():
 
     budget = BudgetedClient(_client(transport), max_calls=3)
     with budget.in_phase("red"), pytest.raises(OpenAICompatibleEmptyContentViolation) as err:
-        budget.complete_json(messages=[{"role": "user", "content": "{}"}], seed=1)
+        budget.complete_json(messages=[{"role": "user", "content": "Return a JSON object: {}"}], seed=1)
     assert err.value.diagnostics["finish_reason"] == "length"
     red = budget.report()["by_phase"]["red"]
     assert red["calls"] == 1 and red["failed_calls"] == 1 and red["output"] == 8192
@@ -300,10 +300,10 @@ def test_thinking_setting_is_bound_and_red_shares_the_budget():
     shared = BudgetedClient(_client(transport), max_calls=2)
     red_budget = shared.sibling(_client(transport))
     with red_budget.in_phase("red"):
-        red_budget.complete_json(messages=[{"role": "user", "content": "{}"}], seed=1)
-    shared.complete_json(messages=[{"role": "user", "content": "{}"}], seed=1)
+        red_budget.complete_json(messages=[{"role": "user", "content": "Return a JSON object: {}"}], seed=1)
+    shared.complete_json(messages=[{"role": "user", "content": "Return a JSON object: {}"}], seed=1)
     with pytest.raises(CallBudgetExceeded):
-        red_budget.complete_json(messages=[{"role": "user", "content": "{}"}], seed=1)
+        red_budget.complete_json(messages=[{"role": "user", "content": "Return a JSON object: {}"}], seed=1)
     assert shared.report()["by_phase"]["red"]["calls"] == 1 and shared.total_calls == 2
 
 
@@ -421,9 +421,9 @@ def test_escalation_gets_its_own_output_cap():
     client = build_client({"DEEPSEEK_MODEL": "m"}, transport=transport, maximum_output_tokens=32768)
     budget = BudgetedClient(client, max_calls=5)
     budget.output_caps = {"blue_inference": 8192, "escalation": 32768}
-    budget.complete_json(messages=[{"role": "user", "content": "{}"}], seed=1)
+    budget.complete_json(messages=[{"role": "user", "content": "Return a JSON object: {}"}], seed=1)
     with budget.in_phase("escalation"):
-        budget.complete_json(messages=[{"role": "user", "content": "{}"}], seed=1)
+        budget.complete_json(messages=[{"role": "user", "content": "Return a JSON object: {}"}], seed=1)
     assert seen == [8192, 32768]
 
 
@@ -577,17 +577,269 @@ def test_population_ledger_records_every_branch_and_eligibility_rules(corpus, tm
     assert eligible(records, now_round=10, max_age=6) == []
 
 
+_COUNTER = """module top(input clk, input rst, output out);
+  reg [1:0] count;
+  always @(posedge clk) count <= rst ? 2'd0 : count + 2'd1;
+  assign out = (count == 2'd%s);
+endmodule
+"""
+_COUNTER_TB = """`timescale 1ns/1ps
+module tb;
+  reg clk = 0, rst = 1;
+  wire out;
+  integer f;
+  top dut(.clk(clk), .rst(rst), .out(out));
+  always #5 clk = ~clk;
+  initial begin
+    f = $fopen("trace_visible.txt", "w");
+    $fwrite(f, "time,out\\n");
+    #12 rst = 0;
+    #120 $fclose(f);
+    $finish;
+  end
+  always @(posedge clk) %s(f, "%%0d,%%b", %s, out);
+endmodule
+"""
+
+
 @needs_icarus
-def test_structural_view_reaches_blue_only_when_switched_on(corpus, tmp_path):
-    carriers, public = corpus
-    ch = next(c for c in public if c.provenance["design"] == "flip_flop__wadden_buggy1")
+@pytest.mark.parametrize("sampling,time,shown", [("$fstrobe", "$time", True),     # end of the time step
+                                                 ("$fdisplay", "$time", True),    # before the step's updates
+                                                 ("$fstrobe", "0", False)])       # no time per sample
+def test_register_trace_is_given_only_when_aligned_with_the_logged_outputs(tmp_path, sampling, time, shown):
+    tb = tmp_path / "tb.v"
+    tb.write_text(_COUNTER_TB % (sampling, time))
+    carrier = Carrier(carrier_id="c", cluster_id="c", clean_rtl=_COUNTER % "3", top_module="top", visible_tb=(tb,))
+    sim = Simulator(tmp_path / "sim")
+    plain = sim.verdict(_COUNTER % "2", carrier)
+    traced = sim.verdict(_COUNTER % "2", carrier, registers=True)
+    assert plain.tier == traced.tier == "visible_fail"
+    rows = traced.window["rows"]
+    # without a simulation time per sample the dump cannot be aligned, so no values are given
+    assert all("registers" in r for r in rows) is shown and ("registers_note" in traced.window) is shown
+    assert {k: v for k, v in traced.window.items() if k not in {"rows", "registers_note"}} == \
+        {k: v for k, v in plain.window.items() if k != "rows"}
+    if shown:
+        for r in rows:  # out = (count == 2): the trace shows the count that explains each output
+            assert (r["registers"]["count"] == "10") == (r["outputs"]["out"]["observed"] == "1")
+
+
+@needs_icarus
+def test_register_trace_reaches_blue_only_when_switched_on(tmp_path):
+    _, bugs = load_public_manifest(ROOT / "datasets/manifests/chipbench89.jsonl", ROOT)
+    bug = next(b for b in bugs if b.challenge_id == "chipbench:state_machine:Prob020_write_state_machine_two_stage")
     for on in (False, True):
         seen = []
-        fake = FakeBlueTransport({hash_payload(ch.buggy_rtl): ch.carrier.clean_rtl}, succeed=lambda u, n: True)
-        runner = BlueRunner(json_client=_client(lambda **r: (seen.append(json.loads(r["messages"][-1]["content"]))
-                                                             or fake(**r))),
-                            simulator=Simulator(tmp_path / str(on)), project_root=ROOT,
-                            config=BlueConfig(structural_view=on), max_calls=3)
-        runner.run(ch, mode="none", pool=[], inference=BugTypeInference(), matcher=KnowledgeMatcher(), seed=1,
+        fake = FakeBlueTransport({hash_payload(bug.buggy_rtl): bug.carrier.clean_rtl}, succeed=lambda u, n: True)
+
+        def transport(fake=fake, **request):
+            seen.append(json.loads(request["messages"][-1]["content"]))
+            return fake(**request)
+        runner = BlueRunner(json_client=_client(transport), simulator=Simulator(tmp_path / str(on)), project_root=ROOT,
+                            config=BlueConfig(register_trace=on), max_calls=3)
+        runner.run(bug, mode="none", pool=[], inference=BugTypeInference(), matcher=KnowledgeMatcher(), seed=1,
                    allow_escalation=False)
-        assert ("structural_view" in seen[0]["current_failure_evidence"]) is on
+        rows = seen[0]["current_failure_evidence"]["initial_visible_test_failure"]["cycle_window"]["rows"]
+        assert all(("registers" in r) is on for r in rows)
+        if on:
+            assert rows[0]["registers"]["current_state"].startswith("S")  # state values carry their names
+
+
+def test_manifest_rows_marked_ineligible_are_skipped(tmp_path):
+    rows = [json.loads(l) for l in (ROOT / "datasets/manifests/cirfix39.jsonl").read_text().splitlines()[:3]]
+    rows[1]["eligible"] = False
+    manifest = tmp_path / "m.jsonl"
+    manifest.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    _, bugs = load_public_manifest(manifest, ROOT)
+    ids = {b.challenge_id for b in bugs}
+    assert str(rows[1]["case_id"]) not in ids and str(rows[0]["case_id"]) in ids
+
+
+@needs_icarus
+def test_no_evidence_mode_hides_the_test_details(corpus, tmp_path):
+    carriers, public = corpus
+    ch = next(c for c in public if c.provenance["design"] == "flip_flop__wadden_buggy1")
+    seen = []
+    fake = FakeBlueTransport({hash_payload(ch.buggy_rtl): ch.carrier.clean_rtl}, succeed=lambda u, n: n >= 1)
+    runner = BlueRunner(json_client=_client(lambda **r: (seen.append(json.loads(r["messages"][-1]["content"]))
+                                                         or fake(**r))),
+                        simulator=Simulator(tmp_path), project_root=ROOT,
+                        config=BlueConfig(evidence="none"), max_calls=3)
+    runner.run(ch, mode="none", pool=[], inference=BugTypeInference(), matcher=KnowledgeMatcher(), seed=1,
+               allow_escalation=False)
+    for user in seen:
+        text = json.dumps(user["current_failure_evidence"])
+        assert "cycle_window" not in text and "first_divergences" not in text and "expected" not in text
+        assert user["current_failure_evidence"]["initial_visible_test_failure"]["stage"] == "functional"
+
+
+@needs_icarus
+def test_each_repair_records_calls_tokens_time_and_memory(corpus, tmp_path):
+    loop, state, blue, splits, sim = _loop(corpus, tmp_path, rounds=1, succeed=lambda u, n: n >= 1)
+    loop.run()
+    encounters = [row["encounter"] for row in state.read("encounters")]
+    for enc in encounters:
+        acc = enc["accounting"]
+        assert acc["llm_calls"] == len(enc["attempts"])
+        assert acc["input_tokens"] == 100 * acc["llm_calls"] and acc["output_tokens"] == 40 * acc["llm_calls"]
+        assert acc["memory_delivered"] is False and acc["memory_items"] == []
+        if acc["fixed"]:
+            assert acc["fixed_at_attempt"] == 2  # scripted: the second attempt succeeds
+    assert all(r["cost"]["tokens"] == {"input": 100, "output": 40} for r in state.read("population"))
+    from experiments.loop_probes.repair_costs import repairs, summary
+    table = summary(repairs(state.root))
+    assert table["round 0"]["repairs"] == len(encounters)
+
+
+@needs_icarus
+def test_specification_reaches_blue_only_when_the_dataset_has_one(corpus, tmp_path):
+    all_rows = [json.loads(l) for l in (ROOT / "datasets/manifests/cirfix39.jsonl").read_text().splitlines() if l.strip()]
+    rows = [all_rows[0], next(r for r in all_rows if r["golden_rtl"] != all_rows[0]["golden_rtl"])]  # two designs
+    spec = tmp_path / "spec.txt"
+    spec.write_text("The module counts up and asserts overflow when it wraps.")
+    rows[0]["spec"] = str(spec)
+    manifest = tmp_path / "m.jsonl"
+    manifest.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    _, bugs = load_public_manifest(manifest, ROOT)
+    seen = {}
+    for bug in bugs:
+        fake = FakeBlueTransport({hash_payload(bug.buggy_rtl): bug.carrier.clean_rtl}, succeed=lambda u, n: True)
+        def transport(fake=fake, cid=bug.challenge_id, **request):
+            seen.setdefault(cid, json.loads(request["messages"][-1]["content"]))
+            return fake(**request)
+        runner = BlueRunner(json_client=_client(transport), simulator=Simulator(tmp_path / bug.challenge_id),
+                            project_root=ROOT, max_calls=4)
+        runner.run(bug, mode="none", pool=[], inference=BugTypeInference(), matcher=KnowledgeMatcher(), seed=1,
+                   allow_escalation=False)
+    with_spec, without = seen[str(rows[0]["case_id"])], seen[str(rows[1]["case_id"])]
+    assert with_spec["specification"] == spec.read_text()
+    assert "specification" not in without  # no spec: the request is unchanged
+    spec.write_text("module x; endmodule")  # code in a spec would leak a solution
+    with pytest.raises(ValueError, match="specification contains code"):
+        load_public_manifest(manifest, ROOT)
+
+
+def test_evidence_window_labels_clock_cycles_and_edges():
+    from r3e.knowledge.feedback import evidence_window
+    expected = "time,q\n" + "\n".join(f"{i},{(i // 2) % 2}" for i in range(12))
+    observed = "time,q\n" + "\n".join(f"{i},{(i // 2) % 2 if i < 6 else 1 - (i // 2) % 2}" for i in range(12))
+    stimulus = "#reset note\ntime,clk,d\n" + "\n".join(f"{i},{1 - i % 2},{i % 3 % 2}" for i in range(12))
+    w = evidence_window(expected, observed, stimulus)
+    assert w["cycles_compared"] == 6 and "two samples per clock cycle" in w["sampling"]
+    assert w["wrong_cycles"]["q"] == {"count": 3, "first_cycles": [3, 4, 5]}
+    assert all("edge" in r and "clk" not in r["inputs"] for r in w["rows"])
+    assert w["rows"][0]["edge"] == "rising" and w["rows"][1]["edge"] == "falling"
+
+
+def test_an_unknown_phase_stops_the_run_instead_of_counting_as_a_failed_repair(corpus, tmp_path):
+    carriers, public = corpus
+    ch = next(c for c in public if c.provenance["design"] == "flip_flop__wadden_buggy1")
+    fake = FakeBlueTransport({hash_payload(ch.buggy_rtl): ch.carrier.clean_rtl})
+    runner = BlueRunner(json_client=_client(fake), simulator=Simulator(tmp_path), project_root=ROOT, max_calls=3)
+    with pytest.raises(ValueError, match="unknown phase"):
+        runner.run(ch, mode="none", pool=[], inference=BugTypeInference(), matcher=KnowledgeMatcher(), seed=1,
+                   allow_escalation=False, phase="no_such_phase")
+    assert not fake.requests
+
+
+def test_text_edits_apply_exactly_once_or_fail_with_the_reason():
+    from r3e.loop.blue_provider import BlueOutputViolation, EditNotApplicable, apply_text_edits
+    src = "module m(input a, output y);\n  assign y = a;\nendmodule\n"
+    out = apply_text_edits(src, [{"find": "assign y = a;", "replace": "assign y = ~a;"},
+                                 {"find": "", "replace": "module helper(); endmodule"}])
+    assert "assign y = ~a;" in out and out.rstrip().endswith("module helper(); endmodule")
+    # whitespace in find may differ from the source
+    assert "assign y = ~a;" in apply_text_edits(src, [{"find": "assign  y =\n a;", "replace": "assign y = ~a;"}])
+    assert "assign" not in apply_text_edits(src, [{"find": "  assign y = a;\n", "replace": ""}])  # deletion
+    with pytest.raises(EditNotApplicable, match="edit 0: find text not found"):
+        apply_text_edits(src, [{"find": "assign z = a;", "replace": ""}])
+    with pytest.raises(EditNotApplicable, match="found 2 times"):
+        apply_text_edits(src + src, [{"find": "assign y = a;", "replace": ""}])
+    with pytest.raises(BlueOutputViolation, match="find and replace"):
+        apply_text_edits(src, [{"find": "a"}])
+
+
+@needs_icarus
+def test_blue_edit_answers_repair_and_bad_edits_are_reported_back(corpus, tmp_path):
+    from r3e.loop.fakes import _reply
+    carriers, public = corpus
+    ch = next(c for c in public if c.provenance["design"] == "flip_flop__wadden_buggy1")
+    import difflib
+    bug, ref = ch.buggy_rtl.splitlines(keepends=True), ch.carrier.clean_rtl.splitlines(keepends=True)
+    fix_edits = [{"find": "".join(bug[a:b]), "replace": "".join(ref[c:d])}
+                 for tag, a, b, c, d in difflib.SequenceMatcher(None, bug, ref, autojunk=False).get_opcodes()
+                 if tag == "replace" and "".join(bug[a:b]).strip()][::-1]
+    assert fix_edits and all(ch.buggy_rtl.count(e["find"]) == 1 for e in fix_edits)
+    seen = []
+
+    def transport(**request):
+        user = json.loads(request["messages"][-1]["content"])
+        seen.append(user)
+        edits = [{"find": "no such text", "replace": ""}] if len(seen) == 1 else fix_edits
+        return _reply({"edits": edits, "edit": "scripted edit"}, len(seen))
+    runner = BlueRunner(json_client=_client(transport), simulator=Simulator(tmp_path), project_root=ROOT,
+                        config=BlueConfig(answer_format="edits"), max_calls=5)
+    enc = runner.run(ch, mode="none", pool=[], inference=BugTypeInference(), matcher=KnowledgeMatcher(), seed=1,
+                     allow_escalation=False)
+    assert enc.solved_within_budget and len(enc.repair_attempts) == 2
+    assert enc.attempts[0]["verdict_tier"] == "compile_fail" and enc.attempts[1]["answer_form"] == "edits"
+    told = seen[1]["current_failure_evidence"]["previous_attempts"][0]["visible_feedback"]["message"]
+    assert "find text not found" in told  # Blue learns why its edit did not apply
+    assert "edits" in seen[0]["required_output_schema"] and "Keep the module names" in seen[0]["lens_instruction"]
+
+
+def test_full_answer_format_keeps_the_original_request():
+    from r3e.loop.blue_provider import SYSTEM_PROMPT, BlueProvider
+    sent = {}
+
+    class Client:
+        def complete_json(self, *, messages, seed):
+            sent["messages"] = messages
+            return {"result": {"replacement_rtl": "module m(); endmodule", "edit": "x"}, "raw_response_hash": "h",
+                    "input_tokens": 1, "output_tokens": 1, "request_hash": "r"}
+    out = BlueProvider(Client()).generate_candidate(
+        evidence={}, artifact={"buggy_rtl_source": "module m(); endmodule"}, slot={"candidate_seed": 1, "lens_id": "l"},
+        lens_instruction="i", prompt_hash="p", candidate_id="c")
+    user = json.loads(sent["messages"][1]["content"])
+    assert sent["messages"][0]["content"] == SYSTEM_PROMPT and "edits" not in json.dumps(user["required_output_schema"])
+    assert out["patch_payload"]["answer_form"] == "full"
+
+
+def test_a_json_request_without_the_word_json_is_refused_before_any_call():
+    sent = []
+    budget = BudgetedClient(_client(lambda **r: sent.append(r) or {}), max_calls=5)
+    with pytest.raises(ValueError, match="mention 'json'"):
+        budget.complete_json(messages=[{"role": "system", "content": "Return {a, b}."},
+                                       {"role": "user", "content": "{}"}], seed=1)
+    assert not sent and budget.total_calls == 0
+
+
+_COUNT = """module top(input clk, input rst, output reg [3:0] q, output hit);
+  always @(posedge clk) q <= rst ? 4'd0 : q + 4'd1;
+  assign hit = (q == 4'd%d);
+endmodule
+"""
+
+
+@needs_icarus
+def test_repair_verification_separates_passing_the_test_from_matching_the_reference(tmp_path):
+    from experiments.loop_probes.repair_verify import bounded_equivalence, random_simulation, summarise
+    carrier = Carrier(carrier_id="c", cluster_id="c", clean_rtl=_COUNT % 9, top_module="top", visible_tb=())
+    same = (_COUNT % 9).replace("q + 4'd1", "4'd1 + q")  # rewritten, equivalent
+    late = _COUNT % 11                                     # differs only when q reaches 9 or 11
+    sim = Simulator(tmp_path / "sim")
+    for name, cand, expected in (("same", same, "no_mismatch_found"), ("late", late, "mismatch_found")):
+        work = tmp_path / name
+        work.mkdir()
+        methods = [random_simulation(carrier.clean_rtl, cand, carrier, sim, seeds=[1], cycles=40, work=work),
+                   bounded_equivalence(carrier.clean_rtl, cand, carrier, depth=14, work=work)]
+        assert summarise(methods) == expected, methods
+        if expected == "mismatch_found":
+            assert all(m["outcome"] == "mismatch" for m in methods)
+            assert methods[0]["counterexample"]["signal"] == "hit"
+        else:
+            assert methods[1]["outcome"] == "no_mismatch_within_bound" and methods[1]["scope"]["steps"] == 14
+    shallow = tmp_path / "shallow"
+    shallow.mkdir()  # a bound shorter than the divergence finds nothing: the scope says how far it looked
+    assert bounded_equivalence(carrier.clean_rtl, late, carrier, depth=5, work=shallow)["outcome"] == \
+        "no_mismatch_within_bound"

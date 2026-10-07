@@ -1,0 +1,8 @@
+
+Consider the following implementation of an 8-bit 2-to-1 mux:
+
+The supplied buggy example is named TopModule. Its inputs are sel (one bit), a (8 bits), and b (8 bits); the example declares out as one bit. It drives out with the bitwise OR of two terms: the bitwise complement of sel AND a, and sel AND b. This describes the supplied faulty implementation, not a requirement to preserve its output width or expression.
+
+Unfortunately, this module has a bug. Implement a new version of this
+module that fixes the bug.
+

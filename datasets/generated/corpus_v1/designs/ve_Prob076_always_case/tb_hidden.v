@@ -30,7 +30,7 @@ module r3e_tb;
       data4 = $random(s);
       data5 = $random(s);
       #5;
-      $fdisplay(f, "%0d,%b,%b,%b,%b", i, out[3], out[2], out[1], out[0]);
+      $fdisplay(f, "%0d,%b,%b,%b,%b", $time, out[3], out[2], out[1], out[0]);
     end
     $fclose(f);
     $finish;

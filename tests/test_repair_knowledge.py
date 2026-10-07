@@ -341,11 +341,12 @@ def test_ternary_condition_in_assign_is_a_control_dependency():
     assert not plain.cone("y")["has_control_dependency"]
 
 
-def test_structural_view_states_the_failing_outputs_structure_without_advice():
-    from r3e.knowledge.structural_view import build_structural_view
+def test_register_trace_helpers_read_the_cone_the_dump_and_state_names():
+    from r3e.knowledge.register_trace import cone_registers, inject_dump, parameter_values, parse_vcd, show, value_at
     rtl = """module m(input clk, input areset, input in, output out);
-  parameter A=0, B=1;
-  reg state, next;
+  parameter A=0, B=2'd1;
+  reg [1:0] state, next;
+  reg [3:0] unrelated;
   always @(*) begin
     case (state)
       A: next = in ? A : B;
@@ -356,19 +357,34 @@ def test_structural_view_states_the_failing_outputs_structure_without_advice():
     if (areset) state <= B;
     else state <= next;
   end
+  always @(posedge clk) unrelated <= unrelated + 1;
   assign out = (state == B);
 endmodule
 """
-    view = build_structural_view(rtl, ["out"])
-    out = view["failing_outputs"]["out"]
-    assert out["driven_by"] == "combinational"
-    assert out["state_registers_in_cone"] == ["state"] and "in" in out["inputs_in_cone"]
-    assert any(s["assigns"] == "state" and s["block"] == "sequential" and "areset" in s["guarded_by"]
-               for s in view["statements"])
-    assert out["statement_lines"][0] == 14 and view["statements"][0]["assigns"] == "out"
-    shared = build_structural_view("module d(input a, b, output y1, y2);\n  assign {y1, y2} = {a, b};\nendmodule\n",
-                                   ["y1", "y2"])
-    assert len(shared["statements"]) == 1  # a statement shared by two outputs is listed once
-    assert shared["failing_outputs"]["y1"]["statement_lines"] == shared["failing_outputs"]["y2"]["statement_lines"]
-    text = json.dumps(view).lower()
-    assert not any(word in text for word in ("should", "fix", "likely", "suggest"))
+    regs, state = cone_registers(rtl, ["out"])
+    assert regs == ["state"] and state == {"state"}  # only registers driving the failing output
+    assert "$dumpvars(0, state, out); end\nendmodule" in inject_dump(rtl, "m", regs, ["out"])
+    vcd = "$var reg 2 ! state [1:0] $end\n$var wire 1 \" out $end\n#0\nb1 !\n1\"\n#10\nb0 !\n0\"\n#15\nbx !\n"
+    signals = parse_vcd(vcd)
+    assert value_at(signals["state"], 9) == "01" and value_at(signals["state"], 10) == "00"
+    assert value_at(signals["out"], 12) == "0" and value_at(signals["state"], 15) == "xx"
+    names = parameter_values(rtl)
+    assert show("01", names) == "B (01)" and show("01") == "01" and show("x1", names) == "x1"
+
+
+def test_rename_keeps_ports_parameters_and_connections_and_drops_comments():
+    from r3e.knowledge.rename import rename_internal_signals
+    src = """module top(input clk, input [3:0] d, output reg [3:0] q);
+  parameter W = 4; // width
+  reg [W-1:0] acc, tmp; /* block
+  comment */
+  wire carry;
+  sub u0(.carry(carry), .x(acc));
+  always @(posedge clk) begin acc <= d + tmp; q <= acc; end
+endmodule
+"""
+    out, mapping = rename_internal_signals(src)
+    assert set(mapping) == {"acc", "tmp", "carry"}
+    assert "module top(input clk, input [3:0] d, output reg [3:0] q)" in out and "parameter W = 4;" in out
+    assert ".carry(" + mapping["carry"] + ")" in out and ".x(" + mapping["acc"] + ")" in out
+    assert "width" not in out and "comment" not in out and "acc" not in out.replace(".x", "")

@@ -18,7 +18,7 @@ module r3e_tb;
       load = $random(s);
       data = $random(s);
       @(negedge clk);
-      $fdisplay(f, "%0d,%b", i, tc);
+      $fdisplay(f, "%0d,%b", $time, tc);
     end
     $fclose(f);
     $finish;

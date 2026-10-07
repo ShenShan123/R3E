@@ -15,7 +15,7 @@ module r3e_tb;
     for (i = 0; i < 160; i = i + 1) begin
       in = $random(s);
       @(negedge clk);
-      $fdisplay(f, "%0d,%b,%b,%b,%b,%b,%b,%b,%b", i, pedge[7], pedge[6], pedge[5], pedge[4], pedge[3], pedge[2], pedge[1], pedge[0]);
+      $fdisplay(f, "%0d,%b,%b,%b,%b,%b,%b,%b,%b", $time, pedge[7], pedge[6], pedge[5], pedge[4], pedge[3], pedge[2], pedge[1], pedge[0]);
     end
     $fclose(f);
     $finish;

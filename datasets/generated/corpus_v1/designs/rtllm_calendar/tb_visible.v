@@ -20,8 +20,8 @@ module r3e_tb;
     RST = 0;
     for (i = 0; i < 64; i = i + 1) begin
       @(negedge CLK);
-      $fdisplay(f, "%0d,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b", i, Hours[5], Hours[4], Hours[3], Hours[2], Hours[1], Hours[0], Mins[5], Mins[4], Mins[3], Mins[2], Mins[1], Mins[0], Secs[5], Secs[4], Secs[3], Secs[2], Secs[1], Secs[0]);
-      $fdisplay(r3e_stim, "%0d", i);
+      $fdisplay(f, "%0d,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b", $time, Hours[5], Hours[4], Hours[3], Hours[2], Hours[1], Hours[0], Mins[5], Mins[4], Mins[3], Mins[2], Mins[1], Mins[0], Secs[5], Secs[4], Secs[3], Secs[2], Secs[1], Secs[0]);
+      $fdisplay(r3e_stim, "%0d", $time);
     end
     $fclose(f);
     $fclose(r3e_stim);

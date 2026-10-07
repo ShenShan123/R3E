@@ -17,7 +17,7 @@ module r3e_tb;
       a = $random(s);
       b = $random(s);
       #5;
-      $fdisplay(f, "%0d,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b", i, out_or_bitwise[2], out_or_bitwise[1], out_or_bitwise[0], out_or_logical, out_not[5], out_not[4], out_not[3], out_not[2], out_not[1], out_not[0]);
+      $fdisplay(f, "%0d,%b,%b,%b,%b,%b,%b,%b,%b,%b,%b", $time, out_or_bitwise[2], out_or_bitwise[1], out_or_bitwise[0], out_or_logical, out_not[5], out_not[4], out_not[3], out_not[2], out_not[1], out_not[0]);
     end
     $fclose(f);
     $finish;

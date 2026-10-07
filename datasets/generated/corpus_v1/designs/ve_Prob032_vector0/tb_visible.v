@@ -18,8 +18,8 @@ module r3e_tb;
     for (i = 0; i < 64; i = i + 1) begin
       vec = $random(s);
       #5;
-      $fdisplay(f, "%0d,%b,%b,%b,%b,%b,%b", i, outv[2], outv[1], outv[0], o2, o1, o0);
-      $fdisplay(r3e_stim, "%0d,%b", i, vec);
+      $fdisplay(f, "%0d,%b,%b,%b,%b,%b,%b", $time, outv[2], outv[1], outv[0], o2, o1, o0);
+      $fdisplay(r3e_stim, "%0d,%b", $time, vec);
     end
     $fclose(f);
     $fclose(r3e_stim);

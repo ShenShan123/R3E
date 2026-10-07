@@ -24,8 +24,8 @@ module r3e_tb;
       c = $random(s);
       d = $random(s);
       #5;
-      $fdisplay(f, "%0d,%b", i, q);
-      $fdisplay(r3e_stim, "%0d,%b,%b,%b,%b", i, a, b, c, d);
+      $fdisplay(f, "%0d,%b", $time, q);
+      $fdisplay(r3e_stim, "%0d,%b,%b,%b,%b", $time, a, b, c, d);
     end
     $fclose(f);
     $fclose(r3e_stim);

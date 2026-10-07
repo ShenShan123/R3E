@@ -16,7 +16,7 @@ module r3e_tb;
       ring = $random(s);
       vibrate_mode = $random(s);
       #5;
-      $fdisplay(f, "%0d,%b,%b", i, ringer, motor);
+      $fdisplay(f, "%0d,%b,%b", $time, ringer, motor);
     end
     $fclose(f);
     $finish;

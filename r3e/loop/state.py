@@ -20,7 +20,7 @@ from r3e.protocol.hashing import atomic_write_json, read_json
 from r3e.protocol.ledger import append_ledger, read_ledger
 
 
-LEDGERS = ("episodes", "encounters", "red", "qualification", "monitor", "rounds", "evaluation", "calls", "lineages", "memory_usage", "population")
+LEDGERS = ("episodes", "encounters", "red", "qualification", "monitor", "rounds", "evaluation", "calls", "lineages", "memory_usage", "population", "screens")
 
 
 @dataclass

@@ -15,7 +15,7 @@ module r3e_tb;
       a = $random(s);
       b = $random(s);
       #5;
-      $fdisplay(f, "%0d,%b", i, out);
+      $fdisplay(f, "%0d,%b", $time, out);
     end
     $fclose(f);
     $finish;

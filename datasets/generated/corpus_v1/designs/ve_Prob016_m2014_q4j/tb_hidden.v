@@ -15,7 +15,7 @@ module r3e_tb;
       x = $random(s);
       y = $random(s);
       #5;
-      $fdisplay(f, "%0d,%b,%b,%b,%b,%b", i, sum[4], sum[3], sum[2], sum[1], sum[0]);
+      $fdisplay(f, "%0d,%b,%b,%b,%b,%b", $time, sum[4], sum[3], sum[2], sum[1], sum[0]);
     end
     $fclose(f);
     $finish;

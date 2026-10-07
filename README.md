@@ -1,4 +1,4 @@
-# R3E: red–blue adversarial evolution for RTL repair
+# R3E: Verifier-Mediated Red–Blue Policy Evolution for RTL Repair
 
 R3E studies whether an LLM repair agent (Blue) improves from experience
 gathered while an adversary (Red) probes its weaknesses. Neither side

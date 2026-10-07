@@ -29,8 +29,8 @@ module r3e_tb;
       done_counting = $random(s);
       ack = $random(s);
       @(negedge clk);
-      $fdisplay(f, "%0d,%b,%b,%b", i, shift_ena, counting, done);
-      $fdisplay(r3e_stim, "%0d,%b,%b,%b", i, data, done_counting, ack);
+      $fdisplay(f, "%0d,%b,%b,%b", $time, shift_ena, counting, done);
+      $fdisplay(r3e_stim, "%0d,%b,%b,%b", $time, data, done_counting, ack);
     end
     $fclose(f);
     $fclose(r3e_stim);

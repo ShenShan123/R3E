@@ -18,8 +18,8 @@ module r3e_tb;
       in1 = $random(s);
       in2 = $random(s);
       #5;
-      $fdisplay(f, "%0d,%b", i, out);
-      $fdisplay(r3e_stim, "%0d,%b,%b", i, in1, in2);
+      $fdisplay(f, "%0d,%b", $time, out);
+      $fdisplay(r3e_stim, "%0d,%b,%b", $time, in1, in2);
     end
     $fclose(f);
     $fclose(r3e_stim);

@@ -22,7 +22,7 @@ module r3e_tb;
       sel_b1 = $random(s);
       sel_b2 = $random(s);
       #5;
-      $fdisplay(f, "%0d,%b,%b", i, out_assign, out_always);
+      $fdisplay(f, "%0d,%b,%b", $time, out_assign, out_always);
     end
     $fclose(f);
     $finish;

@@ -13,7 +13,7 @@ module r3e_tb;
     for (i = 0; i < 160; i = i + 1) begin
       code = $random(s);
       #5;
-      $fdisplay(f, "%0d,%b,%b,%b,%b,%b", i, out[3], out[2], out[1], out[0], valid);
+      $fdisplay(f, "%0d,%b,%b,%b,%b,%b", $time, out[3], out[2], out[1], out[0], valid);
     end
     $fclose(f);
     $finish;

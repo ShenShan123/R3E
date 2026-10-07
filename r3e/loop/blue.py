@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+import time
 from contextlib import nullcontext
 from typing import Any, Mapping, Sequence
 
@@ -33,13 +34,12 @@ from r3e.knowledge import (
     classify_repair,
 )
 from r3e.knowledge.schema import VisibleFeedback
-from r3e.knowledge.structural_view import build_structural_view
 from r3e.knowledge.type_inference import BugTypeInference
 from r3e.protocol.hashing import hash_payload
 from r3e.providers.openai_compatible import OpenAICompatibleProviderViolation
 
-from .blue_provider import BlueProvider
-from .budget import BudgetedClient
+from .blue_provider import BlueOutputViolation, BlueProvider
+from .budget import PHASES, BudgetedClient
 from .corpus import Challenge
 from .population import attempt_record
 from .sim import Simulator, Verdict
@@ -82,9 +82,16 @@ class BlueConfig:
     # evidence alone, identical to the no-memory system, so memory cannot
     # change what Blue would do first; it can only add ideas after a failure.
     memory_from_attempt: int = 2
-    # add a factual structural view of the failing outputs to Blue's evidence
-    # (r3e/knowledge/structural_view.py); off by default, for paired tests
-    structural_view: bool = False
+    # add the design's own register values to each row of the evidence window
+    # (r3e/knowledge/register_trace.py); off by default until a paired test
+    register_trace: bool = False
+    # "full": Blue returns the complete repaired RTL; "edits": edits to the current
+    # RTL (any size, appends and deletions included) or the complete RTL, as
+    # Blue chooses (blue_provider.py); the lens then leaves out the return form
+    answer_format: str = "full"
+    # "full": the visible-test evidence; "none": only that the design fails its
+    # test (an ablation, to measure how much Blue relies on the test evidence)
+    evidence: str = "full"
 
 
 @dataclass
@@ -105,6 +112,28 @@ class Encounter:
     def repair_attempts(self) -> list[dict[str, Any]]:
         return [a for a in self.attempts if not a.get("infra_failure")]
 
+    def accounting(self) -> dict[str, Any]:
+        """What this repair cost: model calls, tokens, time, memory used, which attempt fixed it."""
+        tries = [a for a in self.attempts if not a.get("infra_failure")]
+        fixed_at = next((i + 1 for i, a in enumerate(tries)
+                         if a.get("verdict_tier") in {"visible_pass", "hidden_pass", "formal_pass"}), None)
+        delivered = (self.bundle["selection_detail"].get("shown_item_ids", [])
+                     if any(a.get("memory_offered") for a in self.attempts) else [])
+        return {
+            "llm_calls": len([a for a in self.attempts if not a.get("reused")]),
+            "repair_attempts": len(tries),
+            "provider_failures": self.infra_failures,
+            "fixed": self.solved_within_budget or self.solved_by_escalation,
+            "fixed_at_attempt": fixed_at,
+            "fixed_by_escalation": self.solved_by_escalation,
+            "input_tokens": sum((a.get("tokens") or {}).get("input", 0) for a in self.attempts if not a.get("reused")),
+            "output_tokens": sum((a.get("tokens") or {}).get("output", 0) for a in self.attempts if not a.get("reused")),
+            "model_seconds": round(sum(a.get("seconds") or 0 for a in self.attempts if not a.get("reused")), 2),
+            "memory_delivered": bool(delivered),
+            "memory_items": list(delivered),
+            "memory_offered_from_attempt": next((i + 1 for i, a in enumerate(tries) if a.get("memory_offered")), None),
+        }
+
     def record(self) -> dict[str, Any]:
         return {
             "challenge_id": self.challenge_id,
@@ -124,10 +153,12 @@ class Encounter:
             "infra_failures": self.infra_failures,
             "episode_hash": self.episode.episode_hash,
             "deliveries": self.deliveries,
+            "accounting": self.accounting(),
         }
 
 
 LENS_PATH = Path(__file__).resolve().parent / "assets" / "blue_lens_generic_v1.txt"
+LENS_EDITS_PATH = Path(__file__).resolve().parent / "assets" / "blue_lens_generic_edits_v1.txt"
 
 
 class BlueRunner:
@@ -145,10 +176,11 @@ class BlueRunner:
         self.project_root = Path(project_root)
         self.budget = json_client if isinstance(json_client, BudgetedClient) else BudgetedClient(json_client, max_calls=max_calls)
         self.client = KnowledgeInjectingClient(self.budget)
-        self.provider = BlueProvider(self.client)
+        self.provider = BlueProvider(self.client, answer_format=self.config.answer_format)
         if self.config.lens_id != "generic_v1":
             raise ValueError(f"unknown Blue lens {self.config.lens_id}")
-        self.lens_instruction = LENS_PATH.read_text(encoding="utf-8")
+        self.lens_instruction = (LENS_EDITS_PATH if self.config.answer_format == "edits"
+                                 else LENS_PATH).read_text(encoding="utf-8")
         self.lens_hash = hash_payload({"lens_id": self.config.lens_id, "instruction": self.lens_instruction})
         # callable returning each case's usage track record (memory_usage.py), or None
         self.track_records = None
@@ -156,21 +188,27 @@ class BlueRunner:
         self.population_sink = None
 
     def initial(self, challenge: Challenge) -> tuple[Verdict, Any]:
-        verdict = self.simulator.verdict(challenge.buggy_rtl, challenge.carrier)
+        verdict = self.simulator.verdict(challenge.buggy_rtl, challenge.carrier,
+                                         registers=self.config.register_trace)
         profile = build_profile(verdict.feedback, analyze_rtl(challenge.buggy_rtl))
         return verdict, profile
 
     def _attempt(
         self, challenge: Challenge, *, index: int, seed: int, phase: str,
-        initial: Verdict, history: list[dict[str, Any]], structural: Mapping[str, Any] | None = None,
+        initial: Verdict, history: list[dict[str, Any]],
     ) -> tuple[dict[str, Any], str | None, Verdict | None]:
+        if self.config.evidence not in {"full", "none"}:
+            raise ValueError(f"unknown evidence mode {self.config.evidence}")
         evidence = {
-            "initial_visible_test_failure": feedback_summary(initial.feedback, window=initial.window),
-            **({"structural_view": dict(structural)} if structural else {}),
+            "initial_visible_test_failure": (
+                feedback_summary(initial.feedback, window=initial.window) if self.config.evidence == "full"
+                else {"stage": "compile" if not initial.feedback.compile_ok else "functional",
+                      "result": "the design fails its test; no further details are available"}),
             "previous_attempts": [
                 {"attempt": h["index"], "edit": h["edit"], "verdict": h["verdict_tier"],
-                 "visible_feedback": (dict(h["feedback"], cycle_window=h["window"])
-                                      if h is history[-1] and h.get("window") else h["feedback"])}
+                 **({"visible_feedback": (dict(h["feedback"], cycle_window=h["window"])
+                                          if h is history[-1] and h.get("window") else h["feedback"])}
+                    if self.config.evidence == "full" else {})}
                 for h in history
             ],
         }
@@ -180,11 +218,15 @@ class BlueRunner:
             "buggy_rtl_source": challenge.buggy_rtl,
             "buggy_rtl_hash": hash_payload(challenge.buggy_rtl),
             "top_module": challenge.carrier.top_module,
+            **({"specification": challenge.carrier.spec} if challenge.carrier.spec else {}),
         }
         slot = {"slot_index": index, "lens_id": self.config.lens_id,
                 "lens_hash": self.lens_hash, "candidate_seed": int(seed) * 100 + index}
         candidate_id = f"C_{hash_payload({'c': challenge.challenge_id, 's': seed, 'i': index}).split(':', 1)[1][:12]}_{index}"
         record = {"index": index, "phase": phase, "candidate_id": candidate_id}
+        started = time.monotonic()
+        if phase not in PHASES:  # a configuration error must stop the run, not pass as a failed repair
+            raise ValueError(f"unknown phase {phase}")
         try:
             with self.budget.in_phase(phase):
                 output = self.provider.generate_candidate(
@@ -211,9 +253,13 @@ class BlueRunner:
             infra = isinstance(exc, OpenAICompatibleProviderViolation) and not truncated
             tier = "provider_fail" if infra else "no_answer" if truncated else "compile_fail"
             message = ("previous attempt ran out of output budget before answering; reason more briefly"
-                       if truncated else type(exc).__name__)
+                       if truncated else str(exc)[:300] if isinstance(exc, BlueOutputViolation)
+                       else type(exc).__name__)
             record.update(edit="<no usable provider output>",
                           verdict_tier=tier,
+                          tokens={"input": int(diagnostics.get("input_tokens") or 0),
+                                  "output": int(diagnostics.get("output_tokens") or 0)},
+                          seconds=round(time.monotonic() - started, 2),
                           infra_failure=infra,
                           feedback={"stage": "provider", "message": message},
                           error=type(exc).__name__,
@@ -221,7 +267,10 @@ class BlueRunner:
                           diagnostics=diagnostics)
             return record, None, None
         rtl = output["patch_payload"]["replacement_rtl"]
-        verdict = self.simulator.verdict(rtl, challenge.carrier)
+        record["tokens"] = {"input": int(output["input_tokens"]), "output": int(output["output_tokens"])}
+        record["answer_form"] = output["patch_payload"].get("answer_form", "full")
+        record["seconds"] = round(time.monotonic() - started, 2)  # model call only
+        verdict = self.simulator.verdict(rtl, challenge.carrier, registers=self.config.register_trace)
         record.update(
             edit=str(output["patch_payload"].get("edit", ""))[:300],
             verdict_tier=verdict.tier,
@@ -264,8 +313,6 @@ class BlueRunner:
                               static_items=static_items,
                               track_records=self.track_records() if self.track_records else None)
         attempts: list[dict[str, Any]] = []
-        structural = (build_structural_view(challenge.buggy_rtl, [d.signal for d in initial.feedback.divergences])
-                      if self.config.structural_view else None)
         passing: tuple[str, Verdict] | None = None
         infra_failures = 0
         inconclusive = False
@@ -285,7 +332,7 @@ class BlueRunner:
                 with (self.client.active(bundle) if offer else nullcontext()):
                     record, rtl, verdict = self._attempt(
                         challenge, index=len(attempts), seed=seed, phase=stage, initial=initial,
-                        history=history, structural=structural,
+                        history=history,
                     )
                 record["memory_offered"] = bool(offer and not bundle.is_empty)
                 attempts.append(record)

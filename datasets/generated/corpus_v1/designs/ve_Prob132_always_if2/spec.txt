@@ -1,0 +1,8 @@
+
+Consider the following adder-subtractor with a zero flag:
+
+The supplied buggy example is named TopModule. Its one-bit inputs are cpu_overheated, arrived, and gas_tank_empty; its one-bit outputs are shut_off_computer and keep_driving. One combinational process sets shut_off_computer to 1 when cpu_overheated is asserted, with no assignment otherwise. Another combinational process, when arrived is 0, sets keep_driving to the bitwise complement of gas_tank_empty, with no assignment when arrived is 1. This describes the supplied faulty implementation; the missing assignments are not requirements to retain the previous output values.
+
+Unfortunately, this module has a bug. Implement a new version of this
+module that fixes the bug.
+

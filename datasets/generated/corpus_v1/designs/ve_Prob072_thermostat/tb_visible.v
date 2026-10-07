@@ -26,8 +26,8 @@ module r3e_tb;
       too_hot = $random(s);
       fan_on = $random(s);
       #5;
-      $fdisplay(f, "%0d,%b,%b,%b", i, heater, aircon, fan);
-      $fdisplay(r3e_stim, "%0d,%b,%b,%b,%b", i, mode, too_cold, too_hot, fan_on);
+      $fdisplay(f, "%0d,%b,%b,%b", $time, heater, aircon, fan);
+      $fdisplay(r3e_stim, "%0d,%b,%b,%b,%b", $time, mode, too_cold, too_hot, fan_on);
     end
     $fclose(f);
     $fclose(r3e_stim);
