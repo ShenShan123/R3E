@@ -39,6 +39,25 @@ SPEC = ("TopModule uses an active-low asynchronous reset to state 0. "
         "At rising clock edges, a request moves state 0 to 1, state 1 moves to 2, "
         "and acknowledgment moves state 2 back to 0. busy means nonzero state; "
         "done means state 2.")
+
+
+def test_macro_edit_is_counted_and_macro_definitions_remain_immutable():
+    clean = '`include "defs.v"\n' + CLEAN.replace("state <= 2'd0;", "state <= `RESET_STATE;")
+    mutant = clean.replace('`RESET_STATE', '`OTHER_STATE', 1)
+    report = validate_design(clean, mutant, 'TopModule')
+    assert report['all_code']['changed_tokens'] == report['body']['changed_tokens'] == 1
+    assert report['tokenizer'] == 'verilog_source_tokens_v2_macros'
+    with pytest.raises(RedDesignOutputViolation, match='compiler_directives_changed'):
+        validate_design(clean, mutant.replace('defs.v', 'other.v'), 'TopModule')
+    definition = '`define RESET_STATE \\\n 2\'d0\n'
+    with pytest.raises(RedDesignOutputViolation, match='compiler_directives_changed'):
+        validate_design(definition + clean, definition.replace("2'd0", "2'd1") + mutant, 'TopModule')
+
+
+def test_line_start_macro_call_cannot_evade_edit_accounting():
+    clean = CLEAN.replace('assign busy = state != 2\'d0;', '`DRIVE(busy, state)')
+    report = validate_design(clean, clean.replace('`DRIVE', '`OTHER'), 'TopModule')
+    assert report['body']['changed_tokens'] == 1
 WEAKNESS = {"weakness_id": "W_missing_transition", "mechanism": "misses a missing state transition",
             "causal_chain": [{"failure": "never returns to idle", "attempt": "changes output decode",
                               "why_failed": "transition remains absent"}],

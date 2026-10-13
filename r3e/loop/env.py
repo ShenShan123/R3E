@@ -8,11 +8,13 @@ ever reported.
 """
 from __future__ import annotations
 
+from decimal import Decimal
 import hashlib
 import json
 import os
 import re
 import shlex
+import time
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -101,6 +103,78 @@ def recover_json_object(content: Any, transport: Any = None) -> Any:
     return content
 
 
+AUTH_BILLING_STATUS = (401, 402, 403)
+CONSECUTIVE_FAILURE_LIMIT = 3
+
+
+class ProviderHalt(RuntimeError):
+    """Collection-wide stop: an auth/billing error, or three failed requests in a row.
+
+    Deliberately NOT an ``OpenAICompatibleProviderViolation``, so no handler that
+    tolerates provider failures (Blue infra retries, Red slot failures) absorbs it.
+    """
+
+    def __init__(self, reason: str, diagnostics: dict):
+        super().__init__(reason)
+        self.diagnostics = diagnostics
+
+
+def _bounded(value: Any, secrets: tuple[str, ...], limit: int = 300) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    for secret in secrets:
+        if secret:
+            text = text.replace(secret, "[redacted]")
+    text = re.sub(r"https?://\S+", "[url]", text)
+    return " ".join(text.split())[:limit]
+
+
+def provider_error_diagnostics(exc: BaseException, elapsed: float, secrets: tuple[str, ...]) -> dict:
+    """A failed request, described without headers, request, prompt or credentials.
+
+    Uses the SDK's parsed error fields only (never ``str(exc)``, which embeds the
+    response body). Billing of a failed request is unknown, not zero.
+    """
+    body = getattr(exc, "body", None)
+    error = body.get("error", body) if isinstance(body, dict) else {}
+    error = error if isinstance(error, dict) else {}
+    status = getattr(exc, "status_code", None)
+    return {"cause": type(exc).__name__, "http_status": status if type(status) is int else None,
+            "error_code": _bounded(error.get("code") or error.get("type"), secrets, 64),
+            "error_message": _bounded(error.get("message"), secrets),
+            "request_id": _bounded(getattr(exc, "request_id", None), secrets, 128),
+            "elapsed_seconds": round(elapsed, 2), "billing": "unknown"}
+
+
+def deepseek_balance(env: Mapping[str, str], required: Decimal | None = None, *,
+                     key_name: str = "DEEPSEEK_API_KEY", url_name: str = "DEEPSEEK_BASE_URL",
+                     currency: str = "CNY", timeout_seconds: float = 30.0) -> dict:
+    """Free account query (GET /user/balance), no model call.
+
+    With ``required``, raise unless the account is available and holds at least
+    that much in ``currency``. An approved budget is not a funded balance.
+    """
+    import urllib.request
+
+    base = env[url_name].rstrip("/").removesuffix("/v1")
+    req = urllib.request.Request(base + "/user/balance",
+                                 headers={"Authorization": "Bearer " + env[key_name]})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_seconds) as r:
+            body = json.loads(r.read())
+    except Exception as exc:
+        raise LlmEnvError("balance query failed: " + type(exc).__name__
+                          + (f" (HTTP {exc.code})" if hasattr(exc, "code") else "")) from None
+    infos = [i for i in body.get("balance_infos", []) if i.get("currency") == currency]
+    out = {"is_available": body.get("is_available") is True, "currency": currency,
+           "total_balance": str(Decimal(infos[0]["total_balance"])) if infos else None}
+    if required is not None and (not out["is_available"] or out["total_balance"] is None
+                                 or Decimal(out["total_balance"]) < required):
+        raise LlmEnvError(f"account cannot fund the approved envelope: {out}, required {required} {currency}")
+    return out
+
+
 class ThinkingTransport:
     """Real transport that adds DeepSeek thinking controls to each request.
 
@@ -114,7 +188,7 @@ class ThinkingTransport:
 
     def __init__(self, env: Mapping[str, str], *, key_name: str, url_name: str,
                  thinking: str, timeout_seconds: float, failure_dir: Path | None = None,
-                 reasoning_log: Path | None = None):
+                 reasoning_log: Path | None = None, error_log: Path | None = None):
         if thinking not in THINKING_CHOICES or thinking == "default":
             raise ValueError("ThinkingTransport needs disabled/low/high/max")
         self._env = dict(env)
@@ -129,6 +203,10 @@ class ThinkingTransport:
         # separately from the answer) is appended here; it is never shown to
         # any agent and never enters memory
         self.reasoning_log = Path(reasoning_log) if reasoning_log else None
+        # sanitized failed-request records (see provider_error_diagnostics)
+        self.error_log = Path(error_log) if error_log else None
+        self.consecutive_failures = 0
+        self.halted: dict | None = None
 
     def __call__(self, **request):
         from openai import OpenAI  # imported lazily; same SDK the client uses
@@ -140,13 +218,35 @@ class ThinkingTransport:
             extra["extra_body"] = {"thinking": {"type": "disabled"}}
         else:
             extra["reasoning_effort"] = self.thinking
+        if self.halted is not None:
+            raise ProviderHalt("provider halted earlier; no further request", self.halted)
         client = OpenAI(api_key=self._env[self._key_name], base_url=self._env[self._url_name],
                         timeout=self.timeout_seconds, max_retries=0)
+        started = time.monotonic()
         try:
             response = client.chat.completions.create(**request, **extra)
         except Exception as exc:
-            raise OpenAICompatibleProviderViolation(
-                "real provider request failed: " + type(exc).__name__) from exc
+            diag = provider_error_diagnostics(exc, time.monotonic() - started,
+                                              (self._env[self._key_name], self._env[self._url_name]))
+            self.consecutive_failures += 1
+            diag["consecutive_failures"] = self.consecutive_failures
+            if diag["http_status"] in AUTH_BILLING_STATUS:
+                diag["halt"] = "auth_or_billing"
+            elif self.consecutive_failures >= CONSECUTIVE_FAILURE_LIMIT:
+                diag["halt"] = "consecutive_transport_failures"
+            if self.error_log is not None:
+                self.error_log.parent.mkdir(parents=True, exist_ok=True)
+                with self.error_log.open("a", encoding="utf-8") as log:
+                    log.write(json.dumps(diag) + "\n")
+            if "halt" in diag:
+                self.halted = diag
+                raise ProviderHalt(diag["halt"], diag) from None
+            failure = OpenAICompatibleProviderViolation(
+                "real provider request failed: " + diag["cause"]
+                + (f" (HTTP {diag['http_status']})" if diag["http_status"] else ""))
+            failure.diagnostics = diag
+            raise failure from None
+        self.consecutive_failures = 0  # any received response, length-limited included
         choice = response.choices[0]
         if self.reasoning_log is not None:
             reasoning = getattr(choice.message, "reasoning_content", None) or ""
@@ -182,6 +282,7 @@ def build_client(
     transport=None,
     failure_dir: Path | None = None,
     reasoning_log: Path | None = None,
+    error_log: Path | None = None,
 ) -> OpenAICompatibleJSONClient:
     """OpenAI-compatible client whose credentials come only from ``env``."""
     key_name, url_name, model_name = (
@@ -199,7 +300,8 @@ def build_client(
         if thinking != "default":
             transport = ThinkingTransport(env, key_name=key_name, url_name=url_name,
                                           thinking=thinking, timeout_seconds=timeout_seconds,
-                                          failure_dir=failure_dir, reasoning_log=reasoning_log)
+                                          failure_dir=failure_dir, reasoning_log=reasoning_log,
+                                          error_log=error_log)
     config = OpenAICompatibleClientConfig.from_dict({
         "schema_version": "r3e-openai-compatible-client-config-v1",
         "provider_id": prefix.lower(),

@@ -38,6 +38,12 @@ batch is applied atomically: if any edit fails, none applies and the reason is
 reported. Only closure repository RTL is editable; tests, harness sources, the
 build recipe, path traversal and files outside the closure are refused.
 
+Self-checking suites (carrier tasks): ``build.json`` may instead list ``rtl`` and ``suites`` (Icarus, one
+testbench top each). Every suite runs on every candidate; the candidate passes only if all pass, and the
+evidence reports each suite separately. The closure is the declared ``rtl`` list (the compile units) plus
+any declared ``headers`` (included files, shown but not compiled on their own). ``task.json`` may declare
+``editable``, narrowing the editable files (e.g. a read-only dependency or header).
+
 Results: ``compile_fail`` (Verilator error), ``visible_fail`` (fail marker,
 nonzero exit, or no pass marker, including a test's own ``TB_FAIL timeout``),
 ``timeout`` (only when the runner kills a process group at its time limit),
@@ -159,6 +165,39 @@ def _run(cmd: list[str], cwd: Path, timeout: float) -> tuple[int | None, str]:
         return None, out
 
 
+def _execute_suites(task: RepoTask, repo: Path, harness: Path, build_timeout: float, sim_timeout: float) -> RunResult:
+    """Icarus: every suite is compiled and run on the candidate; per-suite results in the evidence."""
+    b = task.build
+    closure = tuple(b["rtl"]) + tuple(b.get("headers", ())) + tuple("harness:" + f for s in b["suites"] for f in s["files"])
+    if not (shutil.which("iverilog") and shutil.which("vvp")):
+        return RunResult("infra_error", "build", {"message": "iverilog/vvp not found"}, closure=closure)
+    suites, build_s, sim_s = {}, 0.0, 0.0
+    for suite in b["suites"]:
+        binary = harness / f"{suite['name']}.vvp"
+        t0 = time.monotonic()
+        try:
+            rc, log = _run(["iverilog", "-g2012", "-s", suite["top"], "-o", str(binary), *b["rtl"],
+                            *[str(harness / f) for f in suite["files"]]], repo, build_timeout)
+            build_s += time.monotonic() - t0
+            if rc != 0:
+                suites[suite["name"]] = {"result": "timeout" if rc is None else "compile_fail",
+                                         "log": _excerpt(log, limit=2000)}
+                continue
+            t1 = time.monotonic()
+            rc, out = _run(["vvp", "-n", str(binary)], repo, sim_timeout)
+            sim_s += time.monotonic() - t1
+        except OSError as exc:
+            return RunResult("infra_error", "build", {"message": str(exc)[:300]}, closure=closure)
+        passed = rc == 0 and b["pass_marker"] in out and b["fail_marker"] not in out
+        suites[suite["name"]] = {"result": "timeout" if rc is None else "visible_pass" if passed else "visible_fail",
+                                 "returncode": rc, "pass_marker_found": b["pass_marker"] in out,
+                                 "fail_marker_found": b["fail_marker"] in out, "log": _excerpt(out, limit=2000)}
+    tiers = {v["result"] for v in suites.values()}
+    tier = next(t for t in ("compile_fail", "timeout", "visible_fail", "visible_pass") if t in tiers)
+    return RunResult(tier, "build" if tier == "compile_fail" else "simulation", {"suites": suites},
+                     build_seconds=build_s, sim_seconds=sim_s, closure=closure)
+
+
 def execute(task: RepoTask, overlay: Mapping[str, str], *, build_timeout: float = 900, sim_timeout: float = 120,
             keep: Path | None = None) -> RunResult:
     """Build and run the visible test on baseline + ``overlay`` in a fresh scratch copy of ``public/``."""
@@ -172,6 +211,8 @@ def execute(task: RepoTask, overlay: Mapping[str, str], *, build_timeout: float 
         harness.mkdir()
         for name, text in task.harness.items():
             (harness / name).write_text(text, encoding="utf-8")
+        if "suites" in task.build:
+            return _execute_suites(task, repo, harness, build_timeout, sim_timeout)
         argv = [a.replace("{harness}", str(harness)) for a in task.build["argv"]]
         tool = shutil.which(task.build["tool"])
         if tool is None:
@@ -259,6 +300,12 @@ def editable(rel: str) -> bool:
 
 
 def build_configuration(task: RepoTask) -> dict[str, Any]:
+    if "suites" in task.build:
+        out = {"tool": task.build["tool"], "rtl": task.build["rtl"],
+               "suites": [{"name": s["name"], "top": s["top"], "files": s["files"]} for s in task.build["suites"]]}
+        if "headers" in task.build:
+            out["headers"] = task.build["headers"]
+        return out
     argv = task.build["argv"]
     return {"tool": task.build["tool"],
             "top_module": next((argv[i + 1] for i, a in enumerate(argv) if a == "--top-module"), None),
@@ -339,6 +386,61 @@ def setup(task: RepoTask, counter, cfg: RepoBlueConfig) -> Setup:
                  base, hashes)
 
 
+# ----------------------------------------------------------------------- continuous-loop experience delivery
+# Contract: r3e/loop/CONTINUOUS_BLUE_INTERFACE.md. The runner checks and delivers a prepared envelope;
+# extraction, retrieval, snapshots and provenance-chain validation belong to the loop owner.
+
+DELIVERY_VERSION = "continuous_blue_delivery_v1"
+EXPERIENCE_VERSION = "continuous_blue_experience_v1"
+EXPERIENCE_NOTICE = "Prior repair examples passed public tests only; validate their applicability to this task."
+EXPERIENCE_LABEL = "public_pass_single_sample_hidden_unknown"
+EXPERIENCE_ENTRY_TOKENS, EXPERIENCE_TOKENS, EXPERIENCE_ENTRIES = 2048, 4096, 2
+DELIVERY_FIELDS = {"version", "snapshot_id", "snapshot_hash", "state_hash", "task_hash", "retrieval_policy_hash",
+                   "payload", "selected_entry_hashes", "source_record_hashes", "omissions", "payload_hash"}
+CONTENT_FIELDS = {"validation", "specification_excerpt", "applied_patch", "public_rows"}
+
+
+def public_task_hash(task: RepoTask) -> str:
+    """Identity of the complete exported public task: every file under public/, by content."""
+    files = sorted(p for p in task.public.rglob("*") if p.is_file())
+    return hash_payload({str(p.relative_to(task.public)): hash_payload(p.read_text(errors="replace")) for p in files})
+
+
+def check_delivery(envelope: Any, task: RepoTask, counter) -> int:
+    """Validate a delivery envelope before any request; returns the inserted wrapper's tokens (0 if empty)."""
+    def bad(why):
+        raise RepoTaskError(f"experience envelope rejected: {why}")
+    if not isinstance(envelope, dict) or set(envelope) != DELIVERY_FIELDS or envelope["version"] != DELIVERY_VERSION:
+        bad("fields or version")
+    payload = envelope["payload"]
+    if (not isinstance(payload, dict) or set(payload) != {"version", "notice", "entries"}
+            or payload["version"] != EXPERIENCE_VERSION or payload["notice"] != EXPERIENCE_NOTICE
+            or not isinstance(payload["entries"], list) or len(payload["entries"]) > EXPERIENCE_ENTRIES):
+        bad("payload schema")
+    for e in payload["entries"]:
+        c = e.get("content") if isinstance(e, dict) else None
+        if (set(e) != {"entry_hash", "content"} or not isinstance(e["entry_hash"], str) or not isinstance(c, dict)
+                or set(c) != CONTENT_FIELDS or c["validation"] != EXPERIENCE_LABEL
+                or not isinstance(c["specification_excerpt"], str) or len(c["specification_excerpt"]) > 1024
+                or not isinstance(c["applied_patch"], str) or not isinstance(c["public_rows"], dict)):
+            bad("entry schema")
+        if counter.count(canonical_json(e)) > EXPERIENCE_ENTRY_TOKENS:
+            bad("entry over its token limit")
+    hashes = [e["entry_hash"] for e in payload["entries"]]
+    if (envelope["selected_entry_hashes"] != hashes or len(set(hashes)) != len(hashes)
+            or not isinstance(envelope["source_record_hashes"], list)
+            or len(envelope["source_record_hashes"]) != len(hashes) or not isinstance(envelope["omissions"], list)):
+        bad("selected entries or sources inconsistent with the payload")
+    if envelope["payload_hash"] != hash_payload(payload):
+        bad("payload hash")
+    if envelope["task_hash"] != public_task_hash(task):
+        bad("bound to a different task")
+    tokens = counter.count(canonical_json({"repair_experience": payload})) if hashes else 0
+    if tokens > EXPERIENCE_TOKENS:
+        bad("delivery over its token limit")
+    return tokens
+
+
 class RepoBlueRunner:
     def __init__(self, *, client, counter, archive: Path, cfg: RepoBlueConfig = RepoBlueConfig()):
         self.client, self.counter, self.cfg = client, counter, cfg
@@ -363,22 +465,56 @@ class RepoBlueRunner:
                                         "files": dict(overlay), "patch": patch}))
         return h
 
-    def _call(self, phase: str, system: str, user: dict[str, Any], seed: int) -> dict[str, Any]:
+    def _call(self, phase: str, system: str, user: dict[str, Any], seed: int, journal=None) -> dict[str, Any]:
         messages = [{"role": "system", "content": system}, {"role": "user", "content": canonical_json(user)}]
         size = self.counter.request(messages)
-        if size + self.cfg.output_reserve > self.cfg.context_tokens:
+        too_large = size + self.cfg.output_reserve > self.cfg.context_tokens
+        if journal is not None:  # durably recorded before sending; a write failure prevents the request
+            journal(messages, size, too_large)
+        if too_large:
             return {"too_large": size}
         t0 = time.monotonic()
         with self.client.in_phase(phase):
             response = self.client.complete_json(messages=messages, seed=seed)
         return {**response, "counted_request_tokens": size, "model_seconds": round(time.monotonic() - t0, 2)}
 
-    def run(self, task: RepoTask, s: Setup, *, seed: int) -> dict[str, Any]:
+    def run(self, task: RepoTask, s: Setup, *, seed: int, experience: dict | None = None,
+            experience_journal: Path | None = None) -> dict[str, Any]:
         from r3e.providers.openai_compatible import OpenAICompatibleProviderViolation
+
+        delivered, journal, experience_field = None, None, {}
+        if experience is not None:  # continuous mode: an envelope always, empty for B_0
+            if experience_journal is None or s.route != "direct":
+                raise RepoTaskError("experience delivery needs a journal and a direct-context task")
+            tokens = check_delivery(experience, task, self.counter)
+            payload = experience["payload"]
+            delivered = {k: experience[k] for k in ("snapshot_id", "snapshot_hash", "state_hash", "payload_hash")}
+            delivered.update(delivery_hash=hash_payload(experience), delivered=bool(payload["entries"]))
+            if payload["entries"]:  # an empty selection keeps the no-experience prompt byte for byte
+                experience_field = {"repair_experience": payload}
+            journal_path, ordinal, attempt_no = Path(experience_journal), [0], [0]
+            fixed = {"encounter_id": f"{task.task['task_id']}:{seed}", "task_hash": experience["task_hash"],
+                     **{k: experience[k] for k in ("snapshot_id", "snapshot_hash", "state_hash")},
+                     "delivery_hash": delivered["delivery_hash"], "payload_bytes": canonical_json(payload),
+                     "payload_hash": experience["payload_hash"],
+                     **{k: experience[k] for k in ("selected_entry_hashes", "source_record_hashes", "omissions")},
+                     "delivered": delivered["delivered"], "experience_tokens": tokens}
+
+            def journal(messages, size, refused):
+                sequence = len(journal_path.read_text().splitlines()) if journal_path.exists() else 0
+                ordinal[0] += 0 if refused else 1
+                row = {"sequence": sequence, "event": "preflight_refused" if refused else "request",
+                       **fixed, "attempt": attempt_no[0], "request_ordinal": ordinal[0],
+                       "counted_request_tokens": size, "request_hash": hash_payload(messages)}
+                with journal_path.open("a") as f:
+                    f.write(json.dumps(row) + "\n")
+                    f.flush()
+                    os.fsync(f.fileno())
 
         state = {f: (task.repo / f).read_text(errors="replace") for f in s.repo_files}
         baseline = dict(state)
-        allowed = {f for f in s.repo_files if editable(f)}
+        declared = task.task.get("editable")
+        allowed = {f for f in s.repo_files if editable(f) and (declared is None or f in declared)}
         calls_before = self.client.total_calls
         evidence = {"result": s.baseline.tier, **s.baseline.evidence}
         history: list[dict[str, Any]] = []
@@ -391,7 +527,7 @@ class RepoBlueRunner:
             nonlocal infra
             while True:
                 try:
-                    return self._call(phase, system, user, seed_)
+                    return self._call(phase, system, user, seed_, journal)
                 except OpenAICompatibleProviderViolation as exc:  # only provider failures; anything else stops
                     diag = dict(getattr(exc, "diagnostics", {}) or {})
                     if diag.get("finish_reason") == "length":
@@ -405,7 +541,10 @@ class RepoBlueRunner:
             if rec is not None and len(rec) > 2:  # an attempt that made calls or checks before ending early
                 attempts.append({**rec, "tier": rec.get("tier", outcome)})
             overlay = {f: t for f, t in state.items() if t != baseline[f]}
-            return self._result(task, s, attempts, outcome, overlay, self.client.total_calls - calls_before)
+            result = self._result(task, s, attempts, outcome, overlay, self.client.total_calls - calls_before)
+            if delivered is not None:  # classification binds to this snapshot and delivery, never a later one
+                result["experience"] = delivered
+            return result
 
         for k in range(self.cfg.budget_k):
             rec: dict[str, Any] = {"attempt": k, "route": s.route}
@@ -434,8 +573,10 @@ class RepoBlueRunner:
             if shown > self.cfg.rtl_budget:  # e.g. direct files grew past the budget: a context limit, not Blue
                 rec["rtl_tokens_shown"] = shown
                 return finish("rtl_context_limit", rec)
+            if journal is not None:
+                attempt_no[0] = k + 1
             rep = call("blue_inference", SYSTEM_REPAIR, {
-                **common, "task": "repair", "files": {f: {"editable": f in allowed, "content": state[f]} for f in visible},
+                **common, **experience_field, "task": "repair", "files": {f: {"editable": f in allowed, "content": state[f]} for f in visible},
                 "current_failure_evidence": evidence, "previous_attempts": history[-3:],
                 "required_output_schema": {"edits": [{"file": "path", "find": "exact text, unique; empty to append",
                                                       "replace": "new text"}],

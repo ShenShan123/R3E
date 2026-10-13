@@ -30,12 +30,44 @@ RESET_NAME_RE = re.compile(
     r"^(n?rst|rst_?n|resetn?|reset_n|a?resetn?|arst_?n?|clr|clear)$",
     re.IGNORECASE,
 )
-_DIRECTIVE_RE = re.compile(r"^[ \t]*`[^\r\n]*", re.MULTILINE)
+TOKENIZER_VERSION = "verilog_source_tokens_v2_macros"
+# A macro invocation is executable source, including at the start of a line.
+# Only compiler directives are blanked; continuations belong to that directive.
+_DIRECTIVES = (
+    "begin_keywords", "end_keywords", "celldefine", "endcelldefine",
+    "default_nettype", "define", "undef", "undefineall", "ifdef", "ifndef",
+    "elsif", "else", "endif", "include", "line", "nounconnected_drive",
+    "pragma", "resetall", "timescale", "unconnected_drive",
+)
+_DIRECTIVE_RE = re.compile(
+    r"^[ \t]*`(?:" + "|".join(_DIRECTIVES) + r")(?![A-Za-z0-9_$])(?:[^\r\n]*\\\r?\n)*[^\r\n]*",
+    re.MULTILINE,
+)
+
+
+def _directive_source(source: str) -> str:
+    # Ignore directive-like text inside comments, preserving offsets and strings.
+    return re.sub(r'"(?:\\.|[^"\\])*"|//[^\r\n]*|/\*[\s\S]*?\*/',
+                  lambda m: m[0] if m[0].startswith('"') else
+                  re.sub(r"[^\r\n]", " ", m[0]), source)
+
+
+def compiler_directives(source: str) -> tuple[str, ...]:
+    """Directive text without comments; macro invocations are not directives."""
+    return tuple(m[0].strip() for m in _DIRECTIVE_RE.finditer(_directive_source(source)))
 
 
 def strip_directives(source: str) -> str:
     """Blank out compiler directives while preserving character offsets."""
-    return _DIRECTIVE_RE.sub(lambda match: " " * len(match.group()), source)
+    masked = _directive_source(source)
+    chars = list(source)
+    for match in _DIRECTIVE_RE.finditer(masked):
+        for i in range(match.start(), match.end()):
+            # Keep comments intact, including ones crossing a directive's line.
+            # Callers use the changed spans to identify directives, not comments.
+            if masked[i] not in " \r\n":
+                chars[i] = " "
+    return "".join(chars)
 
 
 _TOLERANT_RE = re.compile(
@@ -44,6 +76,7 @@ _TOLERANT_RE = re.compile(
     r"|(?P<block_comment>/\*.*?\*/)"
     r'|(?P<string>"(?:\\.|[^"\\])*")'
     r"|(?P<number>(?:\d+)?'[sS]?[bBoOdDhH][0-9a-fA-F_xXzZ?]+|'[01xXzZ]|\d+(?:\.\d+)?)"
+    r"|(?P<macro>`[A-Za-z_][A-Za-z0-9_$]*)"
     r"|(?P<identifier>[A-Za-z_$][A-Za-z0-9_$]*)"
     r"|(?P<operator>===|!==|<<<|>>>|<=|>=|==|!=|&&|\|\||<<|>>|::|"
     r"\+\+|--|\*\*|[+\-*/%&|^~!<>=?:'])"
@@ -53,7 +86,11 @@ _TOLERANT_RE = re.compile(
 
 
 def _tolerant_tokenize(source: str) -> list[VerilogToken]:
-    """Superset of the frozen grammar: SystemVerilog fill literals and casts."""
+    """Superset of the frozen grammar: fill literals, casts and macro references.
+
+    A macro name counts once; argument tokens remain separate. This is source
+    accounting, not preprocessing or a claim that the macro is defined.
+    """
     tokens = []
     offset = 0
     for match in _TOLERANT_RE.finditer(source):

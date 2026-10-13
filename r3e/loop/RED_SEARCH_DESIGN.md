@@ -172,6 +172,31 @@ This is a prospective protocol, not an implemented zero-call repair engine or an
 authorization for model calls. Repository-scale HWE development and the separate
 frozen-diagnosis repair-obligation experiment retain their own evaluation scopes.
 
+## 2026-10-08 focused development experiment: 907
+
+The next proposed Red experiment starts from the reviewed Ibex-907 incorrect
+repair, not from an assumed general weakness or an increase in mutation size.
+See [the three-arm protocol](RED_907_EXPERIMENT.md). It separates an original-bug
+witness from a preservation/regression witness, ordinary generation from automatic
+abstraction and manual assistance, and hypothetical shortcuts from actual Blue
+outcomes. Source selection is human; automatic discovery is not yet established.
+
+Six fresh offline source checks reproduced the expected witness matrix: baseline
+fails only the original visible test, the reference passes both, and the archived
+Blue repair passes the original test but fails legal backpressure/data preservation.
+Full traces and newly generated VCDs are retained in local artifacts under
+`red_907_mechanism_dev_20261008/`. No new model samples or scored hits were created.
+
+This protocol is prospective. Automatic source abstraction, independently qualified
+transfer carriers, and the new admission / diagnostic separation still need work.
+Reuse single-file generation when adequate; extend to multi-file edits only where
+a qualified carrier requires them. The primary 2-of-3 criterion counts reviewed
+target regressions still failing public checks at the attempt limit. Public-pass /
+hidden-fail repairs are reported separately. Automatic versus ordinary compares
+the combined history-plus-abstraction method, not abstraction alone. Existing
+search-v2 behavior and frozen experiment records remain unchanged. No remaining
+call reserve has been reassigned or spent.
+
 ## Pre-pilot diagnosis from the implementation
 
 The grounding protocol fixes unblock selection. They establish neither functional

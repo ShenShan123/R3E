@@ -31,6 +31,40 @@ def test_tolerant_tokenizer_accepts_systemverilog_fill_literals():
     assert any(t.value == "'0" for t in tokens)
 
 
+def test_macro_tokens_preserve_offsets_and_line_start_invocations():
+    from r3e.knowledge.verilog_utils import strip_directives, compiler_directives
+    rtl = '`include "defs.v"\nmodule T(input a, output y);\nassign y = `VALUE;\n`DRIVE(y, a)\nendmodule\n'
+    tokens = safe_tokenize(rtl)
+    assert [t.value for t in tokens if t.kind == "macro"] == ["`VALUE", "`DRIVE"]
+    assert all(rtl[t.start:t.end] == t.value for t in tokens)
+    assert compiler_directives(rtl) == ('`include "defs.v"',)
+    stripped = strip_directives(rtl)
+    assert len(stripped) == len(rtl) and stripped.count('\n') == rtl.count('\n')
+    assert '`DRIVE(y, a)' in stripped
+
+
+def test_multiline_macro_definition_is_directive_but_invocation_counts():
+    from r3e.knowledge.verilog_utils import strip_directives, compiler_directives
+    rtl = '`define VALUE(a) \\\n ((a) + 1)\nmodule T(input a, output y); assign y=`VALUE(a); endmodule'
+    assert len(compiler_directives(rtl)) == 1
+    assert '((a) + 1)' not in strip_directives(rtl)
+    assert [t.value for t in safe_tokenize(rtl)].count('`VALUE') == 1
+    assert 'a' in [t.value for t in safe_tokenize(rtl)]
+
+
+def test_comment_directives_and_string_backticks_do_not_corrupt_lexing():
+    from r3e.knowledge.verilog_utils import compiler_directives
+    rtl = '/*\n`include "fake.v"\n*/\nmodule T; initial $display("`MACRO"); endmodule'
+    assert compiler_directives(rtl) == ()
+    assert safe_tokenize(rtl) and not any(t.kind == 'macro' for t in safe_tokenize(rtl))
+    assert safe_tokenize('module T; assign a = `; endmodule') == []
+    continued_comment = '`include "defs.v" /* comment\n still comment */\nmodule T; endmodule'
+    assert [t.value for t in safe_tokenize(continued_comment)] == ['module', 'T', ';', 'endmodule']
+    macro_with_suffix = 'module T;\n`include$alias(x)\nendmodule'
+    assert compiler_directives(macro_with_suffix) == ()
+    assert any(t.value == '`include$alias' for t in safe_tokenize(macro_with_suffix))
+
+
 def test_generated_testbench_drives_wide_inputs_fully():
     tb = generate_testbench(top="T", ports=[Port("in", "input", 70), Port("out", "output", 3)],
                             clock=None, reset=None, seed=5, cycles=4, output_name="t.txt")

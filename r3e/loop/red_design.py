@@ -14,7 +14,7 @@ import math
 import re
 from typing import Any, Mapping
 
-from r3e.knowledge.verilog_utils import safe_tokenize
+from r3e.knowledge.verilog_utils import safe_tokenize, compiler_directives, TOKENIZER_VERSION
 from r3e.protocol.hashing import canonical_json, hash_payload
 
 from .budget import BudgetedClient
@@ -127,10 +127,7 @@ def actual_diff(clean: str, mutant: str, *, fromfile="clean.sv", tofile="buggy.s
 
 
 def _directives(source: str) -> tuple[str, ...]:
-    # Exclude comments; keep string operands of directives (e.g. include paths).
-    masked = re.sub(r'"(?:\\.|[^"\\])*"|//[^\n]*|/\*[\s\S]*?\*/',
-                    lambda m: m[0] if m[0].startswith('"') else re.sub(r"[^\n]", " ", m[0]), source)
-    return tuple(line.strip() for line in masked.splitlines() if line.lstrip().startswith("`"))
+    return compiler_directives(source)
 
 
 def _layout(source: str, top: str) -> tuple[list[str], list[str], list[str]]:
@@ -231,7 +228,7 @@ def validate_design(clean_rtl: str, buggy_rtl: str, top_module: str,
         raise RedDesignOutputViolation("compiler_directives_changed")
     if original == mutated:
         raise RedDesignOutputViolation("no_token_change")
-    report = {"metric": "sequence_matcher_token_edits_v1", **asdict(budget),
+    report = {"metric": "sequence_matcher_token_edits_v1", "tokenizer": TOKENIZER_VERSION, **asdict(budget),
               "all_code": _change_measure(original, mutated, budget.max_changed_fraction),
               "body": _change_measure(original_body, mutated_body, budget.max_changed_fraction)}
     if not all(report[key]["within_limit"] for key in ("all_code", "body")):
@@ -248,7 +245,7 @@ def design_constraints(carrier: Carrier, budget: EditBudget) -> dict[str, Any]:
               "body_token_limit": math.floor(len(body) * budget.max_changed_fraction)}
     if min(limits.values()) < 1:
         raise RedDesignInputError("edit budget allows no token changes on this design")
-    return {**asdict(budget), **limits,
+    return {**asdict(budget), **limits, "tokenizer": TOKENIZER_VERSION,
             "metric": "sum max(deleted, inserted) over token diff hunks; both limits apply"}
 
 
