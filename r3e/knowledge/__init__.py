@@ -33,12 +33,23 @@ from .schema import (
     RepairEpisode,
     VisibleFeedback,
 )
+from .selection import (
+    CandidateEvidence,
+    LastCandidateSelector,
+    SelectionDecision,
+    VerifiedBestSelector,
+    replay,
+)
 from .store import KnowledgeStore
 from .structure import analyze_rtl
 from .type_inference import BugTypeInference
 
 __all__ = [
     "BugTypeInference",
+    "CandidateEvidence",
+    "LastCandidateSelector",
+    "SelectionDecision",
+    "VerifiedBestSelector",
     "CaseMemoryAuthor",
     "KnowledgeBundle",
     "KnowledgeInjectingClient",
@@ -58,4 +69,5 @@ __all__ = [
     "compare_traces",
     "compile_failure",
     "render_item",
+    "replay",
 ]
